@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Spot.AiSearch.Api/Spot.AiSearch.Api.csproj" />
+    <Project Path="src/Spot.Auth.Api/Spot.Auth.Api.csproj" />
+    <Project Path="src/Spot.Booking.Api/Spot.Booking.Api.csproj" />
+    <Project Path="src/Spot.Business.Api/Spot.Business.Api.csproj" />
+    <Project Path="src/Spot.Gateway/Spot.Gateway.csproj" />
+    <Project Path="src/Spot.Notifications.Api/Spot.Notifications.Api.csproj" />
+    <Project Path="src/Spot.Shared/Spot.Shared.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,6 @@
+@Spot.Gateway_HostAddress = http://localhost:5195
+
+GET {{Spot.Gateway_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
