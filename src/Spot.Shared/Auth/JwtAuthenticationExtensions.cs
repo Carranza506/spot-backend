@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
@@ -59,11 +60,42 @@ public static class JwtAuthenticationExtensions
                     // meaningfully extending how long an expired token stays acceptable.
                     ClockSkew = TimeSpan.FromSeconds(45),
                 };
+
+                bearerOptions.Events = new JwtBearerEvents
+                {
+                    OnChallenge = OnChallengeAsync,
+                };
             });
 
         services.AddAuthorization();
 
         return services;
+    }
+
+    /// <summary>
+    /// Replaces ASP.NET Core's default empty 401 (missing token, invalid signature, or expired
+    /// token — anything that fails authentication and reaches a challenge) with a body matching
+    /// the <c>Unauthorized</c> response (<c>Error</c> schema: code/message/timestamp) documented
+    /// in contracts/spot-api.yaml.
+    /// </summary>
+    private static Task OnChallengeAsync(JwtBearerChallengeContext context)
+    {
+        // Prevents the default handler from also writing to the response / setting WWW-Authenticate
+        // headers with its own (contract-incompatible) shape.
+        context.HandleResponse();
+
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+
+        var message = context.AuthenticateFailure is SecurityTokenExpiredException
+            ? "Tu sesión expiró, por favor inicia sesión nuevamente."
+            : "Token de acceso inválido o ausente.";
+
+        return context.Response.WriteAsJsonAsync(new
+        {
+            code = "UNAUTHORIZED",
+            message,
+            timestamp = DateTime.UtcNow,
+        });
     }
 
     /// <summary>
