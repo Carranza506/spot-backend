@@ -58,6 +58,54 @@ cp src/Spot.Auth.Api/appsettings.Example.json src/Spot.Auth.Api/appsettings.Deve
 
 Then fill in the real values there (connection string, JWT secret, API keys). **Never commit `appsettings.Development.json` or real keys** — it's already in `.gitignore`.
 
+## RSA keys for JWT
+
+Access tokens are RS256 JWTs: `Spot.Auth.Api` signs with an RSA **private** key, and every other
+microservice validates the signature with the matching **public** key only (via
+`AddSpotJwtAuthentication` in `Spot.Shared`). The private key must never be committed or shared
+outside `Spot.Auth.Api`.
+
+**1. Generate a local key pair** (from the repo root; requires OpenSSL, bundled with Git for
+Windows):
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out jwt-private.pem
+openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
+```
+
+`*.pem` is already `.gitignore`d, but keep these outside the repo (e.g. in a personal `keys/`
+folder — also ignored) if you want to be extra safe.
+
+**2. Development — load both keys into user-secrets** (never into an `appsettings*.json` file):
+
+```bash
+cd src/Spot.Auth.Api
+dotnet user-secrets set "Jwt:PrivateKeyPem" "$(cat ../../jwt-private.pem)"
+dotnet user-secrets set "Jwt:PublicKeyPem" "$(cat ../../jwt-public.pem)"
+```
+
+`Jwt:Issuer`, `Jwt:Audience`, and `Jwt:ExpiresInMinutes` already have non-secret defaults in
+`appsettings.Development.json`; only the keys need to be supplied this way.
+
+Once a future issue wires `AddSpotJwtAuthentication` into another microservice (Business, Booking,
+etc.), that service's own user-secrets only need `Jwt:PublicKeyPem` (plus `Jwt:Issuer`/`Jwt:Audience`)
+— it must never have access to the private key.
+
+**3. Production — environment variables.** ASP.NET Core maps double-underscore env vars to
+config sections, so set (on `Spot.Auth.Api`, and on every validating service for the public key):
+
+```bash
+Jwt__PrivateKeyPem="$(cat jwt-private.pem)"   # Spot.Auth.Api only
+Jwt__PublicKeyPem="$(cat jwt-public.pem)"     # every microservice
+Jwt__Issuer="https://api.spot.cr"
+Jwt__Audience="spot-clients"
+Jwt__ExpiresInMinutes="60"
+```
+
+No vault decision has been made yet for production key storage — this is intentionally the only
+place that needs to change once one is: `JwtOptions` and the code that consumes it only know about
+`IConfiguration`, never about where a value physically comes from.
+
 ## Running a single microservice
 
 ```bash
