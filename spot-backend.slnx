@@ -10,5 +10,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Spot.Auth.Api.Tests/Spot.Auth.Api.Tests.csproj" />
+    <Project Path="tests/Spot.Shared.Tests/Spot.Shared.Tests.csproj" />
   </Folder>
 </Solution>
