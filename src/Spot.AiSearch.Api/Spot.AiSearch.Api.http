@@ -1,41 +1,40 @@
 @host = http://localhost:5050
 
-### 1. Obtener token SUPERADMIN (solo funciona en Development)
-# Copiá el valor de "token" de la respuesta y pegalo en @token abajo
-POST {{host}}/dev/token?role=SUPERADMIN
+### Token
+# AiSearch.Api solo valida firmas RS256 emitidas por Spot.Auth.Api.
+# El DevController fue eliminado: obtené un JWT real desde el endpoint de login
+# de Spot.Auth.Api y pegalo abajo.
+@token = REEMPLAZAR_CON_JWT_RS256_SUPERADMIN
 
-###
-
-### 2. Pegá acá el token obtenido en el paso anterior
-@token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI5YzcwY2MxOS0xYWZmLTRhZTYtYWEzMy1mOTNiMWUzNTE2MGIiLCJyb2xlIjoiU1VQRVJBRE1JTiIsImVtYWlsIjoiZGV2LXN1cGVyYWRtaW5Ac3BvdC5kZXYiLCJleHAiOjE3ODg0ODU0MjgsImlzcyI6InNwb3QtYXV0aCIsImF1ZCI6InNwb3QtYXBpIn0.7te2U_8bYENmUTGl3Nir-B0F7AOQm7BFgRJC3H4SVAQ
-
-### 3. Audit list - sin filtros
+### 1. Audit list - sin filtros
 GET {{host}}/ai-search/requests
 Accept: application/json
 Authorization: Bearer {{token}}
 
 ###
 
-### 4. Audit list - filtrar por status y tipo
+### 2. Audit list - filtrar por status y tipo
 GET {{host}}/ai-search/requests?page=1&pageSize=10&status=SUCCESS&requestType=BUSINESS_SEARCH
 Accept: application/json
 Authorization: Bearer {{token}}
 
 ###
 
-### 5. Audit list - filtrar por usuario y rango de fechas
+### 3. Audit list - filtrar por usuario y rango de fechas
 GET {{host}}/ai-search/requests?userId=3fa85f64-5717-4562-b3fc-2c963f66afa6&from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z
 Accept: application/json
 Authorization: Bearer {{token}}
 
 ###
 
-### 6. Sin token — debe responder 401
+### 4. Sin token — debe responder 401 (body: { code: "UNAUTHORIZED", ... })
 GET {{host}}/ai-search/requests
 
 ###
 
-### 7. Con rol CLIENT — debe responder 403
-POST {{host}}/dev/token?role=CLIENT
+### 5. Con token de rol distinto a SUPERADMIN — debe responder 403 (body: { code: "FORBIDDEN", ... })
+GET {{host}}/ai-search/requests
+Accept: application/json
+Authorization: Bearer REEMPLAZAR_CON_JWT_RS256_ROL_CLIENT
 
 ###
