@@ -218,30 +218,6 @@ namespace Spot.Business.Api.Migrations
                 });
 
             migrationBuilder.CreateTable(
-                name: "products",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
-                    business_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    name = table.Column<string>(type: "character varying(150)", maxLength: 150, nullable: false),
-                    description = table.Column<string>(type: "text", nullable: true),
-                    price = table.Column<decimal>(type: "numeric(12,2)", nullable: true),
-                    is_active = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
-                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_products", x => x.id);
-                    table.ForeignKey(
-                        name: "FK_products_businesses_business_id",
-                        column: x => x.business_id,
-                        principalTable: "businesses",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateTable(
                 name: "reviews",
                 columns: table => new
                 {
@@ -313,28 +289,6 @@ namespace Spot.Business.Api.Migrations
                         principalTable: "categories",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Restrict);
-                });
-
-            migrationBuilder.CreateTable(
-                name: "product_photos",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
-                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    storage_key = table.Column<string>(type: "text", nullable: false),
-                    url = table.Column<string>(type: "text", nullable: true),
-                    display_order = table.Column<int>(type: "integer", nullable: false, defaultValue: 0),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_product_photos", x => x.id);
-                    table.ForeignKey(
-                        name: "FK_product_photos_products_product_id",
-                        column: x => x.product_id,
-                        principalTable: "products",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
                 });
 
             migrationBuilder.CreateTable(
@@ -431,16 +385,6 @@ namespace Spot.Business.Api.Migrations
                 column: "business_id");
 
             migrationBuilder.CreateIndex(
-                name: "idx_product_photos_product",
-                table: "product_photos",
-                column: "product_id");
-
-            migrationBuilder.CreateIndex(
-                name: "idx_products_business",
-                table: "products",
-                column: "business_id");
-
-            migrationBuilder.CreateIndex(
                 name: "idx_reviews_business",
                 table: "reviews",
                 column: "business_id");
@@ -490,9 +434,6 @@ namespace Spot.Business.Api.Migrations
                 name: "favorite_businesses");
 
             migrationBuilder.DropTable(
-                name: "product_photos");
-
-            migrationBuilder.DropTable(
                 name: "reviews");
 
             migrationBuilder.DropTable(
@@ -500,9 +441,6 @@ namespace Spot.Business.Api.Migrations
 
             migrationBuilder.DropTable(
                 name: "categories");
-
-            migrationBuilder.DropTable(
-                name: "products");
 
             migrationBuilder.DropTable(
                 name: "services");

@@ -21,6 +21,5 @@ public class Business
     public ICollection<BusinessHours> Hours { get; set; } = [];
     public ICollection<BusinessScheduleException> ScheduleExceptions { get; set; } = [];
     public ICollection<Service> Services { get; set; } = [];
-    public ICollection<Product> Products { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
 }

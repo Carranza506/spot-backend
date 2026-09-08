@@ -16,9 +16,7 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
     public DbSet<BusinessHours> BusinessHours => Set<BusinessHours>();
     public DbSet<BusinessScheduleException> BusinessScheduleExceptions => Set<BusinessScheduleException>();
     public DbSet<Service> Services => Set<Service>();
-    public DbSet<Product> Products => Set<Product>();
     public DbSet<ServicePhoto> ServicePhotos => Set<ServicePhoto>();
-    public DbSet<ProductPhoto> ProductPhotos => Set<ProductPhoto>();
     public DbSet<FavoriteBusiness> FavoriteBusinesses => Set<FavoriteBusiness>();
     public DbSet<Review> Reviews => Set<Review>();
 
@@ -161,22 +159,6 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.HasOne(x => x.Business).WithMany(b => b.Services).HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<Product>(e =>
-        {
-            e.ToTable("products");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
-            e.Property(x => x.BusinessId).HasColumnName("business_id");
-            e.Property(x => x.Name).HasColumnName("name").HasMaxLength(150).IsRequired();
-            e.Property(x => x.Description).HasColumnName("description");
-            e.Property(x => x.Price).HasColumnName("price").HasColumnType("numeric(12,2)");
-            e.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
-            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
-            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
-            e.HasIndex(x => x.BusinessId).HasDatabaseName("idx_products_business");
-            e.HasOne(x => x.Business).WithMany(b => b.Products).HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
-        });
-
         modelBuilder.Entity<ServicePhoto>(e =>
         {
             e.ToTable("service_photos");
@@ -189,20 +171,6 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasIndex(x => x.ServiceId).HasDatabaseName("idx_service_photos_service");
             e.HasOne(x => x.Service).WithMany(s => s.Photos).HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<ProductPhoto>(e =>
-        {
-            e.ToTable("product_photos");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
-            e.Property(x => x.ProductId).HasColumnName("product_id");
-            e.Property(x => x.StorageKey).HasColumnName("storage_key").IsRequired();
-            e.Property(x => x.Url).HasColumnName("url");
-            e.Property(x => x.DisplayOrder).HasColumnName("display_order").HasDefaultValue(0);
-            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
-            e.HasIndex(x => x.ProductId).HasDatabaseName("idx_product_photos_product");
-            e.HasOne(x => x.Product).WithMany(p => p.Photos).HasForeignKey(x => x.ProductId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<BusinessOwner>(e =>

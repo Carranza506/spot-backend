@@ -21,10 +21,13 @@ namespace Spot.Booking.Api.Migrations
                     id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
                     user_id = table.Column<Guid>(type: "uuid", nullable: false),
                     business_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    service_id = table.Column<Guid>(type: "uuid", nullable: false),
                     start_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     end_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     status = table.Column<int>(type: "booking_status", nullable: false, defaultValue: 0),
-                    total_price = table.Column<decimal>(type: "numeric(12,2)", nullable: false, defaultValue: 0m),
+                    service_name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    service_price = table.Column<decimal>(type: "numeric(10,2)", nullable: false),
+                    service_duration_minutes = table.Column<int>(type: "integer", nullable: false),
                     notes = table.Column<string>(type: "text", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
@@ -34,38 +37,15 @@ namespace Spot.Booking.Api.Migrations
                     table.PrimaryKey("PK_bookings", x => x.id);
                 });
 
-            migrationBuilder.CreateTable(
-                name: "booking_services",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
-                    booking_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    service_id = table.Column<Guid>(type: "uuid", nullable: false),
-                    service_name = table.Column<string>(type: "character varying(150)", maxLength: 150, nullable: false),
-                    unit_price = table.Column<decimal>(type: "numeric(12,2)", nullable: false),
-                    duration_minutes = table.Column<int>(type: "integer", nullable: false),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_booking_services", x => x.id);
-                    table.ForeignKey(
-                        name: "FK_booking_services_bookings_booking_id",
-                        column: x => x.booking_id,
-                        principalTable: "bookings",
-                        principalColumn: "id",
-                        onDelete: ReferentialAction.Cascade);
-                });
-
-            migrationBuilder.CreateIndex(
-                name: "idx_booking_services_booking",
-                table: "booking_services",
-                column: "booking_id");
-
             migrationBuilder.CreateIndex(
                 name: "idx_bookings_business_start",
                 table: "bookings",
                 columns: new[] { "business_id", "start_at" });
+
+            migrationBuilder.CreateIndex(
+                name: "idx_bookings_service",
+                table: "bookings",
+                column: "service_id");
 
             migrationBuilder.CreateIndex(
                 name: "idx_bookings_user_start",
@@ -76,9 +56,6 @@ namespace Spot.Booking.Api.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "booking_services");
-
             migrationBuilder.DropTable(
                 name: "bookings");
         }

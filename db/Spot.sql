@@ -7,7 +7,8 @@ CREATE TYPE contact_type AS ENUM ('PHONE','WHATSAPP','EMAIL','WEBSITE','FACEBOOK
 CREATE TYPE booking_status AS ENUM ('PENDING','CONFIRMED','COMPLETED','CANCELLED','NO_SHOW');
 CREATE TYPE ai_request_status AS ENUM ('SUCCESS','ERROR','TIMEOUT');
 CREATE TYPE ai_request_type AS ENUM ('BUSINESS_SEARCH','GENERAL_QUERY','OTHER');
-CREATE TYPE auth_provider AS ENUM ('GOOGLE','FACEBOOK','APPLE','OTHER');
+CREATE TYPE auth_provider AS ENUM ('GOOGLE');
+
 
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS TRIGGER LANGUAGE plpgsql AS $$
 BEGIN NEW.updated_at=CURRENT_TIMESTAMP; RETURN NEW; END; $$;
@@ -86,14 +87,6 @@ CREATE TABLE services (
 CREATE INDEX idx_services_business ON services(business_id);
 CREATE TRIGGER trg_services_updated_at BEFORE UPDATE ON services FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
-CREATE TABLE products (
- id UUID PRIMARY KEY DEFAULT gen_random_uuid(), business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
- name VARCHAR(150) NOT NULL, description TEXT, price NUMERIC(12,2) CHECK(price IS NULL OR price>=0),
- is_active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
- updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE INDEX idx_products_business ON products(business_id);
-CREATE TRIGGER trg_products_updated_at BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
 CREATE TABLE business_photos (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
  storage_key TEXT NOT NULL, url TEXT, is_primary BOOLEAN NOT NULL DEFAULT FALSE, display_order INTEGER NOT NULL DEFAULT 0 CHECK(display_order>=0),
@@ -105,12 +98,6 @@ CREATE TABLE service_photos (
  storage_key TEXT NOT NULL, url TEXT, display_order INTEGER NOT NULL DEFAULT 0 CHECK(display_order>=0),
  created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX idx_service_photos_service ON service_photos(service_id);
-
-CREATE TABLE product_photos (
- id UUID PRIMARY KEY DEFAULT gen_random_uuid(), product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
- storage_key TEXT NOT NULL, url TEXT, display_order INTEGER NOT NULL DEFAULT 0 CHECK(display_order>=0),
- created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE INDEX idx_product_photos_product ON product_photos(product_id);
 
 CREATE TABLE business_hours (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
@@ -132,22 +119,30 @@ CREATE INDEX idx_schedule_exceptions_business_date ON business_schedule_exceptio
 CREATE TRIGGER trg_schedule_exceptions_updated_at BEFORE UPDATE ON business_schedule_exceptions FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE bookings (
- id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
- business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE RESTRICT,
- start_at TIMESTAMPTZ NOT NULL, end_at TIMESTAMPTZ NOT NULL,
- status booking_status NOT NULL DEFAULT 'PENDING', total_price NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK(total_price>=0),
- notes TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
- CHECK(start_at<end_at));
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    business_id UUID NOT NULL REFERENCES businesses(id),
+    service_id UUID NOT NULL REFERENCES services(id),
+    start_at TIMESTAMPTZ NOT NULL,
+    end_at TIMESTAMPTZ NOT NULL,
+    status booking_status NOT NULL DEFAULT 'PENDING',
+    service_name VARCHAR(255) NOT NULL,
+    service_price NUMERIC(10,2) NOT NULL,
+    service_duration_minutes INTEGER NOT NULL,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chk_booking_dates
+        CHECK (start_at < end_at),
+    CONSTRAINT chk_booking_service_price
+        CHECK (service_price >= 0),
+    CONSTRAINT chk_booking_service_duration
+        CHECK (service_duration_minutes > 0)
+);
 CREATE INDEX idx_bookings_user_start ON bookings(user_id,start_at);
 CREATE INDEX idx_bookings_business_start ON bookings(business_id,start_at);
+CREATE INDEX idx_bookings_service ON bookings(service_id);
 CREATE TRIGGER trg_bookings_updated_at BEFORE UPDATE ON bookings FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TABLE booking_services (
- id UUID PRIMARY KEY DEFAULT gen_random_uuid(), booking_id UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
- service_id UUID NOT NULL REFERENCES services(id) ON DELETE RESTRICT, service_name VARCHAR(150) NOT NULL,
- unit_price NUMERIC(12,2) NOT NULL CHECK(unit_price>=0), duration_minutes INTEGER NOT NULL CHECK(duration_minutes>0),
- created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
-CREATE INDEX idx_booking_services_booking ON booking_services(booking_id);
 
 CREATE TABLE favorite_businesses (
  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

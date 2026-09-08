@@ -12,7 +12,7 @@ namespace Spot.Auth.Api.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.AlterDatabase()
-                .Annotation("Npgsql:Enum:auth_provider", "google,facebook,apple,other")
+                .Annotation("Npgsql:Enum:auth_provider", "google")
                 .Annotation("Npgsql:Enum:user_role", "client,business_owner,superadmin");
 
             migrationBuilder.CreateTable(

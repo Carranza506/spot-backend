@@ -12,7 +12,7 @@ using Spot.Business.Api.Data;
 namespace Spot.Business.Api.Migrations
 {
     [DbContext(typeof(BusinessDbContext))]
-    [Migration("20260904003951_InitialCreate")]
+    [Migration("20260908022446_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -488,99 +488,6 @@ namespace Spot.Business.Api.Migrations
                     b.ToTable("favorite_businesses", (string)null);
                 });
 
-            modelBuilder.Entity("Spot.Business.Api.Models.Product", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<Guid>("BusinessId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("business_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("text")
-                        .HasColumnName("description");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(true)
-                        .HasColumnName("is_active");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("name");
-
-                    b.Property<decimal?>("Price")
-                        .HasColumnType("numeric(12,2)")
-                        .HasColumnName("price");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("updated_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BusinessId")
-                        .HasDatabaseName("idx_products_business");
-
-                    b.ToTable("products", (string)null);
-                });
-
-            modelBuilder.Entity("Spot.Business.Api.Models.ProductPhoto", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<int>("DisplayOrder")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("display_order");
-
-                    b.Property<Guid>("ProductId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("product_id");
-
-                    b.Property<string>("StorageKey")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("storage_key");
-
-                    b.Property<string>("Url")
-                        .HasColumnType("text")
-                        .HasColumnName("url");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ProductId")
-                        .HasDatabaseName("idx_product_photos_product");
-
-                    b.ToTable("product_photos", (string)null);
-                });
-
             modelBuilder.Entity("Spot.Business.Api.Models.Review", b =>
                 {
                     b.Property<Guid>("Id")
@@ -835,28 +742,6 @@ namespace Spot.Business.Api.Migrations
                     b.Navigation("Business");
                 });
 
-            modelBuilder.Entity("Spot.Business.Api.Models.Product", b =>
-                {
-                    b.HasOne("Spot.Business.Api.Models.Business", "Business")
-                        .WithMany("Products")
-                        .HasForeignKey("BusinessId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Business");
-                });
-
-            modelBuilder.Entity("Spot.Business.Api.Models.ProductPhoto", b =>
-                {
-                    b.HasOne("Spot.Business.Api.Models.Product", "Product")
-                        .WithMany("Photos")
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Product");
-                });
-
             modelBuilder.Entity("Spot.Business.Api.Models.Review", b =>
                 {
                     b.HasOne("Spot.Business.Api.Models.Business", "Business")
@@ -900,8 +785,6 @@ namespace Spot.Business.Api.Migrations
 
                     b.Navigation("Photos");
 
-                    b.Navigation("Products");
-
                     b.Navigation("Reviews");
 
                     b.Navigation("ScheduleExceptions");
@@ -912,11 +795,6 @@ namespace Spot.Business.Api.Migrations
             modelBuilder.Entity("Spot.Business.Api.Models.Category", b =>
                 {
                     b.Navigation("SubCategories");
-                });
-
-            modelBuilder.Entity("Spot.Business.Api.Models.Product", b =>
-                {
-                    b.Navigation("Photos");
                 });
 
             modelBuilder.Entity("Spot.Business.Api.Models.Service", b =>

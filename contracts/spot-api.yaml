@@ -2,15 +2,15 @@ openapi: 3.1.0
 info:
   title: Spot API
   version: "1.0.0"
-  summary: Contrato unificado de la API de Spot (todos los microservicios).
+  summary: Unified contract for the Spot API (all microservices).
   description: |-
-    Spot es una plataforma de reservas de servicios (MVP enfocado en belleza y aseo
-    personal) construida con una arquitectura de microservicios en .NET.
+    Spot is a service-booking platform (an MVP focused on beauty and personal
+    care) built with a microservices architecture in .NET.
 
-    ## Arquitectura y ruteo
-    Todas las rutas descritas en este documento son expuestas al cliente exclusivamente
-    a través del **API Gateway** (`Spot.Gateway`), bajo el prefijo `/api/v1/{servicio}/...`,
-    donde `{servicio}` identifica al microservicio dueño del recurso:
+    ## Architecture and routing
+    All routes described in this document are exposed to the client exclusively
+    through the **API Gateway** (`Spot.Gateway`), under the `/api/v1/{service}/...`
+    prefix, where `{service}` identifies the microservice that owns the resource:
 
     - `/api/v1/auth/...`          -> Spot.Auth.Api
     - `/api/v1/business/...`      -> Spot.Business.Api
@@ -18,59 +18,59 @@ info:
     - `/api/v1/ai-search/...`     -> Spot.AiSearch.Api
     - `/api/v1/notifications/...` -> Spot.Notifications.Api
 
-    El Gateway es responsable de validar el JWT (firma, expiración y claims de rol)
-    **antes** de enrutar la petición al microservicio correspondiente, con la única
-    excepción de los endpoints públicos de autenticación:
+    The Gateway is responsible for validating the JWT (signature, expiration, and
+    role claims) **before** routing the request to the corresponding microservice,
+    with the sole exception of the public authentication endpoints:
     `POST /api/v1/auth/login`, `POST /api/v1/auth/register`,
-    `POST /api/v1/auth/refresh` y `POST /api/v1/auth/google`. Los endpoints de
-    solo-lectura de descubrimiento de negocios (listado/búsqueda pública, detalle de
-    negocio, catálogo de servicios/productos, horarios, disponibilidad y reseñas) también
-    se sirven sin autenticación para soportar la búsqueda anónima.
+    `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/google`. The read-only
+    business-discovery endpoints (public listing/search, business detail, service
+    catalog, hours, availability, and reviews) are also served without
+    authentication to support anonymous search.
 
-    El endpoint interno `POST /api/v1/notifications/internal/booking-status-changed`
-    no está expuesto a clientes finales: el Gateway solo lo enruta cuando la petición
-    proviene de la red interna de servicios (Spot.Booking.Api), autenticada con una
-    API key de servicio en lugar de un JWT de usuario.
+    The internal endpoint `POST /api/v1/notifications/internal/booking-status-changed`
+    is not exposed to end clients: the Gateway only routes it when the request
+    comes from the internal service network (Spot.Booking.Api), authenticated with
+    a service API key instead of a user JWT.
 
     ## Roles
-    Cada operación documenta en su descripción el/los rol(es) del enum `user_role`
-    (`CLIENT`, `BUSINESS_OWNER`, `SUPERADMIN`) autorizados a invocarla. Las operaciones
-    sobre un negocio específico (servicios, productos, horarios, fotos, etc.) además
-    requieren que el usuario `BUSINESS_OWNER` autenticado sea dueño de ese negocio
-    (fila correspondiente en `business_owners`).
+    Each operation documents in its description the role(s) from the `user_role`
+    enum (`CLIENT`, `BUSINESS_OWNER`, `SUPERADMIN`) authorized to invoke it.
+    Operations on a specific business (services, hours, photos, etc.) also require
+    the authenticated `BUSINESS_OWNER` user to own that business (the
+    corresponding row in `business_owners`).
 
-    ## Paginación
-    Todo endpoint de listado acepta los query params `page` (>=1, default 1) y
-    `pageSize` (1-100, default 20), y envuelve el resultado como
+    ## Pagination
+    Every listing endpoint accepts the `page` (>=1, default 1) and `pageSize`
+    (1-100, default 20) query params, and wraps the result as
     `{ "data": [...], "pagination": { "page", "pageSize", "total", "totalPages" } }`.
 
-    ## Errores
-    Todos los errores usan el schema `Error` (`code`, `message`, `details?`, `timestamp`).
-    Los errores `500` nunca exponen detalles internos (stack traces, mensajes de motor
-    de base de datos, etc.), solo un `code` genérico y un `message` amigable para el
-    usuario final.
+    ## Errors
+    All errors use the `Error` schema (`code`, `message`, `details?`, `timestamp`).
+    `500` errors never expose internal details (stack traces, database engine
+    messages, etc.), only a generic `code` and a friendly `message` for the end
+    user.
   contact:
     name: Spot Engineering
     email: andres.carranza.moyano@est.una.ac.cr
 servers:
   - url: https://api.spot.cr/api/v1
-    description: Producción (a través del API Gateway)
+    description: Production (through the API Gateway)
   - url: https://staging-api.spot.cr/api/v1
-    description: Staging (a través del API Gateway)
+    description: Staging (through the API Gateway)
   - url: http://localhost:5000/api/v1
-    description: Gateway local de desarrollo
+    description: Local development gateway
 
 tags:
   - name: Auth
-    description: Registro, autenticación (email/password y Google), sesión y perfil propio. Servicio Spot.Auth.Api.
+    description: Registration, authentication (email/password and Google), session, and own profile. Spot.Auth.Api service.
   - name: Business
-    description: Gestión de negocios, categorías, ubicación, contactos, horarios, catálogo de servicios/productos y fotos. Servicio Spot.Business.Api.
+    description: Management of businesses, categories, location, contacts, hours, service catalog, and photos. Spot.Business.Api service.
   - name: Booking
-    description: Disponibilidad, reservaciones, reseñas y favoritos. Servicio Spot.Booking.Api.
+    description: Availability, bookings, reviews, and favorites. Spot.Booking.Api service.
   - name: AiSearch
-    description: Búsqueda en lenguaje natural asistida por IA y auditoría de interacciones. Servicio Spot.AiSearch.Api.
+    description: AI-assisted natural language search and interaction auditing. Spot.AiSearch.Api service.
   - name: Notifications
-    description: Tokens de dispositivo, notificaciones del usuario y disparo interno de notificaciones. Servicio Spot.Notifications.Api.
+    description: Device tokens, user notifications, and internal notification triggering. Spot.Notifications.Api service.
 
 security:
   - bearerAuth: []
@@ -83,14 +83,14 @@ paths:
     post:
       tags: [Auth]
       operationId: registerUser
-      summary: Registrar un nuevo usuario
+      summary: Register a new user
       security: []
       description: |-
-        Crea una cuenta nueva con email y password. El rol por defecto es `CLIENT`;
-        una cuenta `BUSINESS_OWNER` se otorga mediante un flujo administrativo aparte
-        (fuera de alcance del MVP self-service).
+        Creates a new account with email and password. The default role is
+        `CLIENT`; a `BUSINESS_OWNER` account is granted through a separate
+        administrative flow (out of scope for the self-service MVP).
 
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       requestBody:
         required: true
         content:
@@ -105,7 +105,7 @@ paths:
               phone: "+506 8888-1234"
       responses:
         '201':
-          description: Usuario creado y sesión iniciada.
+          description: User created and session started.
           content:
             application/json:
               schema:
@@ -119,13 +119,13 @@ paths:
     post:
       tags: [Auth]
       operationId: loginWithPassword
-      summary: Iniciar sesión con email y password
+      summary: Log in with email and password
       security: []
       description: |-
-        Mecanismo de login principal del MVP. Valida credenciales contra
-        `users.password_hash` y emite un access token JWT y un refresh token.
+        Main login mechanism for the MVP. Validates credentials against
+        `users.password_hash` and issues a JWT access token and a refresh token.
 
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       requestBody:
         required: true
         content:
@@ -137,7 +137,7 @@ paths:
               password: "SuperClave#2026"
       responses:
         '200':
-          description: Login exitoso.
+          description: Successful login.
           content:
             application/json:
               schema:
@@ -150,21 +150,20 @@ paths:
     post:
       tags: [Auth]
       operationId: loginWithGoogle
-      summary: Iniciar sesión / registrarse con Google (opcional)
+      summary: Log in / sign up with Google (optional)
       security: []
       description: |-
-        Login social opcional/secundario. Intercambia un ID token de Google por una
-        sesión de Spot. Si no existe una fila en `user_auth_providers` para
-        `(provider='GOOGLE', provider_user_id)`, se crea el usuario y su vínculo de
-        proveedor automáticamente (vinculando por email si ya existe una cuenta con
-        password para ese correo).
+        Optional/secondary social login. Exchanges a Google ID token for a Spot
+        session. If no row exists in `user_auth_providers` for
+        `(provider='GOOGLE', provider_user_id)`, the user and their provider link
+        are created automatically (linking by email if an account with a password
+        already exists for that email).
 
-        NOTA: este proveedor es tentativo para el MVP y podría removerse del alcance
-        final si no aporta suficiente valor frente al login con email/password.
-        Facebook y Apple no están soportados; aunque el enum `auth_provider` de la
-        base de datos los contempla, no se exponen en la API.
+        NOTE: this provider is tentative for the MVP and could be removed from the
+        final scope if it doesn't add enough value over email/password login. The
+        database's `auth_provider` enum only contemplates `GOOGLE`.
 
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       requestBody:
         required: true
         content:
@@ -175,7 +174,7 @@ paths:
               idToken: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.google-id-token
       responses:
         '200':
-          description: Login/registro con Google exitoso.
+          description: Successful login/registration with Google.
           content:
             application/json:
               schema:
@@ -188,14 +187,14 @@ paths:
     post:
       tags: [Auth]
       operationId: refreshAccessToken
-      summary: Renovar el access token usando un refresh token
+      summary: Renew the access token using a refresh token
       security: []
       description: |-
-        Intercambia un refresh token vigente (fila no revocada y no expirada en
-        `refresh_tokens`) por un nuevo par de tokens. El refresh token usado se marca
-        como rotado/revocado.
+        Exchanges a valid refresh token (a non-revoked, non-expired row in
+        `refresh_tokens`) for a new token pair. The refresh token used is marked
+        as rotated/revoked.
 
-        Acceso: público (no requiere JWT; se autentica con el refresh token).
+        Access: public (no JWT required; authenticated with the refresh token).
       requestBody:
         required: true
         content:
@@ -204,7 +203,7 @@ paths:
               $ref: '#/components/schemas/RefreshRequest'
       responses:
         '200':
-          description: Tokens renovados.
+          description: Tokens renewed.
           content:
             application/json:
               schema:
@@ -217,11 +216,11 @@ paths:
     post:
       tags: [Auth]
       operationId: logout
-      summary: Cerrar sesión (revocar refresh token)
+      summary: Log out (revoke refresh token)
       description: |-
-        Revoca el refresh token indicado (`refresh_tokens.revoked_at`).
+        Revokes the given refresh token (`refresh_tokens.revoked_at`).
 
-        Rol requerido: cualquier usuario autenticado (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -231,7 +230,7 @@ paths:
               $ref: '#/components/schemas/RefreshRequest'
       responses:
         '204':
-          description: Sesión cerrada.
+          description: Session closed.
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalServerError' }
@@ -240,13 +239,13 @@ paths:
     get:
       tags: [Auth]
       operationId: getOwnProfile
-      summary: Obtener el perfil del usuario autenticado
+      summary: Get the authenticated user's profile
       description: |-
-        Rol requerido: cualquier usuario autenticado (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
         `SUPERADMIN`).
       responses:
         '200':
-          description: Perfil del usuario.
+          description: User profile.
           content:
             application/json:
               schema:
@@ -267,12 +266,13 @@ paths:
     patch:
       tags: [Auth]
       operationId: updateOwnProfile
-      summary: Actualizar el perfil del usuario autenticado
+      summary: Update the authenticated user's profile
       description: |-
-        Actualiza campos editables del propio perfil (`first_name`, `last_name`,
-        `phone`, `profile_photo_url`). No permite cambiar `email` ni `role`.
+        Updates editable fields of the user's own profile (`first_name`,
+        `last_name`, `phone`, `profile_photo_url`). Does not allow changing
+        `email` or `role`.
 
-        Rol requerido: cualquier usuario autenticado (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -282,7 +282,7 @@ paths:
               $ref: '#/components/schemas/UpdateProfileRequest'
       responses:
         '200':
-          description: Perfil actualizado.
+          description: Profile updated.
           content:
             application/json:
               schema:
@@ -295,12 +295,12 @@ paths:
     post:
       tags: [Auth]
       operationId: changePassword
-      summary: Cambiar la contraseña del usuario autenticado
+      summary: Change the authenticated user's password
       description: |-
-        Requiere la contraseña actual para autorizar el cambio. Revoca todos los
-        refresh tokens activos del usuario tras el cambio.
+        Requires the current password to authorize the change. Revokes all of
+        the user's active refresh tokens after the change.
 
-        Rol requerido: cualquier usuario autenticado (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -310,7 +310,7 @@ paths:
               $ref: '#/components/schemas/ChangePasswordRequest'
       responses:
         '204':
-          description: Contraseña actualizada.
+          description: Password updated.
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
@@ -323,25 +323,25 @@ paths:
     get:
       tags: [Business]
       operationId: listCategories
-      summary: Listar categorías
+      summary: List categories
       security: []
       description: |-
-        Lista el árbol de categorías (`categories`), opcionalmente filtrado por
-        categoría padre.
+        Lists the category tree (`categories`), optionally filtered by parent
+        category.
 
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
         - name: parentCategoryId
           in: query
-          description: Filtra por id de categoría padre. Usar `null` para categorías raíz.
+          description: Filters by parent category id. Use `null` for root categories.
           schema:
             type: string
             format: uuid
       responses:
         '200':
-          description: Página de categorías.
+          description: Page of categories.
           content:
             application/json:
               schema:
@@ -361,11 +361,11 @@ paths:
     post:
       tags: [Business]
       operationId: createCategory
-      summary: Crear una categoría
+      summary: Create a category
       description: |-
-        Rol requerido: `SUPERADMIN`. La gestión del catálogo global de categorías es
-        administrativa; los dueños de negocio solo asignan categorías existentes a
-        sus negocios (ver `PUT /business/businesses/{businessId}/categories`).
+        Required role: `SUPERADMIN`. Managing the global category catalog is an
+        administrative task; business owners only assign existing categories to
+        their businesses (see `PUT /business/businesses/{businessId}/categories`).
       requestBody:
         required: true
         content:
@@ -374,7 +374,7 @@ paths:
               $ref: '#/components/schemas/CategoryCreateRequest'
       responses:
         '201':
-          description: Categoría creada.
+          description: Category created.
           content:
             application/json:
               schema:
@@ -394,9 +394,9 @@ paths:
     patch:
       tags: [Business]
       operationId: updateCategory
-      summary: Actualizar una categoría
+      summary: Update a category
       description: |-
-        Rol requerido: `SUPERADMIN`.
+        Required role: `SUPERADMIN`.
       requestBody:
         required: true
         content:
@@ -405,7 +405,7 @@ paths:
               $ref: '#/components/schemas/CategoryUpdateRequest'
       responses:
         '200':
-          description: Categoría actualizada.
+          description: Category updated.
           content:
             application/json:
               schema:
@@ -424,20 +424,20 @@ paths:
     get:
       tags: [Business]
       operationId: searchBusinesses
-      summary: Buscar/listar negocios (búsqueda tradicional)
+      summary: Search/list businesses (traditional search)
       security: []
       description: |-
-        Búsqueda pública de negocios activos con filtros tradicionales (texto,
-        categoría, ciudad/provincia y cercanía geográfica). Para búsqueda en lenguaje
-        natural ver `POST /ai-search/query`.
+        Public search of active businesses with traditional filters (text,
+        category, city/province, and geographic proximity). For natural language
+        search see `POST /ai-search/query`.
 
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
         - name: q
           in: query
-          description: Texto libre buscado en nombre y descripción del negocio.
+          description: Free text searched in the business name and description.
           schema: { type: string }
         - name: categoryId
           in: query
@@ -450,19 +450,19 @@ paths:
           schema: { type: string }
         - name: lat
           in: query
-          description: Latitud del punto de referencia para búsqueda por cercanía.
+          description: Latitude of the reference point for proximity search.
           schema: { type: number, format: double }
         - name: lng
           in: query
-          description: Longitud del punto de referencia para búsqueda por cercanía.
+          description: Longitude of the reference point for proximity search.
           schema: { type: number, format: double }
         - name: radiusKm
           in: query
-          description: Radio de búsqueda en kilómetros (requiere `lat`/`lng`).
+          description: Search radius in kilometers (requires `lat`/`lng`).
           schema: { type: number, format: double, minimum: 0.1, maximum: 100 }
       responses:
         '200':
-          description: Página de negocios.
+          description: Page of businesses.
           content:
             application/json:
               schema:
@@ -487,12 +487,12 @@ paths:
     post:
       tags: [Business]
       operationId: createBusiness
-      summary: Crear un negocio
+      summary: Create a business
       description: |-
-        Crea un negocio y registra al usuario autenticado como dueño en
+        Creates a business and registers the authenticated user as its owner in
         `business_owners`.
 
-        Rol requerido: `BUSINESS_OWNER`.
+        Required role: `BUSINESS_OWNER`.
       requestBody:
         required: true
         content:
@@ -508,7 +508,7 @@ paths:
               website: "https://bellavista.cr"
       responses:
         '201':
-          description: Negocio creado.
+          description: Business created.
           content:
             application/json:
               schema:
@@ -525,13 +525,13 @@ paths:
     get:
       tags: [Business]
       operationId: getBusiness
-      summary: Obtener el detalle de un negocio
+      summary: Get a business's details
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       responses:
         '200':
-          description: Detalle del negocio.
+          description: Business details.
           content:
             application/json:
               schema:
@@ -541,9 +541,9 @@ paths:
     patch:
       tags: [Business]
       operationId: updateBusiness
-      summary: Actualizar un negocio
+      summary: Update a business
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       requestBody:
         required: true
         content:
@@ -552,7 +552,7 @@ paths:
               $ref: '#/components/schemas/BusinessUpdateRequest'
       responses:
         '200':
-          description: Negocio actualizado.
+          description: Business updated.
           content:
             application/json:
               schema:
@@ -566,15 +566,15 @@ paths:
     delete:
       tags: [Business]
       operationId: deactivateBusiness
-      summary: Desactivar (borrado lógico) un negocio
+      summary: Deactivate (soft-delete) a business
       description: |-
-        Marca `businesses.is_active = false`. No elimina físicamente el registro
-        porque tiene reservaciones y reseñas asociadas.
+        Sets `businesses.is_active = false`. Does not physically delete the
+        record because it has associated bookings and reviews.
 
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       responses:
         '204':
-          description: Negocio desactivado.
+          description: Business deactivated.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -586,13 +586,13 @@ paths:
     get:
       tags: [Business]
       operationId: getBusinessLocation
-      summary: Obtener la ubicación de un negocio
+      summary: Get a business's location
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       responses:
         '200':
-          description: Ubicación del negocio.
+          description: Business location.
           content:
             application/json:
               schema:
@@ -602,12 +602,13 @@ paths:
     put:
       tags: [Business]
       operationId: upsertBusinessLocation
-      summary: Crear o reemplazar la ubicación de un negocio
+      summary: Create or replace a business's location
       description: |-
-        `business_locations.business_id` es único: como máximo una ubicación por
-        negocio. Este endpoint crea la fila si no existe o la reemplaza si ya existe.
+        `business_locations.business_id` is unique: at most one location per
+        business. This endpoint creates the row if it doesn't exist or replaces
+        it if it already does.
 
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       requestBody:
         required: true
         content:
@@ -623,7 +624,7 @@ paths:
               location: { latitude: 9.9325, longitude: -84.0795 }
       responses:
         '200':
-          description: Ubicación creada o reemplazada.
+          description: Location created or replaced.
           content:
             application/json:
               schema:
@@ -640,16 +641,16 @@ paths:
     get:
       tags: [Business]
       operationId: listBusinessContacts
-      summary: Listar los contactos de un negocio
+      summary: List a business's contacts
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
       responses:
         '200':
-          description: Página de contactos.
+          description: Page of contacts.
           content:
             application/json:
               schema:
@@ -659,9 +660,9 @@ paths:
     post:
       tags: [Business]
       operationId: createBusinessContact
-      summary: Agregar un contacto a un negocio
+      summary: Add a contact to a business
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       requestBody:
         required: true
         content:
@@ -674,7 +675,7 @@ paths:
               isPrimary: true
       responses:
         '201':
-          description: Contacto creado.
+          description: Contact created.
           content:
             application/json:
               schema:
@@ -695,12 +696,12 @@ paths:
     delete:
       tags: [Business]
       operationId: deleteBusinessContact
-      summary: Eliminar un contacto de un negocio
+      summary: Remove a contact from a business
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       responses:
         '204':
-          description: Contacto eliminado.
+          description: Contact deleted.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -712,18 +713,19 @@ paths:
     get:
       tags: [Business]
       operationId: listBusinessHours
-      summary: Listar el horario semanal de un negocio
+      summary: List a business's weekly schedule
       security: []
       description: |-
-        Devuelve hasta 7 filas de `business_hours` (una por `day_of_week`, 0=domingo..6=sábado).
+        Returns up to 7 rows from `business_hours` (one per `day_of_week`,
+        0=Sunday..6=Saturday).
 
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
       responses:
         '200':
-          description: Página de horarios semanales.
+          description: Page of weekly hours.
           content:
             application/json:
               schema:
@@ -733,14 +735,15 @@ paths:
     put:
       tags: [Business]
       operationId: replaceBusinessHours
-      summary: Reemplazar el horario semanal completo de un negocio
+      summary: Replace a business's full weekly schedule
       description: |-
-        Reemplaza (upsert por `day_of_week`, restricción única `(business_id,day_of_week)`)
-        el horario semanal completo del negocio en una sola operación. Cada día debe
-        cumplir que, si `isClosed=false`, `openTime` y `closeTime` sean requeridos y
-        `openTime < closeTime` (validado por el CHECK de `business_hours`).
+        Replaces (upsert by `day_of_week`, unique constraint
+        `(business_id,day_of_week)`) the business's complete weekly schedule in a
+        single operation. Each day must satisfy that, if `isClosed=false`,
+        `openTime` and `closeTime` are required and `openTime < closeTime`
+        (validated by the `business_hours` CHECK).
 
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       requestBody:
         required: true
         content:
@@ -757,7 +760,7 @@ paths:
                   isClosed: true
       responses:
         '200':
-          description: Horario semanal actualizado.
+          description: Weekly schedule updated.
           content:
             application/json:
               schema:
@@ -780,14 +783,14 @@ paths:
     get:
       tags: [Business]
       operationId: listBusinessScheduleExceptions
-      summary: Listar excepciones de horario de un negocio
+      summary: List a business's schedule exceptions
       security: []
       description: |-
-        Lista `business_schedule_exceptions` (feriados, cierres puntuales u horarios
-        especiales por fecha), que tienen prioridad sobre `business_hours` al calcular
-        disponibilidad.
+        Lists `business_schedule_exceptions` (holidays, one-off closures, or
+        special hours for a specific date), which take priority over
+        `business_hours` when calculating availability.
 
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -799,7 +802,7 @@ paths:
           schema: { type: string, format: date }
       responses:
         '200':
-          description: Página de excepciones de horario.
+          description: Page of schedule exceptions.
           content:
             application/json:
               schema:
@@ -810,12 +813,13 @@ paths:
     post:
       tags: [Business]
       operationId: createBusinessScheduleException
-      summary: Crear una excepción de horario
+      summary: Create a schedule exception
       description: |-
-        `(business_id, exception_date)` es único: no puede haber dos excepciones para
-        la misma fecha. Si `isClosed=false`, requiere `openTime < closeTime`.
+        `(business_id, exception_date)` is unique: there cannot be two
+        exceptions for the same date. If `isClosed=false`, requires
+        `openTime < closeTime`.
 
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       requestBody:
         required: true
         content:
@@ -828,7 +832,7 @@ paths:
               reason: Feriado de Navidad
       responses:
         '201':
-          description: Excepción creada.
+          description: Exception created.
           content:
             application/json:
               schema:
@@ -851,12 +855,12 @@ paths:
     delete:
       tags: [Business]
       operationId: deleteBusinessScheduleException
-      summary: Eliminar una excepción de horario
+      summary: Delete a schedule exception
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       responses:
         '204':
-          description: Excepción eliminada.
+          description: Exception deleted.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -868,16 +872,16 @@ paths:
     get:
       tags: [Business]
       operationId: listBusinessCategories
-      summary: Listar las categorías asignadas a un negocio
+      summary: List the categories assigned to a business
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
       responses:
         '200':
-          description: Página de categorías del negocio.
+          description: Page of the business's categories.
           content:
             application/json:
               schema:
@@ -887,12 +891,12 @@ paths:
     put:
       tags: [Business]
       operationId: replaceBusinessCategories
-      summary: Reemplazar el conjunto de categorías de un negocio
+      summary: Replace a business's set of categories
       description: |-
-        Reemplaza completamente las filas de `business_categories` para el negocio
-        con el conjunto de `categoryIds` provisto.
+        Completely replaces the `business_categories` rows for the business with
+        the given set of `categoryIds`.
 
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       requestBody:
         required: true
         content:
@@ -907,7 +911,7 @@ paths:
                   minItems: 1
       responses:
         '200':
-          description: Categorías del negocio actualizadas.
+          description: Business categories updated.
           content:
             application/json:
               schema:
@@ -924,7 +928,7 @@ paths:
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   # ============================================================
-  # BUSINESS - Services & Products
+  # BUSINESS - Services
   # ============================================================
   /business/businesses/{businessId}/services:
     parameters:
@@ -932,10 +936,10 @@ paths:
     get:
       tags: [Business]
       operationId: listBusinessServices
-      summary: Listar los servicios ofrecidos por un negocio
+      summary: List the services offered by a business
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -944,7 +948,7 @@ paths:
           schema: { type: boolean }
       responses:
         '200':
-          description: Página de servicios.
+          description: Page of services.
           content:
             application/json:
               schema:
@@ -966,9 +970,9 @@ paths:
     post:
       tags: [Business]
       operationId: createService
-      summary: Crear un servicio para un negocio
+      summary: Create a service for a business
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       requestBody:
         required: true
         content:
@@ -982,7 +986,7 @@ paths:
               durationMinutes: 45
       responses:
         '201':
-          description: Servicio creado.
+          description: Service created.
           content:
             application/json:
               schema:
@@ -999,13 +1003,13 @@ paths:
     get:
       tags: [Business]
       operationId: getService
-      summary: Obtener el detalle de un servicio
+      summary: Get a service's details
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       responses:
         '200':
-          description: Detalle del servicio.
+          description: Service details.
           content:
             application/json:
               schema:
@@ -1015,9 +1019,10 @@ paths:
     patch:
       tags: [Business]
       operationId: updateService
-      summary: Actualizar un servicio
+      summary: Update a service
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio al que pertenece el servicio.
+        Required role: `BUSINESS_OWNER` who owns the business the service
+        belongs to.
       requestBody:
         required: true
         content:
@@ -1026,7 +1031,7 @@ paths:
               $ref: '#/components/schemas/ServiceUpdateRequest'
       responses:
         '200':
-          description: Servicio actualizado.
+          description: Service updated.
           content:
             application/json:
               schema:
@@ -1039,111 +1044,17 @@ paths:
     delete:
       tags: [Business]
       operationId: deleteService
-      summary: Desactivar un servicio
+      summary: Deactivate a service
       description: |-
-        Marca `services.is_active = false` en lugar de borrar físicamente, para
-        preservar la integridad histórica de `booking_services` (que referencia
-        `service_id` con `ON DELETE RESTRICT`).
+        Sets `services.is_active = false` instead of physically deleting it, to
+        preserve the historical integrity of `bookings` (which references
+        `service_id`).
 
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio al que pertenece el servicio.
+        Required role: `BUSINESS_OWNER` who owns the business the service
+        belongs to.
       responses:
         '204':
-          description: Servicio desactivado.
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-  /business/businesses/{businessId}/products:
-    parameters:
-      - $ref: '#/components/parameters/BusinessIdParam'
-    get:
-      tags: [Business]
-      operationId: listBusinessProducts
-      summary: Listar los productos ofrecidos por un negocio
-      security: []
-      description: |-
-        Acceso: público (no requiere JWT).
-      parameters:
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/PageSizeParam'
-        - name: isActive
-          in: query
-          schema: { type: boolean }
-      responses:
-        '200':
-          description: Página de productos.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedProducts'
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-    post:
-      tags: [Business]
-      operationId: createProduct
-      summary: Crear un producto para un negocio
-      description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ProductCreateRequest'
-            example:
-              name: Shampoo reparador 300ml
-              description: Shampoo profesional para cabello dañado.
-              price: 8500.00
-      responses:
-        '201':
-          description: Producto creado.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-  /business/products/{productId}:
-    parameters:
-      - $ref: '#/components/parameters/ProductIdParam'
-    patch:
-      tags: [Business]
-      operationId: updateProduct
-      summary: Actualizar un producto
-      description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio al que pertenece el producto.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ProductUpdateRequest'
-      responses:
-        '200':
-          description: Producto actualizado.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Product'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-    delete:
-      tags: [Business]
-      operationId: deleteProduct
-      summary: Desactivar un producto
-      description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio al que pertenece el producto.
-      responses:
-        '204':
-          description: Producto desactivado.
+          description: Service deactivated.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1158,16 +1069,16 @@ paths:
     get:
       tags: [Business]
       operationId: listBusinessPhotos
-      summary: Listar las fotos de un negocio
+      summary: List a business's photos
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
       responses:
         '200':
-          description: Página de fotos del negocio.
+          description: Page of the business's photos.
           content:
             application/json:
               schema:
@@ -1177,9 +1088,9 @@ paths:
     post:
       tags: [Business]
       operationId: uploadBusinessPhoto
-      summary: Subir una foto de negocio
+      summary: Upload a business photo
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       requestBody:
         required: true
         content:
@@ -1193,7 +1104,7 @@ paths:
                 displayOrder: { type: integer, minimum: 0, default: 0 }
       responses:
         '201':
-          description: Foto subida.
+          description: Photo uploaded.
           content:
             application/json:
               schema:
@@ -1214,12 +1125,12 @@ paths:
     delete:
       tags: [Business]
       operationId: deleteBusinessPhoto
-      summary: Eliminar una foto de negocio
+      summary: Delete a business photo
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       responses:
         '204':
-          description: Foto eliminada.
+          description: Photo deleted.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1231,16 +1142,16 @@ paths:
     get:
       tags: [Business]
       operationId: listServicePhotos
-      summary: Listar las fotos de un servicio
+      summary: List a service's photos
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
       responses:
         '200':
-          description: Página de fotos del servicio.
+          description: Page of the service's photos.
           content:
             application/json:
               schema:
@@ -1250,9 +1161,10 @@ paths:
     post:
       tags: [Business]
       operationId: uploadServicePhoto
-      summary: Subir una foto de servicio
+      summary: Upload a service photo
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio al que pertenece el servicio.
+        Required role: `BUSINESS_OWNER` who owns the business the service
+        belongs to.
       requestBody:
         required: true
         content:
@@ -1265,7 +1177,7 @@ paths:
                 displayOrder: { type: integer, minimum: 0, default: 0 }
       responses:
         '201':
-          description: Foto subida.
+          description: Photo uploaded.
           content:
             application/json:
               schema:
@@ -1286,84 +1198,13 @@ paths:
     delete:
       tags: [Business]
       operationId: deleteServicePhoto
-      summary: Eliminar una foto de servicio
+      summary: Delete a service photo
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio al que pertenece el servicio.
+        Required role: `BUSINESS_OWNER` who owns the business the service
+        belongs to.
       responses:
         '204':
-          description: Foto eliminada.
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-  /business/products/{productId}/photos:
-    parameters:
-      - $ref: '#/components/parameters/ProductIdParam'
-    get:
-      tags: [Business]
-      operationId: listProductPhotos
-      summary: Listar las fotos de un producto
-      security: []
-      description: |-
-        Acceso: público (no requiere JWT).
-      parameters:
-        - $ref: '#/components/parameters/PageParam'
-        - $ref: '#/components/parameters/PageSizeParam'
-      responses:
-        '200':
-          description: Página de fotos del producto.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PaginatedPhotos'
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-    post:
-      tags: [Business]
-      operationId: uploadProductPhoto
-      summary: Subir una foto de producto
-      description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio al que pertenece el producto.
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              type: object
-              required: [file]
-              properties:
-                file: { type: string, format: binary }
-                displayOrder: { type: integer, minimum: 0, default: 0 }
-      responses:
-        '201':
-          description: Foto subida.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Photo'
-        '400': { $ref: '#/components/responses/BadRequest' }
-        '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/Forbidden' }
-        '404': { $ref: '#/components/responses/NotFound' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-  /business/products/{productId}/photos/{photoId}:
-    parameters:
-      - $ref: '#/components/parameters/ProductIdParam'
-      - name: photoId
-        in: path
-        required: true
-        schema: { type: string, format: uuid }
-    delete:
-      tags: [Business]
-      operationId: deleteProductPhoto
-      summary: Eliminar una foto de producto
-      description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio al que pertenece el producto.
-      responses:
-        '204':
-          description: Foto eliminada.
+          description: Photo deleted.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1378,23 +1219,24 @@ paths:
     get:
       tags: [Booking]
       operationId: getBusinessAvailability
-      summary: Consultar disponibilidad real de un negocio en un rango de fechas
+      summary: Query a business's real availability over a date range
       security: []
       description: |-
-        Calcula los espacios disponibles combinando, para cada día del rango
-        `[from, to]`: (1) el horario base del día de la semana en `business_hours`
-        (o cierre si `is_closed=true`), (2) sobrescrito por una excepción puntual en
-        `business_schedule_exceptions` si existe para esa fecha, y (3) restando los
-        bloques ya ocupados por reservaciones activas (`status IN ('PENDING','CONFIRMED')`)
-        del negocio, que son mutuamente excluyentes gracias al exclusion constraint
-        `excl_active_booking_overlap` sobre `(business_id, tstzrange(start_at,end_at))`.
-        Si se indica `serviceId`, los slots devueltos tienen la duración de ese
-        servicio (`services.duration_minutes`); si se omite, se usa `slotMinutes`.
+        Calculates the available slots by combining, for each day in the
+        `[from, to]` range: (1) the base schedule for that day of the week in
+        `business_hours` (or closed if `is_closed=true`), (2) overridden by a
+        one-off exception in `business_schedule_exceptions` if one exists for
+        that date, and (3) subtracting the blocks already taken by active
+        bookings (`status IN ('PENDING','CONFIRMED')`) for the business, which
+        are mutually exclusive thanks to the exclusion constraint
+        `excl_active_booking_overlap` on `(business_id, tstzrange(start_at,end_at))`.
+        If `serviceId` is given, the returned slots have the duration of that
+        service (`services.duration_minutes`); if omitted, `slotMinutes` is used.
 
-        No se pagina: el resultado está acotado por el rango de fechas solicitado
-        (máximo 31 días).
+        Not paginated: the result is bounded by the requested date range
+        (maximum 31 days).
 
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - name: from
           in: query
@@ -1406,15 +1248,15 @@ paths:
           schema: { type: string, format: date }
         - name: serviceId
           in: query
-          description: Si se indica, los slots se calculan con la duración de este servicio.
+          description: If given, slots are calculated with this service's duration.
           schema: { type: string, format: uuid }
         - name: slotMinutes
           in: query
-          description: Duración del slot cuando no se indica `serviceId`.
+          description: Slot duration when `serviceId` is not given.
           schema: { type: integer, minimum: 5, maximum: 480, default: 30 }
       responses:
         '200':
-          description: Disponibilidad calculada para el rango solicitado.
+          description: Availability calculated for the requested range.
           content:
             application/json:
               schema:
@@ -1443,11 +1285,11 @@ paths:
     get:
       tags: [Booking]
       operationId: listOwnBookings
-      summary: Listar las reservaciones propias del cliente autenticado
+      summary: List the authenticated client's own bookings
       description: |-
-        Rol requerido: `CLIENT` (u otro rol autenticado consultando su propio
-        historial). Solo devuelve reservaciones donde `bookings.user_id` es el
-        usuario autenticado.
+        Required role: `CLIENT` (or another authenticated role querying its own
+        history). Only returns bookings where `bookings.user_id` is the
+        authenticated user.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1456,7 +1298,7 @@ paths:
           schema: { $ref: '#/components/schemas/BookingStatus' }
       responses:
         '200':
-          description: Página de reservaciones propias.
+          description: Page of the client's own bookings.
           content:
             application/json:
               schema:
@@ -1466,18 +1308,21 @@ paths:
     post:
       tags: [Booking]
       operationId: createBooking
-      summary: Crear una reservación
+      summary: Create a booking
       description: |-
-        Crea una reservación (`bookings`) con uno o más servicios (`booking_services`),
-        calculando `start_at`/`end_at` y `total_price` a partir de los servicios
-        elegidos. La base de datos garantiza, vía el exclusion constraint
-        `excl_active_booking_overlap`, que no puedan coexistir dos reservaciones
-        activas (`PENDING`/`CONFIRMED`) del mismo negocio con rangos de tiempo
-        traslapados — un intento de reservar un slot ya tomado responde `409`.
-        Reservar fuera del horario del negocio (según `business_hours` /
-        `business_schedule_exceptions`) responde `422`.
+        Creates a booking (`bookings`) for a single service (`service_id`),
+        calculating `start_at`/`end_at` from the chosen service's duration and
+        copying its name/price/duration at the time of booking (`service_name`,
+        `service_price`, `service_duration_minutes`). Each booking is associated
+        with exactly one service — `bookings` does not support multiple services
+        per booking. The database guarantees, via the exclusion constraint
+        `excl_active_booking_overlap`, that two active bookings (`PENDING`/
+        `CONFIRMED`) for the same business cannot coexist with overlapping time
+        ranges — attempting to book an already-taken slot responds `409`.
+        Booking outside the business's hours (per `business_hours` /
+        `business_schedule_exceptions`) responds `422`.
 
-        Rol requerido: `CLIENT`.
+        Required role: `CLIENT`.
       requestBody:
         required: true
         content:
@@ -1487,12 +1332,11 @@ paths:
             example:
               businessId: 1b2c3d4e-5f60-4a1b-8c2d-9e0f1a2b3c4d
               startAt: "2026-09-01T14:00:00Z"
-              serviceIds:
-                - 4d5e6f70-8192-4a3b-9c0d-1e2f3a4b5c6d
+              serviceId: 4d5e6f70-8192-4a3b-9c0d-1e2f3a4b5c6d
               notes: Preferiblemente con la estilista Ana.
       responses:
         '201':
-          description: Reservación creada.
+          description: Booking created.
           content:
             application/json:
               schema:
@@ -1511,13 +1355,13 @@ paths:
     get:
       tags: [Booking]
       operationId: getBooking
-      summary: Obtener el detalle de una reservación
+      summary: Get a booking's details
       description: |-
-        Rol requerido: `CLIENT` dueño de la reservación (`bookings.user_id`),
-        `BUSINESS_OWNER` dueño del negocio de la reservación, o `SUPERADMIN`.
+        Required role: `CLIENT` who owns the booking (`bookings.user_id`),
+        `BUSINESS_OWNER` who owns the booking's business, or `SUPERADMIN`.
       responses:
         '200':
-          description: Detalle de la reservación.
+          description: Booking details.
           content:
             application/json:
               schema:
@@ -1533,14 +1377,14 @@ paths:
     post:
       tags: [Booking]
       operationId: cancelBooking
-      summary: Cancelar una reservación
+      summary: Cancel a booking
       description: |-
-        Transiciona `status` a `CANCELLED`. Solo es válido desde `PENDING` o
-        `CONFIRMED`; cancelar una reserva ya `COMPLETED`, `CANCELLED` o `NO_SHOW`
-        responde `422`.
+        Transitions `status` to `CANCELLED`. Only valid from `PENDING` or
+        `CONFIRMED`; canceling a booking that is already `COMPLETED`,
+        `CANCELLED`, or `NO_SHOW` responds `422`.
 
-        Rol requerido: `CLIENT` dueño de la reservación o `BUSINESS_OWNER` dueño del
-        negocio de la reservación.
+        Required role: `CLIENT` who owns the booking or `BUSINESS_OWNER` who owns
+        the booking's business.
       requestBody:
         required: false
         content:
@@ -1551,7 +1395,7 @@ paths:
                 reason: { type: string, maxLength: 255 }
       responses:
         '200':
-          description: Reservación cancelada.
+          description: Booking cancelled.
           content:
             application/json:
               schema:
@@ -1568,15 +1412,15 @@ paths:
     post:
       tags: [Booking]
       operationId: completeBooking
-      summary: Marcar una reservación como completada
+      summary: Mark a booking as completed
       description: |-
-        Transiciona `status` a `COMPLETED`. Solo válido desde `CONFIRMED`; de lo
-        contrario responde `422`. Habilita al cliente a dejar una reseña.
+        Transitions `status` to `COMPLETED`. Only valid from `CONFIRMED`;
+        otherwise responds `422`. Enables the client to leave a review.
 
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio de la reservación.
+        Required role: `BUSINESS_OWNER` who owns the booking's business.
       responses:
         '200':
-          description: Reservación marcada como completada.
+          description: Booking marked as completed.
           content:
             application/json:
               schema:
@@ -1593,15 +1437,15 @@ paths:
     post:
       tags: [Booking]
       operationId: markBookingNoShow
-      summary: Marcar una reservación como no-show
+      summary: Mark a booking as no-show
       description: |-
-        Transiciona `status` a `NO_SHOW`. Solo válido desde `CONFIRMED`; de lo
-        contrario responde `422`.
+        Transitions `status` to `NO_SHOW`. Only valid from `CONFIRMED`;
+        otherwise responds `422`.
 
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio de la reservación.
+        Required role: `BUSINESS_OWNER` who owns the booking's business.
       responses:
         '200':
-          description: Reservación marcada como no-show.
+          description: Booking marked as no-show.
           content:
             application/json:
               schema:
@@ -1618,16 +1462,16 @@ paths:
     post:
       tags: [Booking]
       operationId: createBookingReview
-      summary: Dejar una reseña de una reservación completada
+      summary: Leave a review for a completed booking
       description: |-
-        Crea una fila en `reviews` para la reservación. El trigger
-        `trg_validate_review` obliga a que la reservación exista, esté en estado
-        `COMPLETED`, y que el usuario y negocio de la reseña coincidan con los de la
-        reservación; violar cualquiera de estas reglas responde `422`. Como
-        `reviews.booking_id` es único, intentar reseñar una reservación que ya tiene
-        reseña responde `409`.
+        Creates a row in `reviews` for the booking. The `trg_validate_review`
+        trigger requires that the booking exists, is in `COMPLETED` status, and
+        that the review's user and business match those of the booking;
+        violating any of these rules responds `422`. Since `reviews.booking_id`
+        is unique, attempting to review a booking that already has a review
+        responds `409`.
 
-        Rol requerido: `CLIENT` dueño de la reservación.
+        Required role: `CLIENT` who owns the booking.
       requestBody:
         required: true
         content:
@@ -1639,7 +1483,7 @@ paths:
               comment: Excelente atención, muy puntuales y el resultado quedó increíble.
       responses:
         '201':
-          description: Reseña creada.
+          description: Review created.
           content:
             application/json:
               schema:
@@ -1658,9 +1502,9 @@ paths:
     get:
       tags: [Booking]
       operationId: listBusinessBookings
-      summary: Listar las reservaciones de un negocio
+      summary: List a business's bookings
       description: |-
-        Rol requerido: `BUSINESS_OWNER` dueño del negocio.
+        Required role: `BUSINESS_OWNER` who owns the business.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1675,7 +1519,7 @@ paths:
           schema: { type: string, format: date }
       responses:
         '200':
-          description: Página de reservaciones del negocio.
+          description: Page of the business's bookings.
           content:
             application/json:
               schema:
@@ -1691,16 +1535,16 @@ paths:
     get:
       tags: [Booking]
       operationId: listBusinessReviews
-      summary: Listar las reseñas de un negocio
+      summary: List a business's reviews
       security: []
       description: |-
-        Acceso: público (no requiere JWT).
+        Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
       responses:
         '200':
-          description: Página de reseñas del negocio.
+          description: Page of the business's reviews.
           content:
             application/json:
               schema:
@@ -1723,15 +1567,15 @@ paths:
     get:
       tags: [Booking]
       operationId: listFavoriteBusinesses
-      summary: Listar los negocios favoritos del cliente autenticado
+      summary: List the authenticated client's favorite businesses
       description: |-
-        Rol requerido: `CLIENT`.
+        Required role: `CLIENT`.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
       responses:
         '200':
-          description: Página de negocios favoritos.
+          description: Page of favorite businesses.
           content:
             application/json:
               schema:
@@ -1745,27 +1589,28 @@ paths:
     put:
       tags: [Booking]
       operationId: addFavoriteBusiness
-      summary: Agregar un negocio a favoritos
+      summary: Add a business to favorites
       description: |-
-        Idempotente: agregar un negocio que ya es favorito no genera error
-        (`favorite_businesses` tiene llave primaria compuesta `(user_id,business_id)`).
+        Idempotent: adding a business that is already a favorite does not raise
+        an error (`favorite_businesses` has a composite primary key
+        `(user_id,business_id)`).
 
-        Rol requerido: `CLIENT`.
+        Required role: `CLIENT`.
       responses:
         '204':
-          description: Negocio agregado a favoritos.
+          description: Business added to favorites.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Booking]
       operationId: removeFavoriteBusiness
-      summary: Quitar un negocio de favoritos
+      summary: Remove a business from favorites
       description: |-
-        Rol requerido: `CLIENT`.
+        Required role: `CLIENT`.
       responses:
         '204':
-          description: Negocio removido de favoritos.
+          description: Business removed from favorites.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalServerError' }
@@ -1777,25 +1622,25 @@ paths:
     post:
       tags: [AiSearch]
       operationId: aiSearchQuery
-      summary: Buscar negocios usando una consulta en lenguaje natural
+      summary: Search for businesses using a natural language query
       description: |-
-        Recibe una consulta en lenguaje natural más la ubicación aproximada del
-        usuario y devuelve (a) los criterios estructurados extraídos por el modelo de
-        IA (servicio, fecha, hora, presupuesto, categoría) y (b) los negocios que
-        cumplen esos criterios.
+        Receives a natural language query plus the user's approximate location
+        and returns (a) the structured criteria extracted by the AI model
+        (service, date, time, budget, category) and (b) the businesses that
+        match those criteria.
 
-        Importante: el modelo de IA actúa como un **parser stateless sin acceso a
-        base de datos** — únicamente traduce lenguaje natural a criterios
-        estructurados (`AiSearchCriteria`). Es el propio backend de Spot.AiSearch.Api
-        quien valida esos criterios y ejecuta la búsqueda real de negocios contra la
-        base de datos (delegando en la lógica de disponibilidad/búsqueda de
-        Spot.Booking.Api / Spot.Business.Api); el modelo nunca consulta ni modifica
-        datos directamente. Cada invocación se registra como una fila en
-        `ai_requests` (prompt, respuesta, tokens, latencia y estado), cuyo resumen se
-        devuelve en el campo `aiRequest` de la respuesta para trazabilidad; el
-        historial completo se consulta vía `GET /ai-search/requests`.
+        Important: the AI model acts as a **stateless parser with no database
+        access** — it only translates natural language into structured criteria
+        (`AiSearchCriteria`). It is Spot.AiSearch.Api's own backend that
+        validates those criteria and executes the actual business search
+        against the database (delegating to the availability/search logic of
+        Spot.Booking.Api / Spot.Business.Api); the model never queries or
+        modifies data directly. Each invocation is logged as a row in
+        `ai_requests` (prompt, response, tokens, latency, and status), whose
+        summary is returned in the response's `aiRequest` field for
+        traceability; the full history is queried via `GET /ai-search/requests`.
 
-        Rol requerido: cualquier usuario autenticado (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -1809,7 +1654,7 @@ paths:
               radiusKm: 15
       responses:
         '200':
-          description: Criterios estructurados extraídos y negocios que califican.
+          description: Extracted structured criteria and matching businesses.
           content:
             application/json:
               schema:
@@ -1853,14 +1698,13 @@ paths:
     get:
       tags: [AiSearch]
       operationId: listAiRequests
-      summary: Auditoría interna de interacciones de IA
+      summary: Internal audit of AI interactions
       description: |-
-        Endpoint interno de auditoría que expone el historial crudo de
-        `ai_requests` (prompt, respuesta, parámetros extraídos, tokens, latencia,
-        estado y errores) para soporte, calidad y análisis de costos del proveedor de
-        IA.
+        Internal audit endpoint that exposes the raw history of `ai_requests`
+        (prompt, response, extracted parameters, tokens, latency, status, and
+        errors) for support, quality, and AI provider cost analysis.
 
-        Rol requerido: `SUPERADMIN`.
+        Required role: `SUPERADMIN`.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1881,7 +1725,7 @@ paths:
           schema: { type: string, format: date-time }
       responses:
         '200':
-          description: Página del historial de interacciones de IA.
+          description: Page of the AI interaction history.
           content:
             application/json:
               schema:
@@ -1900,12 +1744,12 @@ paths:
     get:
       tags: [AiSearch]
       operationId: getAiRequest
-      summary: Obtener el detalle de una interacción de IA
+      summary: Get an AI interaction's details
       description: |-
-        Rol requerido: `SUPERADMIN`.
+        Required role: `SUPERADMIN`.
       responses:
         '200':
-          description: Detalle de la interacción de IA.
+          description: AI interaction details.
           content:
             application/json:
               schema:
@@ -1922,12 +1766,12 @@ paths:
     post:
       tags: [Notifications]
       operationId: registerDeviceToken
-      summary: Registrar el token de push de un dispositivo
+      summary: Register a device's push token
       description: |-
-        Registra (o reactiva, si ya existía y estaba inactivo) el token de push del
-        dispositivo del usuario autenticado para el envío de notificaciones.
+        Registers (or reactivates, if it already existed and was inactive) the
+        authenticated user's device push token for sending notifications.
 
-        Rol requerido: cualquier usuario autenticado (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -1940,7 +1784,7 @@ paths:
               platform: ANDROID
       responses:
         '201':
-          description: Token registrado.
+          description: Token registered.
           content:
             application/json:
               schema:
@@ -1958,13 +1802,13 @@ paths:
     delete:
       tags: [Notifications]
       operationId: removeDeviceToken
-      summary: Eliminar el token de push de un dispositivo
+      summary: Delete a device's push token
       description: |-
-        Rol requerido: dueño del token (cualquier usuario autenticado, sobre sus
-        propios tokens).
+        Required role: owner of the token (any authenticated user, over their
+        own tokens).
       responses:
         '204':
-          description: Token eliminado.
+          description: Token deleted.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1974,10 +1818,10 @@ paths:
     get:
       tags: [Notifications]
       operationId: listOwnNotifications
-      summary: Listar las notificaciones del usuario autenticado
+      summary: List the authenticated user's notifications
       description: |-
-        Rol requerido: cualquier usuario autenticado (`CLIENT`, `BUSINESS_OWNER`,
-        `SUPERADMIN`), sobre sus propias notificaciones.
+        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
+        `SUPERADMIN`), over their own notifications.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1986,7 +1830,7 @@ paths:
           schema: { type: boolean }
       responses:
         '200':
-          description: Página de notificaciones.
+          description: Page of notifications.
           content:
             application/json:
               schema:
@@ -2015,12 +1859,12 @@ paths:
     patch:
       tags: [Notifications]
       operationId: markNotificationRead
-      summary: Marcar una notificación como leída (o no leída)
+      summary: Mark a notification as read (or unread)
       description: |-
-        Actualiza el estado `isRead` de la notificación.
+        Updates the notification's `isRead` state.
 
-        Rol requerido: dueño de la notificación (cualquier usuario autenticado, sobre
-        sus propias notificaciones).
+        Required role: owner of the notification (any authenticated user, over
+        their own notifications).
       requestBody:
         required: true
         content:
@@ -2031,7 +1875,7 @@ paths:
               isRead: true
       responses:
         '200':
-          description: Notificación actualizada.
+          description: Notification updated.
           content:
             application/json:
               schema:
@@ -2046,18 +1890,18 @@ paths:
     post:
       tags: [Notifications]
       operationId: triggerBookingStatusNotification
-      summary: "[Interno] Disparar una notificación de cambio de estado de reserva"
+      summary: "[Internal] Trigger a booking status change notification"
       security:
         - internalApiKey: []
       description: |-
-        Endpoint interno de servicio-a-servicio, invocado por Spot.Booking.Api cada
-        vez que cambia `bookings.status` (confirmación, cancelación, completado,
-        no-show), para que Spot.Notifications.Api genere y envíe la notificación push
-        correspondiente al cliente y/o al dueño del negocio.
+        Internal service-to-service endpoint, invoked by Spot.Booking.Api every
+        time `bookings.status` changes (confirmation, cancellation, completion,
+        no-show), so that Spot.Notifications.Api generates and sends the
+        corresponding push notification to the client and/or the business owner.
 
-        No expuesto a clientes finales: el Gateway solo enruta esta llamada cuando
-        proviene de la red interna de servicios, autenticada con una API key de
-        servicio (header `X-Internal-Api-Key`) en lugar de un JWT de usuario.
+        Not exposed to end clients: the Gateway only routes this call when it
+        comes from the internal service network, authenticated with a service
+        API key (header `X-Internal-Api-Key`) instead of a user JWT.
       requestBody:
         required: true
         content:
@@ -2071,7 +1915,7 @@ paths:
               status: CONFIRMED
       responses:
         '202':
-          description: Notificación encolada para envío.
+          description: Notification queued for delivery.
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -2084,16 +1928,16 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |-
-        JWT emitido por Spot.Auth.Api, validado por el API Gateway antes de enrutar
-        al microservicio destino. Incluye claims `sub` (user id) y `role`.
+        JWT issued by Spot.Auth.Api, validated by the API Gateway before
+        routing to the destination microservice. Includes the `sub` (user id)
+        and `role` claims.
     internalApiKey:
       type: apiKey
       in: header
       name: X-Internal-Api-Key
       description: |-
-        API key de servicio-a-servicio usada exclusivamente por microservicios
-        internos (no por clientes finales) para invocar endpoints internos a través
-        del Gateway.
+        Service-to-service API key used exclusively by internal microservices
+        (not by end clients) to invoke internal endpoints through the Gateway.
 
   parameters:
     PageParam:
@@ -2114,11 +1958,6 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
-    ProductIdParam:
-      name: productId
-      in: path
-      required: true
-      schema: { type: string, format: uuid }
     BookingIdParam:
       name: bookingId
       in: path
@@ -2127,7 +1966,7 @@ components:
 
   responses:
     BadRequest:
-      description: La petición no pasó las validaciones de formato/input.
+      description: The request failed format/input validation.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2137,7 +1976,7 @@ components:
             details: { field: email }
             timestamp: "2026-08-30T20:00:00Z"
     Unauthorized:
-      description: Falta el JWT, es inválido, o expiró.
+      description: The JWT is missing, invalid, or expired.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2146,7 +1985,7 @@ components:
             message: Tu sesión expiró, por favor inicia sesión nuevamente.
             timestamp: "2026-08-30T20:00:00Z"
     Forbidden:
-      description: El usuario autenticado no tiene el rol o la propiedad requerida para esta acción.
+      description: The authenticated user does not have the role or ownership required for this action.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2155,7 +1994,7 @@ components:
             message: No tienes permiso para realizar esta acción.
             timestamp: "2026-08-30T20:00:00Z"
     NotFound:
-      description: El recurso solicitado no existe.
+      description: The requested resource does not exist.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2165,10 +2004,10 @@ components:
             timestamp: "2026-08-30T20:00:00Z"
     Conflict:
       description: |-
-        La operación entra en conflicto con el estado actual de los datos (por
-        ejemplo, traslape de horario detectado por el exclusion constraint de
-        reservaciones, un email ya registrado, o una reseña duplicada para la misma
-        reservación).
+        The operation conflicts with the current state of the data (for
+        example, a schedule overlap detected by the bookings exclusion
+        constraint, an already-registered email, or a duplicate review for the
+        same booking).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2178,9 +2017,9 @@ components:
             timestamp: "2026-08-30T20:00:00Z"
     UnprocessableEntity:
       description: |-
-        La petición es sintácticamente válida pero viola una regla de negocio (por
-        ejemplo, reservar en un horario cerrado, o reseñar una reservación que no
-        está completada).
+        The request is syntactically valid but violates a business rule (for
+        example, booking during closed hours, or reviewing a booking that is
+        not completed).
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2190,8 +2029,8 @@ components:
             timestamp: "2026-08-30T20:00:00Z"
     InternalServerError:
       description: |-
-        Error no controlado (por ejemplo, un fallo de base de datos). Nunca expone
-        detalles internos; solo un código genérico y un mensaje amigable.
+        Unhandled error (for example, a database failure). Never exposes
+        internal details; only a generic code and a friendly message.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -2208,13 +2047,13 @@ components:
       properties:
         code:
           type: string
-          description: Código de error estable, legible por máquina.
+          description: Stable, machine-readable error code.
           example: BOOKING_SLOT_OVERLAP
         message:
           type: string
-          description: Mensaje amigable para mostrar al usuario final.
+          description: Friendly message to show the end user.
         details:
-          description: Información adicional opcional sobre el error (nunca detalles internos sensibles).
+          description: Optional additional information about the error (never sensitive internal details).
           type: object
           additionalProperties: true
         timestamp:
@@ -2256,9 +2095,8 @@ components:
     AuthProvider:
       type: string
       description: |-
-        Proveedores de login social expuestos por la API. La base de datos reserva
-        también FACEBOOK, APPLE y OTHER en el enum `auth_provider` para uso futuro,
-        pero el MVP solo soporta GOOGLE.
+        Supported social login providers. Faithfully reflects the database's
+        `auth_provider` enum, which currently only contemplates GOOGLE.
       enum: [GOOGLE]
     NotificationType:
       type: string
@@ -2283,8 +2121,8 @@ components:
         linkedProviders:
           type: array
           description: |-
-            Proveedores de login social vinculados a la cuenta (según
-            `user_auth_providers`). Vacío si el usuario solo usa email/password.
+            Social login providers linked to the account (per
+            `user_auth_providers`). Empty if the user only uses email/password.
           items: { $ref: '#/components/schemas/AuthProvider' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -2312,7 +2150,7 @@ components:
       properties:
         idToken:
           type: string
-          description: ID token emitido por Google Identity Services para el usuario.
+          description: ID token issued by Google Identity Services for the user.
 
     RefreshRequest:
       type: object
@@ -2344,7 +2182,7 @@ components:
         tokenType: { type: string, enum: [Bearer], default: Bearer }
         expiresIn:
           type: integer
-          description: Segundos hasta la expiración del access token.
+          description: Seconds until the access token expires.
           example: 3600
 
     AuthResponse:
@@ -2507,7 +2345,7 @@ components:
           type: integer
           minimum: 0
           maximum: 6
-          description: 0=domingo, 1=lunes, ..., 6=sábado.
+          description: 0=Sunday, 1=Monday, ..., 6=Saturday.
         openTime: { type: [string, 'null'], pattern: '^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$', example: "09:00:00" }
         closeTime: { type: [string, 'null'], pattern: '^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$', example: "18:00:00" }
         isClosed: { type: boolean }
@@ -2587,7 +2425,7 @@ components:
           type: number
           format: double
           minimum: 0
-          description: Precio en colones (CRC).
+          description: Price in Costa Rican colones (CRC).
         durationMinutes: { type: integer, minimum: 1 }
         isActive: { type: boolean }
         createdAt: { type: string, format: date-time }
@@ -2620,48 +2458,6 @@ components:
           items: { $ref: '#/components/schemas/Service' }
         pagination: { $ref: '#/components/schemas/PaginationMeta' }
 
-    Product:
-      type: object
-      required: [id, businessId, name, isActive, createdAt, updatedAt]
-      properties:
-        id: { type: string, format: uuid }
-        businessId: { type: string, format: uuid }
-        name: { type: string, maxLength: 150 }
-        description: { type: [string, 'null'] }
-        price:
-          type: [number, 'null']
-          format: double
-          minimum: 0
-          description: Precio en colones (CRC). Puede ser nulo si el producto no se vende directamente.
-        isActive: { type: boolean }
-        createdAt: { type: string, format: date-time }
-        updatedAt: { type: string, format: date-time }
-
-    ProductCreateRequest:
-      type: object
-      required: [name]
-      properties:
-        name: { type: string, maxLength: 150 }
-        description: { type: string }
-        price: { type: number, format: double, minimum: 0 }
-
-    ProductUpdateRequest:
-      type: object
-      properties:
-        name: { type: string, maxLength: 150 }
-        description: { type: [string, 'null'] }
-        price: { type: [number, 'null'], format: double, minimum: 0 }
-        isActive: { type: boolean }
-
-    PaginatedProducts:
-      type: object
-      required: [data, pagination]
-      properties:
-        data:
-          type: array
-          items: { $ref: '#/components/schemas/Product' }
-        pagination: { $ref: '#/components/schemas/PaginationMeta' }
-
     Photo:
       type: object
       required: [id, url, displayOrder, createdAt]
@@ -2670,7 +2466,7 @@ components:
         url: { type: string, format: uri }
         isPrimary:
           type: boolean
-          description: Solo aplica a fotos de negocio; se omite/false en fotos de servicio o producto.
+          description: Only applies to business photos; omitted/false on service photos.
         displayOrder: { type: integer, minimum: 0 }
         createdAt: { type: string, format: date-time }
 
@@ -2713,50 +2509,49 @@ components:
           type: array
           items: { $ref: '#/components/schemas/AvailabilityDay' }
 
-    BookingService:
-      type: object
-      required: [id, serviceId, serviceName, unitPrice, durationMinutes, createdAt]
-      properties:
-        id: { type: string, format: uuid }
-        serviceId: { type: string, format: uuid }
-        serviceName:
-          type: string
-          description: Copia del nombre del servicio al momento de la reserva.
-        unitPrice: { type: number, format: double, minimum: 0 }
-        durationMinutes: { type: integer, minimum: 1 }
-        createdAt: { type: string, format: date-time }
-
     Booking:
       type: object
-      required: [id, userId, businessId, startAt, endAt, status, totalPrice, services, createdAt, updatedAt]
+      required: [id, userId, businessId, serviceId, startAt, endAt, status, serviceName, servicePrice, serviceDurationMinutes, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
         businessId: { type: string, format: uuid }
+        serviceId:
+          type: string
+          format: uuid
+          description: Each booking is associated with exactly one service (`bookings.service_id`).
         startAt: { type: string, format: date-time }
         endAt: { type: string, format: date-time }
         status: { $ref: '#/components/schemas/BookingStatus' }
-        totalPrice: { type: number, format: double, minimum: 0, description: Monto total en colones (CRC). }
+        serviceName:
+          type: string
+          description: Copy of the service's name at the time of booking.
+        servicePrice:
+          type: number
+          format: double
+          minimum: 0
+          description: Copy of the service's price (in Costa Rican colones, CRC) at the time of booking.
+        serviceDurationMinutes:
+          type: integer
+          minimum: 1
+          description: Copy of the service's duration (in minutes) at the time of booking.
         notes: { type: [string, 'null'] }
-        services:
-          type: array
-          items: { $ref: '#/components/schemas/BookingService' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
     BookingCreateRequest:
       type: object
-      required: [businessId, startAt, serviceIds]
+      required: [businessId, startAt, serviceId]
       properties:
         businessId: { type: string, format: uuid }
         startAt:
           type: string
           format: date-time
-          description: Hora de inicio deseada; `endAt` se calcula sumando la duración de los servicios elegidos.
-        serviceIds:
-          type: array
-          items: { type: string, format: uuid }
-          minItems: 1
+          description: Desired start time; `endAt` is calculated by adding the chosen service's duration.
+        serviceId:
+          type: string
+          format: uuid
+          description: Service to book. A booking can only have one service (`bookings.service_id`).
         notes: { type: string }
 
     PaginatedBookings:
@@ -2823,7 +2618,7 @@ components:
           type: string
           minLength: 3
           maxLength: 500
-          description: Consulta del usuario en lenguaje natural.
+          description: User's query in natural language.
         location: { $ref: '#/components/schemas/GeoPoint' }
         radiusKm: { type: number, format: double, minimum: 0.1, maximum: 100, default: 10 }
         page: { type: integer, minimum: 1, default: 1 }
@@ -2831,9 +2626,9 @@ components:
 
     AiSearchCriteria:
       type: object
-      description: Criterios estructurados extraídos del lenguaje natural por el modelo de IA.
+      description: Structured criteria extracted from natural language by the AI model.
       properties:
-        serviceQuery: { type: [string, 'null'], description: 'Texto del servicio buscado, ej. "corte de cabello".' }
+        serviceQuery: { type: [string, 'null'], description: 'Text of the searched service, e.g. "haircut".' }
         categoryId: { type: [string, 'null'], format: uuid }
         date: { type: [string, 'null'], format: date }
         time: { type: [string, 'null'], pattern: '^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$' }
@@ -2861,7 +2656,7 @@ components:
 
     AiRequestLog:
       type: object
-      description: Refleja fielmente la tabla `ai_requests`, para uso de auditoría interna.
+      description: Faithfully reflects the `ai_requests` table, for internal audit use.
       required: [id, provider, model, requestType, prompt, status, createdAt]
       properties:
         id: { type: string, format: uuid }
@@ -2952,4 +2747,4 @@ components:
         status: { $ref: '#/components/schemas/BookingStatus' }
         message:
           type: string
-          description: Mensaje opcional a incluir en la notificación; si se omite, se genera uno por defecto según `status`.
+          description: Optional message to include in the notification; if omitted, a default one is generated based on `status`.

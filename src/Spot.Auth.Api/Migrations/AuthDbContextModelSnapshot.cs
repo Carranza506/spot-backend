@@ -20,7 +20,7 @@ namespace Spot.Auth.Api.Migrations
                 .HasAnnotation("ProductVersion", "9.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "auth_provider", new[] { "google", "facebook", "apple", "other" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "auth_provider", new[] { "google" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "user_role", new[] { "client", "business_owner", "superadmin" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 

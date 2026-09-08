@@ -12,7 +12,7 @@ using Spot.Auth.Api.Data;
 namespace Spot.Auth.Api.Migrations
 {
     [DbContext(typeof(AuthDbContext))]
-    [Migration("20260904003941_InitialCreate")]
+    [Migration("20260908022442_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -23,7 +23,7 @@ namespace Spot.Auth.Api.Migrations
                 .HasAnnotation("ProductVersion", "9.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "auth_provider", new[] { "google", "facebook", "apple", "other" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "auth_provider", new[] { "google" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "user_role", new[] { "client", "business_owner", "superadmin" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 

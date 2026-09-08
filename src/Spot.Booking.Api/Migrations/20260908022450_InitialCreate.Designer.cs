@@ -12,7 +12,7 @@ using Spot.Booking.Api.Data;
 namespace Spot.Booking.Api.Migrations
 {
     [DbContext(typeof(BookingDbContext))]
-    [Migration("20260904004005_InitialCreate")]
+    [Migration("20260908022450_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -52,6 +52,24 @@ namespace Spot.Booking.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("notes");
 
+                    b.Property<int>("ServiceDurationMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("service_duration_minutes");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_id");
+
+                    b.Property<string>("ServiceName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("service_name");
+
+                    b.Property<decimal>("ServicePrice")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("service_price");
+
                     b.Property<DateTimeOffset>("StartAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("start_at");
@@ -61,12 +79,6 @@ namespace Spot.Booking.Api.Migrations
                         .HasColumnType("booking_status")
                         .HasDefaultValue(0)
                         .HasColumnName("status");
-
-                    b.Property<decimal>("TotalPrice")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("numeric(12,2)")
-                        .HasDefaultValue(0m)
-                        .HasColumnName("total_price");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -80,6 +92,9 @@ namespace Spot.Booking.Api.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ServiceId")
+                        .HasDatabaseName("idx_bookings_service");
+
                     b.HasIndex("BusinessId", "StartAt")
                         .HasDatabaseName("idx_bookings_business_start");
 
@@ -87,66 +102,6 @@ namespace Spot.Booking.Api.Migrations
                         .HasDatabaseName("idx_bookings_user_start");
 
                     b.ToTable("bookings", (string)null);
-                });
-
-            modelBuilder.Entity("Spot.Booking.Api.Models.BookingService", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<Guid>("BookingId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("booking_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<int>("DurationMinutes")
-                        .HasColumnType("integer")
-                        .HasColumnName("duration_minutes");
-
-                    b.Property<Guid>("ServiceId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("service_id");
-
-                    b.Property<string>("ServiceName")
-                        .IsRequired()
-                        .HasMaxLength(150)
-                        .HasColumnType("character varying(150)")
-                        .HasColumnName("service_name");
-
-                    b.Property<decimal>("UnitPrice")
-                        .HasColumnType("numeric(12,2)")
-                        .HasColumnName("unit_price");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("BookingId")
-                        .HasDatabaseName("idx_booking_services_booking");
-
-                    b.ToTable("booking_services", (string)null);
-                });
-
-            modelBuilder.Entity("Spot.Booking.Api.Models.BookingService", b =>
-                {
-                    b.HasOne("Spot.Booking.Api.Models.Booking", "Booking")
-                        .WithMany("Services")
-                        .HasForeignKey("BookingId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Booking");
-                });
-
-            modelBuilder.Entity("Spot.Booking.Api.Models.Booking", b =>
-                {
-                    b.Navigation("Services");
                 });
 #pragma warning restore 612, 618
         }
