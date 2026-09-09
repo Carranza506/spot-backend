@@ -61,7 +61,13 @@ public sealed class JwtAuthenticationExtensionsTests : IDisposable
                     app.UseEndpoints(endpoints =>
                     {
                         endpoints.MapGet("/protected", (ClaimsPrincipal user) =>
-                                Results.Ok(new { sub = user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value }))
+                                Results.Ok(new
+                                {
+                                    sub = user.FindFirst(JwtRegisteredClaimNames.Sub)?.Value,
+                                    name = user.Identity?.Name,
+                                    role = user.FindFirst("role")?.Value,
+                                    isInClientRole = user.IsInRole("CLIENT"),
+                                }))
                             .RequireAuthorization();
                     });
                 });
@@ -78,13 +84,22 @@ public sealed class JwtAuthenticationExtensionsTests : IDisposable
     }
 
     [Fact]
-    public async Task ValidToken_PassesValidation()
+    public async Task ValidToken_PassesValidation_AndExposesRealClaimValues()
     {
         var client = CreateAuthenticatedClient(CreateToken(_trustedKey, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddMinutes(30)));
 
         var response = await client.GetAsync("/protected");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        // Guards against MapInboundClaims silently remapping "sub"/"role" to ASP.NET Core's
+        // legacy claim URIs, which leaves FindFirst(Sub)/Identity.Name/role checks returning
+        // null instead of throwing — a passing status code alone would not catch that.
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(UserId, body.GetProperty("sub").GetString());
+        Assert.Equal(UserId, body.GetProperty("name").GetString());
+        Assert.Equal("CLIENT", body.GetProperty("role").GetString());
+        Assert.True(body.GetProperty("isInClientRole").GetBoolean());
     }
 
     [Fact]

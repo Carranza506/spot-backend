@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -47,6 +48,13 @@ public static class JwtAuthenticationExtensions
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(bearerOptions =>
             {
+                // Without this, ASP.NET Core silently remaps standard JWT claim types to long
+                // legacy URIs when building ClaimsPrincipal (sub -> the WS-Identity nameidentifier
+                // URI, role -> a Microsoft role URI). That leaves user.FindFirst(Sub) / Identity.Name
+                // returning null with no exception, so every consumer must be told the real claim
+                // types explicitly below instead.
+                bearerOptions.MapInboundClaims = false;
+
                 bearerOptions.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
@@ -59,6 +67,10 @@ public static class JwtAuthenticationExtensions
                     // Explicit, small skew: tolerate minor clock drift between services without
                     // meaningfully extending how long an expired token stays acceptable.
                     ClockSkew = TimeSpan.FromSeconds(45),
+                    // Matches the claim types JwtTokenService actually issues (see RoleClaimType
+                    // there, and the "sub" claim), now that MapInboundClaims is disabled.
+                    RoleClaimType = "role",
+                    NameClaimType = JwtRegisteredClaimNames.Sub,
                 };
 
                 bearerOptions.Events = new JwtBearerEvents
