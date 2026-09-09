@@ -6,6 +6,12 @@
 # dotenv files
 .env
 
+# Local RSA key material for JWT signing/validation (see README.md > "RSA keys for JWT").
+# Real keys belong in user-secrets (dev) or environment variables (prod), never in the repo.
+*.pem
+*.key
+/keys/
+
 # User-specific files
 *.rsuser
 *.suo
