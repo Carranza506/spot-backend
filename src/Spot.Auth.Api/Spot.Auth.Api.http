@@ -1,6 +1,41 @@
 @Spot.Auth.Api_HostAddress = http://localhost:5228
 
-GET {{Spot.Auth.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Register - success
+POST {{Spot.Auth.Api_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "maria.rodriguez@example.com",
+  "password": "SuperClave#2026",
+  "firstName": "María José",
+  "lastName": "Rodríguez Solís",
+  "phone": "+506 8888-1234"
+}
+
+###
+
+### Register - duplicate email -> 409
+POST {{Spot.Auth.Api_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "maria.rodriguez@example.com",
+  "password": "SuperClave#2026",
+  "firstName": "María José",
+  "lastName": "Rodríguez Solís"
+}
+
+###
+
+### Register - malformed body -> 400 (Error schema)
+POST {{Spot.Auth.Api_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "not-an-email",
+  "password": "short",
+  "firstName": "",
+  "lastName": ""
+}
 
 ###
