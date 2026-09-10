@@ -39,14 +39,39 @@ src/
 
 ## Database
 
-The full schema lives in `db/spot_database_postgresql_18.sql]`. To create the local database:
+The full schema lives in `db/Spot.sql`. To create the local database:
 
 ```bash
 psql -U postgres -c "CREATE DATABASE spot_dev;"
-psql -U postgres -d spot_dev -f db/spot_database_postgresql_18.sql
+psql -U postgres -d spot_dev -f db/Spot.sql
 ```
 
 Each service that needs data access uses its own connection string, configured in `appsettings.Development.json` **(not committed, see the environment variables section below)**.
+
+### Spot.Auth.Api — connection string and migrations
+
+`Spot.Auth.Api` owns `users` and `refresh_tokens` via EF Core (`AuthDbContext`). Set the local
+connection string once via user-secrets (never in an `appsettings*.json` file, since it can carry
+a password):
+
+```bash
+cd src/Spot.Auth.Api
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=spot_dev;Username=postgres;Password=..."
+```
+
+If `spot_dev` was created from `db/Spot.sql`, the `users`/`refresh_tokens` tables (and the
+`user_role` enum) already exist — `Spot.Auth.Api`'s `InitialCreate` migration detects and skips
+re-creating the enum, but do **not** also run `dotnet ef database update` against that same
+database, since it would try to re-create the tables themselves and fail. Migrations are meant for
+a database that doesn't already have them (e.g. a fresh `spot_dev` created without running
+`db/Spot.sql`, or CI):
+
+```bash
+dotnet ef database update
+```
+
+In production, set the connection string the same way the JWT keys are set — an environment
+variable ASP.NET Core maps automatically: `ConnectionStrings__DefaultConnection`.
 
 ## Environment variables / local configuration
 
