@@ -36,6 +36,14 @@ public class AiSearchDbContext(DbContextOptions<AiSearchDbContext> options) : Db
             e.Property(x => x.IpAddress).HasColumnName("ip_address");
             e.Property(x => x.UserAgent).HasColumnName("user_agent");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
+
+            // The audit endpoint (GET /ai-search/requests) always sorts by created_at DESC and
+            // filters by user_id / status / request_type. This table only grows (one row per AI
+            // call), so back the common filter + sort combinations with indexes.
+            e.HasIndex(x => x.CreatedAt);
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.HasIndex(x => new { x.RequestType, x.CreatedAt });
         });
     }
 }
