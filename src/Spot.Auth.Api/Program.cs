@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using Spot.Auth.Api.Data;
 using Spot.Auth.Api.Services;
 using Spot.Shared.Auth;
 
@@ -6,6 +8,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+builder.Services.AddDbContext<AuthDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
