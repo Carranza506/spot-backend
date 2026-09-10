@@ -1,5 +1,8 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Spot.Auth.Api.Data;
+using Spot.Auth.Api.Configuration;
+using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Services;
 using Spot.Shared.Auth;
 
@@ -14,6 +17,13 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
+
+builder.Services.Configure<RefreshTokenOptions>(builder.Configuration.GetSection(RefreshTokenOptions.SectionName));
+builder.Services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
+
+// PBKDF2 (HMAC-SHA256, 100k+ iterations, random per-hash salt) via ASP.NET Core's own,
+// already-audited implementation — never hand-roll password hashing.
+builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
 var app = builder.Build();
 
