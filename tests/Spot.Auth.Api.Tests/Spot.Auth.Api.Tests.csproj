@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
     <!-- Pinned to match Spot.Auth.Api's own EF Core version: without this, MSBuild resolves
          the Npgsql provider's older transitive minimum (9.0.1) instead, causing a reference
          version-conflict warning against Spot.Auth.Api.dll's actual (9.0.7) dependency. -->

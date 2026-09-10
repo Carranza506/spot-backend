@@ -72,3 +72,6 @@ app.UseHttpsRedirection();
 app.MapControllers();
 
 app.Run();
+
+// Exposed so Spot.Auth.Api.Tests can drive the real request pipeline with WebApplicationFactory.
+public partial class Program;
