@@ -1,6 +1,40 @@
-@Spot.AiSearch.Api_HostAddress = http://localhost:5050
+@host = http://localhost:5050
 
-GET {{Spot.AiSearch.Api_HostAddress}}/weatherforecast/
+### Token
+# AiSearch.Api only validates RS256 signatures issued by Spot.Auth.Api.
+# The DevController was removed: get a real JWT from the Spot.Auth.Api login
+# endpoint and paste it below.
+@token = REPLACE_WITH_RS256_SUPERADMIN_JWT
+
+### 1. Audit list - no filters
+GET {{host}}/ai-search/requests
 Accept: application/json
+Authorization: Bearer {{token}}
+
+###
+
+### 2. Audit list - filter by status and type
+GET {{host}}/ai-search/requests?page=1&pageSize=10&status=SUCCESS&requestType=BUSINESS_SEARCH
+Accept: application/json
+Authorization: Bearer {{token}}
+
+###
+
+### 3. Audit list - filter by user and date range
+GET {{host}}/ai-search/requests?userId=3fa85f64-5717-4562-b3fc-2c963f66afa6&from=2026-01-01T00:00:00Z&to=2026-12-31T23:59:59Z
+Accept: application/json
+Authorization: Bearer {{token}}
+
+###
+
+### 4. No token - must return 401 (body: { code: "UNAUTHORIZED", ... })
+GET {{host}}/ai-search/requests
+
+###
+
+### 5. Token with a role other than SUPERADMIN - must return 403
+GET {{host}}/ai-search/requests
+Accept: application/json
+Authorization: Bearer REPLACE_WITH_RS256_CLIENT_ROLE_JWT
 
 ###
