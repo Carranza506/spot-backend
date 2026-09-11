@@ -34,7 +34,7 @@ public class AiRequestService(IAiRequestRepository repository) : IAiRequestServi
             LatencyMs: x.LatencyMs,
             ErrorCode: x.ErrorCode,
             ErrorMessage: x.ErrorMessage,
-            IpAddress: x.IpAddress,
+            IpAddress: x.IpAddress?.ToString(),
             UserAgent: x.UserAgent,
             CreatedAt: x.CreatedAt
         )).ToList();

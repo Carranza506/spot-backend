@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 
 namespace Spot.AiSearch.Api.Models;
@@ -20,7 +21,7 @@ public class AiRequest
     public int? LatencyMs { get; set; }
     public string? ErrorCode { get; set; }
     public string? ErrorMessage { get; set; }
-    public string? IpAddress { get; set; }
+    public IPAddress? IpAddress { get; set; }
     public string? UserAgent { get; set; }
     public DateTime CreatedAt { get; set; }
 }

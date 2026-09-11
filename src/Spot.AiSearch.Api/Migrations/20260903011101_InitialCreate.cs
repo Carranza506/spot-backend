@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -32,7 +33,7 @@ namespace Spot.AiSearch.Api.Migrations
                     latency_ms = table.Column<int>(type: "integer", nullable: true),
                     error_code = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: true),
                     error_message = table.Column<string>(type: "text", nullable: true),
-                    ip_address = table.Column<string>(type: "text", nullable: true),
+                    ip_address = table.Column<IPAddress>(type: "inet", nullable: true),
                     user_agent = table.Column<string>(type: "text", nullable: true),
                     created_at = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },

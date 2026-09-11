@@ -33,7 +33,7 @@ public class AiSearchDbContext(DbContextOptions<AiSearchDbContext> options) : Db
             e.Property(x => x.LatencyMs).HasColumnName("latency_ms");
             e.Property(x => x.ErrorCode).HasColumnName("error_code").HasMaxLength(100);
             e.Property(x => x.ErrorMessage).HasColumnName("error_message");
-            e.Property(x => x.IpAddress).HasColumnName("ip_address");
+            e.Property(x => x.IpAddress).HasColumnName("ip_address").HasColumnType("inet");
             e.Property(x => x.UserAgent).HasColumnName("user_agent");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
 
