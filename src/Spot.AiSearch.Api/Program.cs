@@ -37,7 +37,8 @@ builder.Services.AddControllers()
 builder.Services.AddOpenApi();
 
 builder.Services.AddDbContext<AiSearchDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory_aisearch")));
 
 builder.Services.AddScoped<IAiRequestRepository, AiRequestRepository>();
 builder.Services.AddScoped<IAiRequestService, AiRequestService>();

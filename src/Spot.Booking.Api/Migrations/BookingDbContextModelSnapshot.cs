@@ -23,6 +23,20 @@ namespace Spot.Booking.Api.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "booking_status", new[] { "pending", "confirmed", "completed", "cancelled", "no_show" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Spot.Booking.Api.Models.UserReference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("users", (string)null, t =>
+                        {
+                            t.ExcludeFromMigrations();
+                        });
+                });
+
             modelBuilder.Entity("Spot.Booking.Api.Models.Booking", b =>
                 {
                     b.Property<Guid>("Id")
@@ -74,7 +88,7 @@ namespace Spot.Booking.Api.Migrations
                     b.Property<int>("Status")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("booking_status")
-                        .HasDefaultValue(0)
+                        .HasDefaultValueSql("'pending'::booking_status")
                         .HasColumnName("status");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
@@ -99,6 +113,15 @@ namespace Spot.Booking.Api.Migrations
                         .HasDatabaseName("idx_bookings_user_start");
 
                     b.ToTable("bookings", (string)null);
+                });
+
+            modelBuilder.Entity("Spot.Booking.Api.Models.Booking", b =>
+                {
+                    b.HasOne("Spot.Booking.Api.Models.UserReference", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
                 });
 #pragma warning restore 612, 618
         }

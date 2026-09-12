@@ -24,7 +24,7 @@ namespace Spot.Booking.Api.Migrations
                     service_id = table.Column<Guid>(type: "uuid", nullable: false),
                     start_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     end_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    status = table.Column<int>(type: "booking_status", nullable: false, defaultValue: 0),
+                    status = table.Column<int>(type: "booking_status", nullable: false, defaultValueSql: "'pending'::booking_status"),
                     service_name = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
                     service_price = table.Column<decimal>(type: "numeric(10,2)", nullable: false),
                     service_duration_minutes = table.Column<int>(type: "integer", nullable: false),

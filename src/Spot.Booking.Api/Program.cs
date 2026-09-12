@@ -7,7 +7,8 @@ builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 
 builder.Services.AddDbContext<BookingDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory_booking")));
 
 var app = builder.Build();
 

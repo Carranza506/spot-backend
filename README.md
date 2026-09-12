@@ -39,14 +39,42 @@ src/
 
 ## Database
 
-The full schema lives in `db/spot_database_postgresql_18.sql]`. To create the local database:
+All five services share **one physical Postgres database** (`spot_dev`), and **EF Core migrations
+are the single authoritative source of the schema** — not a raw SQL script. `db/Spot.sql` is kept
+only as a generated, human-readable reference snapshot of the schema (see the note at the end of
+this section); it is never applied directly.
+
+Each service owns its own migrations and its own `__EFMigrationsHistory_<service>` table (see each
+`Program.cs`), so applying them is safe to do independently per service — but **the order below
+must be followed on a fresh database**: `Spot.Auth.Api` creates `users` first, which every other
+service's migrations add a foreign key to.
 
 ```bash
 psql -U postgres -c "CREATE DATABASE spot_dev;"
-psql -U postgres -d spot_dev -f db/spot_database_postgresql_18.sql
+
+dotnet ef database update --project src/Spot.Auth.Api          # 1. creates users — must run first
+dotnet ef database update --project src/Spot.Business.Api      # 2. requires postgis (see Prerequisites)
+dotnet ef database update --project src/Spot.Booking.Api       # 3. requires btree_gist
+dotnet ef database update --project src/Spot.AiSearch.Api      # 4.
+dotnet ef database update --project src/Spot.Notifications.Api # 5.
 ```
 
 Each service that needs data access uses its own connection string, configured in `appsettings.Development.json` **(not committed, see the environment variables section below)**.
+
+> **If you already have a local `spot_dev` from before this change:** each `DbContext` now points
+> at a per-service migrations history table (`__EFMigrationsHistory_auth`, `_business`, `_booking`,
+> `_aisearch`, `_notifications`) instead of the single shared default `__EFMigrationsHistory`. If
+> you had ever actually run `dotnet ef database update` against it, rename your existing
+> `__EFMigrationsHistory` row set per service (or just drop `spot_dev` and recreate it with the
+> steps above) — otherwise EF will think none of that service's migrations have been applied yet.
+>
+> **`db/Spot.sql` is a generated reference snapshot, not a setup script.** After applying migrations
+> as above, regenerate it with:
+> ```bash
+> pg_dump -U postgres -d spot_dev --schema-only > db/Spot.sql
+> ```
+> Do not hand-edit it, and do not `psql -f` it to set up a database — always use the `dotnet ef
+> database update` sequence above.
 
 ## Environment variables / local configuration
 
