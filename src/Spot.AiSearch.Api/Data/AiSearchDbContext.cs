@@ -9,6 +9,26 @@ public class AiSearchDbContext(DbContextOptions<AiSearchDbContext> options) : Db
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // db/Spot.sql:8-9. Explicit UPPERCASE labels (not Npgsql's default lowercase naming
+        // convention, e.g. HasPostgresEnum<AiRequestStatus>() alone) so the ALTER COLUMN ...
+        // USING cast in this feature's migration can losslessly convert the existing text data
+        // (written as enumValue.ToString(), i.e. "SUCCESS"/"ERROR"/etc.) into the new enum type,
+        // and so the labels match Spot.sql exactly. NOTE: this intentionally does NOT match the
+        // lowercase convention already in use for user_role/auth_provider/contact_type/
+        // booking_status elsewhere in this codebase (see those services' DbContexts) — that
+        // existing lowercase-vs-Spot.sql-uppercase mismatch is a separate, pre-existing
+        // discrepancy, not something to replicate here.
+        modelBuilder.HasPostgresEnum("ai_request_status", new[] { "SUCCESS", "ERROR", "TIMEOUT" });
+        modelBuilder.HasPostgresEnum("ai_request_type", new[] { "BUSINESS_SEARCH", "GENERAL_QUERY", "OTHER" });
+
+        // Owned and migrated by Spot.Auth.Api; mapped here only so EF Core can express the
+        // user_id foreign key below. See Models/UserReference.cs.
+        modelBuilder.Entity<UserReference>(e =>
+        {
+            e.ToTable("users", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+        });
+
         modelBuilder.Entity<AiRequest>(e =>
         {
             e.ToTable("ai_requests");
@@ -18,7 +38,7 @@ public class AiSearchDbContext(DbContextOptions<AiSearchDbContext> options) : Db
             e.Property(x => x.Provider).HasColumnName("provider").HasMaxLength(50).IsRequired();
             e.Property(x => x.Model).HasColumnName("model").HasMaxLength(100).IsRequired();
             e.Property(x => x.RequestType).HasColumnName("request_type")
-                .HasConversion<string>().IsRequired();
+                .HasColumnType("ai_request_type").IsRequired();
             e.Property(x => x.Prompt).HasColumnName("prompt").IsRequired();
             e.Property(x => x.Response).HasColumnName("response");
             e.Property(x => x.ExtractedParameters).HasColumnName("extracted_parameters")
@@ -26,7 +46,7 @@ public class AiSearchDbContext(DbContextOptions<AiSearchDbContext> options) : Db
             e.Property(x => x.ToolCalls).HasColumnName("tool_calls")
                 .HasColumnType("jsonb");
             e.Property(x => x.Status).HasColumnName("status")
-                .HasConversion<string>().IsRequired();
+                .HasColumnType("ai_request_status").IsRequired();
             e.Property(x => x.InputTokens).HasColumnName("input_tokens");
             e.Property(x => x.OutputTokens).HasColumnName("output_tokens");
             e.Property(x => x.TotalTokens).HasColumnName("total_tokens");
@@ -44,6 +64,9 @@ public class AiSearchDbContext(DbContextOptions<AiSearchDbContext> options) : Db
             e.HasIndex(x => new { x.UserId, x.CreatedAt });
             e.HasIndex(x => new { x.Status, x.CreatedAt });
             e.HasIndex(x => new { x.RequestType, x.CreatedAt });
+
+            // db/Spot.sql:162
+            e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }

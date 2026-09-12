@@ -9,6 +9,14 @@ public class NotificationsDbContext(DbContextOptions<NotificationsDbContext> opt
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // Owned and migrated by Spot.Auth.Api; mapped here only so EF Core can express the
+        // user_id foreign key below. See Models/UserReference.cs.
+        modelBuilder.Entity<UserReference>(e =>
+        {
+            e.ToTable("users", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+        });
+
         modelBuilder.Entity<AuditLog>(e =>
         {
             e.ToTable("audit_logs");
@@ -26,6 +34,8 @@ public class NotificationsDbContext(DbContextOptions<NotificationsDbContext> opt
             e.HasIndex(x => new { x.UserId, x.CreatedAt }).HasDatabaseName("idx_audit_logs_user_created");
             e.HasIndex(x => new { x.EntityType, x.EntityId }).HasDatabaseName("idx_audit_logs_entity");
             e.HasIndex(x => x.CreatedAt).HasDatabaseName("idx_audit_logs_created");
+            // db/Spot.sql:174
+            e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.SetNull);
         });
     }
 }
