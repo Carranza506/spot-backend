@@ -13,8 +13,8 @@ public sealed record UserDto(
     string Role,
     bool IsActive,
     IReadOnlyList<string> LinkedProviders,
-    DateTime CreatedAt,
-    DateTime UpdatedAt)
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt)
 {
     public static UserDto FromEntity(User user) => new(
         Id: user.Id,
