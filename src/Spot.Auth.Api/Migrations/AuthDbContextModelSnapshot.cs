@@ -120,7 +120,7 @@ namespace Spot.Auth.Api.Migrations
                     b.Property<int>("Role")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("user_role")
-                        .HasDefaultValue(0)
+                        .HasDefaultValueSql("'client'::user_role")
                         .HasColumnName("role");
 
                     b.Property<DateTimeOffset>("UpdatedAt")

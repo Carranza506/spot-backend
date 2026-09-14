@@ -12,8 +12,8 @@ using Spot.Auth.Api.Data;
 namespace Spot.Auth.Api.Migrations
 {
     [DbContext(typeof(AuthDbContext))]
-    [Migration("20260908022442_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260912014000_AddPgcryptoExtensionAndUsersUpdatedAtTrigger")]
+    partial class AddPgcryptoExtensionAndUsersUpdatedAtTrigger
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

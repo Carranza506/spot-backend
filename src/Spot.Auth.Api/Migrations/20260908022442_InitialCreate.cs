@@ -26,7 +26,7 @@ namespace Spot.Auth.Api.Migrations
                     last_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     phone = table.Column<string>(type: "character varying(30)", maxLength: 30, nullable: true),
                     profile_photo_url = table.Column<string>(type: "text", nullable: true),
-                    role = table.Column<int>(type: "user_role", nullable: false, defaultValue: 0),
+                    role = table.Column<int>(type: "user_role", nullable: false, defaultValueSql: "'client'::user_role"),
                     is_active = table.Column<bool>(type: "boolean", nullable: false, defaultValue: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")

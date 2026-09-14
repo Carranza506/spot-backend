@@ -25,7 +25,14 @@ public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(
             e.Property(x => x.LastName).HasColumnName("last_name").HasMaxLength(100).IsRequired();
             e.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(30);
             e.Property(x => x.ProfilePhotoUrl).HasColumnName("profile_photo_url");
-            e.Property(x => x.Role).HasColumnName("role").HasColumnType("user_role").HasDefaultValue(UserRole.CLIENT);
+            // Not HasDefaultValue(UserRole.CLIENT): for a native Postgres enum column, EF/Npgsql
+            // renders that as a bare "DEFAULT 0" (the enum's underlying int), which Postgres
+            // rejects for an enum-typed column ("default expression is of type integer").
+            // HasDefaultValueSql with an explicit cast is required instead. The label is
+            // lowercase ("client") to match what HasPostgresEnum<UserRole>()'s naming convention
+            // actually creates the user_role type with (see also AiSearchDbContext.cs's note on
+            // the same lowercase-vs-uppercase-Spot.sql-labels discrepancy).
+            e.Property(x => x.Role).HasColumnName("role").HasColumnType("user_role").HasDefaultValueSql("'client'::user_role");
             e.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
