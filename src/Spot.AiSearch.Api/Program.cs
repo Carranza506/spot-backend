@@ -1,41 +1,59 @@
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Spot.AiSearch.Api.Data;
+using Spot.AiSearch.Api.Repositories;
+using Spot.AiSearch.Api.Services;
+using Spot.Shared.Auth;
+using Spot.Shared.Errors;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddControllers()
+    .AddJsonOptions(o =>
+    {
+        o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    })
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // A malformed query value (userId=not-a-guid, status=BOGUS, page=abc) fails model
+        // binding before the action runs. Without this, [ApiController] would answer with
+        // ASP.NET Core's default ValidationProblemDetails instead of the { code, message,
+        // timestamp } Error shape defined in contracts/spot-api.yaml.
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var invalidField = context.ModelState
+                .FirstOrDefault(entry => entry.Value?.Errors.Count > 0).Key;
+
+            var error = new ApiError(
+                "BAD_REQUEST",
+                "Uno o más parámetros de la petición no son válidos.",
+                string.IsNullOrEmpty(invalidField) ? null : new { field = invalidField });
+
+            return new BadRequestObjectResult(error);
+        };
+    });
+
 builder.Services.AddOpenApi();
+
+builder.Services.AddDbContext<AiSearchDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddScoped<IAiRequestRepository, AiRequestRepository>();
+builder.Services.AddScoped<IAiRequestService, AiRequestService>();
+
+// Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the
+// "Jwt" section — the same setup every microservice uses. See Spot.Shared.Auth.
+builder.Services.AddSpotJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
-}
 
 app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

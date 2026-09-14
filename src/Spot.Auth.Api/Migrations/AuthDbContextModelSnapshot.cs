@@ -20,6 +20,8 @@ namespace Spot.Auth.Api.Migrations
                 .HasAnnotation("ProductVersion", "9.0.7")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "auth_provider", new[] { "google" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "user_role", new[] { "client", "business_owner", "superadmin" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Spot.Auth.Api.Models.RefreshToken", b =>
@@ -30,17 +32,17 @@ namespace Spot.Auth.Api.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<DateTime>("ExpiresAt")
+                    b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
-                    b.Property<DateTime?>("RevokedAt")
+                    b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("revoked_at");
 
@@ -72,7 +74,7 @@ namespace Spot.Auth.Api.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<DateTime>("CreatedAt")
+                    b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at")
@@ -115,14 +117,13 @@ namespace Spot.Auth.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("profile_photo_url");
 
-                    b.Property<string>("Role")
-                        .IsRequired()
+                    b.Property<int>("Role")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("user_role")
-                        .HasDefaultValue("CLIENT")
+                        .HasDefaultValue(0)
                         .HasColumnName("role");
 
-                    b.Property<DateTime>("UpdatedAt")
+                    b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at")
@@ -139,6 +140,48 @@ namespace Spot.Auth.Api.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Spot.Auth.Api.Models.UserAuthProvider", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("auth_provider")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderUserId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("provider_user_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("idx_auth_providers_user");
+
+                    b.HasIndex("Provider", "ProviderUserId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "Provider")
+                        .IsUnique();
+
+                    b.ToTable("user_auth_providers", (string)null);
+                });
+
             modelBuilder.Entity("Spot.Auth.Api.Models.RefreshToken", b =>
                 {
                     b.HasOne("Spot.Auth.Api.Models.User", "User")
@@ -150,8 +193,21 @@ namespace Spot.Auth.Api.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Spot.Auth.Api.Models.UserAuthProvider", b =>
+                {
+                    b.HasOne("Spot.Auth.Api.Models.User", "User")
+                        .WithMany("AuthProviders")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Spot.Auth.Api.Models.User", b =>
                 {
+                    b.Navigation("AuthProviders");
+
                     b.Navigation("RefreshTokens");
                 });
 #pragma warning restore 612, 618

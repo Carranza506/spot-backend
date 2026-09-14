@@ -1,0 +1,86 @@
+name: Backend Tests
+
+# Runs the full test suite (everything under `tests/`) on every push and pull
+# request against the main branches. Add this workflow's job
+# (`test`) as a required status check in the branch protection rules for
+# `main` and `develop` so that PRs cannot be merged unless it passes.
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: backend-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Discover test projects
+        id: discover
+        run: |
+          set -e
+          mapfile -t projects < <(find tests -type f -name "*.csproj" | sort)
+          if [ "${#projects[@]}" -eq 0 ]; then
+            echo "No test projects found under tests/ — failing so this can't go unnoticed."
+            exit 1
+          fi
+          printf 'Found %d test project(s):\n' "${#projects[@]}"
+          printf ' - %s\n' "${projects[@]}"
+
+      - name: Run tests
+        run: |
+          set -e
+          failures=0
+          mkdir -p TestResults
+          while IFS= read -r project; do
+            name="$(basename "${project%.csproj}")"
+            echo "::group::dotnet test $project"
+            if ! dotnet test "$project" \
+              --no-build \
+              --configuration Release \
+              --logger "trx;LogFileName=${name}.trx" \
+              --results-directory "TestResults"; then
+              failures=$((failures + 1))
+            fi
+            echo "::endgroup::"
+          done < <(find tests -type f -name "*.csproj" | sort)
+
+          if [ "$failures" -gt 0 ]; then
+            echo "$failures test project(s) failed."
+            exit 1
+          fi
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          retention-days: 14
