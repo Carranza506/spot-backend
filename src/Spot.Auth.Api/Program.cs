@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Spot.Auth.Api.Configuration;
 using Spot.Auth.Api.Data;
@@ -10,7 +11,20 @@ using Spot.Shared.Errors;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var message = context.ModelState.Values
+                .SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage)
+                .FirstOrDefault(e => !string.IsNullOrWhiteSpace(e))
+                ?? "La solicitud no es válida.";
+
+            return new BadRequestObjectResult(new ApiError("BAD_REQUEST", message));
+        };
+    });
 builder.Services.AddOpenApi();
 
 builder.Services.AddDbContext<AuthDbContext>(options =>
