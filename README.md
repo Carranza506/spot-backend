@@ -88,8 +88,9 @@ Then fill in the real values there (connection string, JWT secret, API keys). **
 
 ## RSA keys for JWT
 
-Access tokens are RS256 JWTs: `Spot.Auth.Api` signs with an RSA **private** key, and every other
-microservice validates the signature with the matching **public** key only (via
+Access tokens are RS256 JWTs: `Spot.Auth.Api` signs with an RSA **private** key, and every
+microservice — including `Spot.Auth.Api` itself, for its own `[Authorize]` endpoints like
+`POST /auth/logout` — validates the signature with the matching **public** key only (via
 `AddSpotJwtAuthentication` in `Spot.Shared`). The private key must never be committed or shared
 outside `Spot.Auth.Api`.
 
