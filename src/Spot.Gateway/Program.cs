@@ -1,41 +1,26 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
+
+// Route definitions and downstream cluster addresses live in the "ReverseProxy" section of
+// appsettings.json (localhost ports for `dotnet run`) and are overridden by Jwt-style
+// double-underscore environment variables in docker-compose.yml (Compose service names on the
+// shared internal port 8080). See appsettings.json for the routes themselves.
+builder.Services.AddReverseProxy()
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
-}
 
 app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+// Gateway's own liveness — distinct from the per-service /health/<service> passthrough routes
+// mapped below via MapReverseProxy, which proxy to each downstream service's own /health.
+app.MapHealthChecks("/health");
 
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.MapReverseProxy();
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
