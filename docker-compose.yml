@@ -1,0 +1,202 @@
+services:
+  postgres:
+    image: postgis/postgis:18-3.6
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: spot_dev
+    volumes:
+      # postgres:18+ images moved PGDATA to a versioned subdir and now VOLUME the whole
+      # /var/lib/postgresql directory (not /var/lib/postgresql/data like 12-17 images did).
+      - postgres_data:/var/lib/postgresql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d spot_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 1g
+    mem_reservation: 512m
+    cpus: "1.0"
+    networks:
+      - spot-network
+
+  migrator:
+    build:
+      context: .
+      dockerfile: docker/migrator/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      # See migrate.sh: needed only because AiSearch.Api's Program.cs validates the JWT public
+      # key eagerly at startup, and `dotnet ef` runs that same Program.cs to find the DbContext.
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+    secrets:
+      - jwt_public_key
+    # Intentionally NOT unless-stopped/always: this is a one-shot job that must exit (0 on
+    # success, non-zero on failure) so the 5 services' `service_completed_successfully` gate
+    # actually fires — a restart policy here would fight that and loop the container forever.
+    restart: "no"
+    mem_limit: 768m
+    mem_reservation: 256m
+    cpus: "1.0"
+    networks:
+      - spot-network
+
+  auth-api:
+    build:
+      context: .
+      dockerfile: src/Spot.Auth.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
+      # Structured (JSON) console logs are easier for `docker compose logs` / any log
+      # collector to parse than the default human-oriented multi-line format. Set only via
+      # env, so it doesn't affect `dotnet run` on the host (appsettings.json is untouched).
+      Logging__Console__FormatterName: json
+    secrets:
+      - jwt_private_key
+    ports:
+      - "5228:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  business-api:
+    build:
+      context: .
+      dockerfile: src/Spot.Business.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      Logging__Console__FormatterName: json
+    ports:
+      - "5151:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  booking-api:
+    build:
+      context: .
+      dockerfile: src/Spot.Booking.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      Logging__Console__FormatterName: json
+    ports:
+      - "5197:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  aisearch-api:
+    build:
+      context: .
+      dockerfile: src/Spot.AiSearch.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      Logging__Console__FormatterName: json
+    secrets:
+      - jwt_public_key
+    ports:
+      - "5050:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  notifications-api:
+    build:
+      context: .
+      dockerfile: src/Spot.Notifications.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      Logging__Console__FormatterName: json
+    ports:
+      - "5102:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+volumes:
+  postgres_data:
+
+networks:
+  spot-network:
+    driver: bridge
+
+secrets:
+  # Read directly from the local key files at compose-up time; never baked into any image.
+  # See README.md > "RSA keys for JWT" for how to generate them if they don't exist yet.
+  jwt_private_key:
+    file: ./jwt-private.pem
+  jwt_public_key:
+    file: ./jwt-public.pem

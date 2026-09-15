@@ -20,9 +20,20 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
     public DbSet<FavoriteBusiness> FavoriteBusinesses => Set<FavoriteBusiness>();
     public DbSet<Review> Reviews => Set<Review>();
 
+    /// <summary>Fixed point in time used for the seed rows below — HasData needs static values.</summary>
+    private static readonly DateTimeOffset SeedTimestamp = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresEnum<ContactType>();
+
+        // Owned and migrated by Spot.Auth.Api; mapped here only so EF Core can express the
+        // user_id foreign keys below. See Models/UserReference.cs.
+        modelBuilder.Entity<UserReference>(e =>
+        {
+            e.ToTable("users", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+        });
 
         modelBuilder.Entity<Category>(e =>
         {
@@ -38,6 +49,57 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.HasIndex(x => new { x.ParentCategoryId, x.Name }).IsUnique();
             e.HasIndex(x => x.ParentCategoryId).HasDatabaseName("idx_categories_parent");
             e.HasOne(x => x.ParentCategory).WithMany(c => c.SubCategories).HasForeignKey(x => x.ParentCategoryId).OnDelete(DeleteBehavior.Restrict);
+
+            // db/Spot.sql:208-213. HasData needs stable, compile-time keys and values, so
+            // (unlike the raw INSERT, which lets id/created_at/updated_at fall back to their
+            // column defaults) these five rows pin fixed ids and a fixed timestamp instead of
+            // gen_random_uuid()/CURRENT_TIMESTAMP.
+            e.HasData(
+                new
+                {
+                    Id = Guid.Parse("6228d226-c50a-43af-bbae-835a224f0335"),
+                    Name = "Belleza",
+                    Description = "Servicios relacionados con belleza y cuidado personal",
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp,
+                },
+                new
+                {
+                    Id = Guid.Parse("fdc7b7cb-2529-4879-bf1c-ac82bb75d893"),
+                    Name = "Salud",
+                    Description = "Servicios relacionados con salud y bienestar",
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp,
+                },
+                new
+                {
+                    Id = Guid.Parse("ae084e20-06ce-407f-9bbd-be08089a407c"),
+                    Name = "Deportes",
+                    Description = "Servicios e instalaciones deportivas",
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp,
+                },
+                new
+                {
+                    Id = Guid.Parse("4a8d8583-9c61-44f5-93a6-19901475a98b"),
+                    Name = "Restaurantes",
+                    Description = "Restaurantes y establecimientos de comida",
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp,
+                },
+                new
+                {
+                    Id = Guid.Parse("045bfe83-fd2c-4694-906b-8c2e968ae188"),
+                    Name = "Automotriz",
+                    Description = "Servicios relacionados con vehículos",
+                    IsActive = true,
+                    CreatedAt = SeedTimestamp,
+                    UpdatedAt = SeedTimestamp,
+                });
         });
 
         modelBuilder.Entity<BusinessEntity>(e =>
@@ -182,6 +244,8 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasIndex(x => x.UserId).HasDatabaseName("idx_business_owners_user");
             e.HasOne(x => x.Business).WithMany().HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
+            // db/Spot.sql:56
+            e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<BusinessCategory>(e =>
@@ -204,6 +268,8 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.Property(x => x.BusinessId).HasColumnName("business_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasOne(x => x.Business).WithMany().HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
+            // db/Spot.sql:148
+            e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Review>(e =>
@@ -221,6 +287,8 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.HasIndex(x => x.BookingId).IsUnique();
             e.HasIndex(x => x.BusinessId).HasDatabaseName("idx_reviews_business");
             e.HasOne(x => x.Business).WithMany(b => b.Reviews).HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Restrict);
+            // db/Spot.sql:155
+            e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

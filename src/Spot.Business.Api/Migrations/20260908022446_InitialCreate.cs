@@ -11,6 +11,15 @@ namespace Spot.Business.Api.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // db/Spot.sql:1. Must run before CreateTable("business_locations") below, which
+            // declares a "geography(Point,4326)" column — a PostGIS type. This migration has
+            // never been applied against a real database (nothing in this repo ever called
+            // Database.Migrate()/EnsureCreated(), and until now db/Spot.sql — which itself starts
+            // with this same CREATE EXTENSION — was the only thing ever run against spot_dev), so
+            // adding it here fixes a migration that could never have succeeded standalone, rather
+            // than altering one that shipped.
+            migrationBuilder.Sql("CREATE EXTENSION IF NOT EXISTS postgis;");
+
             migrationBuilder.AlterDatabase()
                 .Annotation("Npgsql:Enum:contact_type", "phone,whatsapp,email,website,facebook,instagram,tiktok,other");
 
@@ -447,6 +456,10 @@ namespace Spot.Business.Api.Migrations
 
             migrationBuilder.DropTable(
                 name: "businesses");
+
+            // Safe now: business_locations (the only table using a "geography" column) is
+            // already dropped above.
+            migrationBuilder.Sql("DROP EXTENSION IF EXISTS postgis;");
         }
     }
 }
