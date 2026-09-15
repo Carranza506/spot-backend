@@ -39,6 +39,13 @@ src/
 
 ## Database
 
+The full schema lives in `db/Spot.sql`. To create the local database:
+
+```bash
+psql -U postgres -c "CREATE DATABASE spot_dev;"
+psql -U postgres -d spot_dev -f db/Spot.sql
+
+
 All five services share **one physical Postgres database** (`spot_dev`), and **EF Core migrations
 are the single authoritative source of the schema** — not a raw SQL script. `db/Spot.sql` is kept
 only as a generated, human-readable reference snapshot of the schema (see the note at the end of
@@ -48,6 +55,7 @@ Each service owns its own migrations and its own `__EFMigrationsHistory_<service
 `Program.cs`), so applying them is safe to do independently per service — but **the order below
 must be followed on a fresh database**: `Spot.Auth.Api` creates `users` first, which every other
 service's migrations add a foreign key to.
+```
 
 ```bash
 psql -U postgres -c "CREATE DATABASE spot_dev;"
@@ -57,9 +65,37 @@ dotnet ef database update --project src/Spot.Business.Api      # 2. requires pos
 dotnet ef database update --project src/Spot.Booking.Api       # 3. requires btree_gist
 dotnet ef database update --project src/Spot.AiSearch.Api      # 4.
 dotnet ef database update --project src/Spot.Notifications.Api # 5.
+
 ```
 
 Each service that needs data access uses its own connection string, configured in `appsettings.Development.json` **(not committed, see the environment variables section below)**.
+
+
+### Spot.Auth.Api — connection string and migrations
+
+`Spot.Auth.Api` owns `users` and `refresh_tokens` via EF Core (`AuthDbContext`). Set the local
+connection string once via user-secrets (never in an `appsettings*.json` file, since it can carry
+a password):
+
+```bash
+cd src/Spot.Auth.Api
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=spot_dev;Username=postgres;Password=..."
+```
+
+If `spot_dev` was created from `db/Spot.sql`, the `users`/`refresh_tokens` tables (and the
+`user_role` enum) already exist — `Spot.Auth.Api`'s `InitialCreate` migration detects and skips
+re-creating the enum, but do **not** also run `dotnet ef database update` against that same
+database, since it would try to re-create the tables themselves and fail. Migrations are meant for
+a database that doesn't already have them (e.g. a fresh `spot_dev` created without running
+`db/Spot.sql`, or CI):
+
+```bash
+dotnet ef database update
+```
+
+In production, set the connection string the same way the JWT keys are set — an environment
+variable ASP.NET Core maps automatically: `ConnectionStrings__DefaultConnection`.
+
 
 > **If you already have a local `spot_dev` from before this change:** each `DbContext` now points
 > at a per-service migrations history table (`__EFMigrationsHistory_auth`, `_business`, `_booking`,
@@ -75,6 +111,7 @@ Each service that needs data access uses its own connection string, configured i
 > ```
 > Do not hand-edit it, and do not `psql -f` it to set up a database — always use the `dotnet ef
 > database update` sequence above.
+
 
 ## Environment variables / local configuration
 
@@ -145,19 +182,24 @@ Each service prints its port to the console on startup (check `launchSettings.js
 ## Running all services together
 
 Open one terminal per service and run `dotnet run --project src/<Service>` in each — or use
-Docker Compose to run everything at once (Postgres, migrations, and the 5 data-backed services)
-without needing .NET or `dotnet ef` installed on the host at all. See "Running with Docker" below.
+Docker Compose to run everything at once (Postgres, migrations, the 5 data-backed services, and
+the Gateway) without needing .NET or `dotnet ef` installed on the host at all. See "Running with
+Docker" below.
 
 ## Running with Docker
 
 Runs Postgres (with PostGIS), applies all 5 services' EF Core migrations, and starts
-`Spot.Auth.Api`, `Spot.Business.Api`, `Spot.Booking.Api`, `Spot.AiSearch.Api`, and
-`Spot.Notifications.Api` — all inside containers. This is the recommended path on machines where
-Windows Application Control / Smart App Control blocks `dotnet ef` when run directly on the host:
-every `dotnet`/`dotnet-ef` invocation here happens inside the SDK image, never on the host.
+`Spot.Auth.Api`, `Spot.Business.Api`, `Spot.Booking.Api`, `Spot.AiSearch.Api`,
+`Spot.Notifications.Api`, and `Spot.Gateway` — all inside containers. This is the recommended path
+on machines where Windows Application Control / Smart App Control blocks `dotnet ef` when run
+directly on the host: every `dotnet`/`dotnet-ef` invocation here happens inside the SDK image,
+never on the host.
 
-`Spot.Gateway` is not containerized yet (not part of this setup); run it separately with
-`dotnet run --project src/Spot.Gateway` if you need it.
+**`Spot.Gateway` is the single entry point client apps should use** — it reverse-proxies
+(via YARP) to the 5 services under `/api/v1/<service>/...` (matching `contracts/spot-api.yaml`'s
+path convention), so a client only ever needs to know the Gateway's address. The individual
+service ports below are still published for direct debugging (Postman, curl, etc.) but production
+and frontend traffic should go through the Gateway.
 
 **Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, and
 `jwt-private.pem` / `jwt-public.pem` present at the repo root (see "RSA keys for JWT" above —
@@ -165,7 +207,7 @@ these are read from disk at `docker compose up` time via Compose secrets, never 
 image).
 
 ```bash
-# Build images and start everything (Postgres -> migrations -> the 5 services, in order)
+# Build images and start everything (Postgres -> migrations -> the 5 services -> Gateway, in order)
 docker compose up --build
 
 # Subsequent starts (no code changes) can skip --build
@@ -182,15 +224,22 @@ docker compose logs migrator
 ```
 
 Once running, each service is reachable on its usual host port (unchanged from
-`launchSettings.json`, so existing Postman collections / frontend configs keep working):
+`launchSettings.json`, so existing Postman collections / frontend configs keep working), and the
+**Gateway is the single entry point** for everything else calling the API:
 
 | Service | URL |
 | --- | --- |
+| **Spot.Gateway (entry point)** | **http://localhost:5195** |
 | Spot.Auth.Api | http://localhost:5228 |
 | Spot.Business.Api | http://localhost:5151 |
 | Spot.Booking.Api | http://localhost:5197 |
 | Spot.AiSearch.Api | http://localhost:5050 |
 | Spot.Notifications.Api | http://localhost:5102 |
+
+Through the Gateway, each service is reachable at `http://localhost:5195/api/v1/<segment>/...`
+(`auth`, `business`, `booking`, `ai-search`, `notifications` — matching
+`contracts/spot-api.yaml`), and each service's `/health` is also proxied individually at
+`http://localhost:5195/health/<segment>` (e.g. `/health/auth`) for debugging the proxy itself.
 
 Postgres itself is also published on `localhost:5432` (user/password `postgres`, database
 `spot_dev`) for connecting with `psql`/pgAdmin/etc. directly.
@@ -198,8 +247,8 @@ Postgres itself is also published on `localhost:5432` (user/password `postgres`,
 Containers run over plain HTTP internally (no dev HTTPS certs inside the containers); the ports
 above are HTTP.
 
-Each of the 5 services exposes a liveness probe at `/health` (used by Compose's own
-`healthcheck:`), runs as the container's built-in non-root user, and logs structured JSON to
+Each of the 5 services and the Gateway exposes a liveness probe at `/health` (used by Compose's
+own `healthcheck:`), runs as the container's built-in non-root user, and logs structured JSON to
 stdout — check status with `docker compose ps` (look for `healthy`) or `docker compose logs
 <service>`.
 
