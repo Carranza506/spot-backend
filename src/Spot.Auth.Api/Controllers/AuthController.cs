@@ -7,14 +7,14 @@ using Spot.Shared.Errors;
 namespace Spot.Auth.Api.Controllers;
 
 /// <summary>
-/// contracts/spot-api.yaml, "Auth" tag. Only <c>POST /auth/logout</c> is implemented so far
-/// (#51) — login/register/refresh/me/change-password are separate, not-yet-implemented issues
-/// under the same parent (#42).
+/// contracts/spot-api.yaml, "Auth" tag. <c>POST /auth/logout</c> (#51) and
+/// <c>GET</c>/<c>PATCH /auth/me</c> (#52) are implemented so far — login/register/refresh/
+/// change-password are separate, not-yet-implemented issues under the same parent (#42).
 /// </summary>
 [ApiController]
 [Route("auth")]
 [Authorize]
-public class AuthController(IRefreshTokenService refreshTokenService) : ControllerBase
+public class AuthController(IRefreshTokenService refreshTokenService, IUserProfileService userProfileService) : ControllerBase
 {
     /// <summary>
     /// POST /auth/logout: revokes the given refresh token. Requires a valid access token (any
@@ -26,12 +26,7 @@ public class AuthController(IRefreshTokenService refreshTokenService) : Controll
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Logout([FromBody] RefreshRequest request, CancellationToken ct)
     {
-        // The access token itself (signature, issuer, audience, lifetime) is already validated
-        // by [Authorize] before this action runs. AddSpotJwtAuthentication configures
-        // NameClaimType = "sub", so User.Identity.Name IS the caller's user id — this only
-        // guards against that claim somehow not being a Guid, which a token actually issued by
-        // JwtTokenService never produces.
-        if (!Guid.TryParse(User.Identity?.Name, out var userId))
+        if (!TryGetUserId(out var userId))
             return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
 
         // Revokes the token if it's an active one owned by this user; silently no-ops
@@ -42,4 +37,54 @@ public class AuthController(IRefreshTokenService refreshTokenService) : Controll
 
         return NoContent();
     }
+
+    /// <summary>GET /auth/me: the authenticated user's own profile.</summary>
+    [HttpGet("me")]
+    [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetMe(CancellationToken ct)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
+
+        var profile = await userProfileService.GetProfileAsync(userId, ct);
+
+        // The access token is valid, but the user it names no longer exists (e.g. deleted after
+        // the token was issued) — there is no dedicated contract response for that, so this
+        // treats it the same as "not a valid session" rather than inventing a new error shape.
+        if (profile is null)
+            return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
+
+        return Ok(profile);
+    }
+
+    /// <summary>
+    /// PATCH /auth/me: updates editable profile fields (firstName, lastName, phone,
+    /// profilePhotoUrl) for the authenticated user. Never changes email or role — those aren't
+    /// even present on <see cref="UpdateProfileRequest"/>.
+    /// </summary>
+    [HttpPatch("me")]
+    [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> UpdateMe([FromBody] UpdateProfileRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
+
+        var profile = await userProfileService.UpdateProfileAsync(userId, request, ct);
+        if (profile is null)
+            return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
+
+        return Ok(profile);
+    }
+
+    /// <summary>
+    /// The access token itself (signature, issuer, audience, lifetime) is already validated by
+    /// <see cref="AuthorizeAttribute"/> before any action here runs. AddSpotJwtAuthentication
+    /// configures NameClaimType = "sub", so User.Identity.Name IS the caller's user id — this
+    /// only guards against that claim somehow not being a Guid, which a token actually issued
+    /// by JwtTokenService never produces.
+    /// </summary>
+    private bool TryGetUserId(out Guid userId) => Guid.TryParse(User.Identity?.Name, out userId);
 }

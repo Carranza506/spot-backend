@@ -13,17 +13,19 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Tokens;
 using Spot.Auth.Api.Configuration;
+using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Services;
 using Spot.Shared.Auth;
 
 namespace Spot.Auth.Api.Tests.Controllers;
 
 /// <summary>
-/// End-to-end tests for <c>POST /auth/logout</c> through a real request pipeline (routing, JWT
-/// auth, model binding, the controller) — same <see cref="TestServer"/> approach as
-/// Spot.Shared.Tests' JwtAuthenticationExtensionsTests, so the [Authorize] behavior itself isn't
-/// re-tested here. <see cref="IRefreshTokenService"/> is faked so these tests stay about the
-/// HTTP/contract layer; RefreshTokenService's own logic is covered by RefreshTokenServiceTests.
+/// End-to-end tests for <c>POST /auth/logout</c> and <c>GET</c>/<c>PATCH /auth/me</c> through a
+/// real request pipeline (routing, JWT auth, model binding, the controller) — same
+/// <see cref="TestServer"/> approach as Spot.Shared.Tests' JwtAuthenticationExtensionsTests, so
+/// the [Authorize] behavior itself isn't re-tested here. <see cref="IRefreshTokenService"/> and
+/// <see cref="IUserProfileService"/> are faked so these tests stay about the HTTP/contract
+/// layer; the real logic is covered by RefreshTokenServiceTests / UserProfileServiceTests.
 /// </summary>
 public sealed class AuthControllerTests : IDisposable
 {
@@ -32,6 +34,7 @@ public sealed class AuthControllerTests : IDisposable
 
     private readonly RSA _signingKey = RSA.Create(2048);
     private readonly FakeRefreshTokenService _refreshTokenService = new();
+    private readonly FakeUserProfileService _userProfileService = new();
     private readonly IHost _host;
     private readonly TestServer _server;
 
@@ -65,6 +68,7 @@ public sealed class AuthControllerTests : IDisposable
                         .ConfigureSpotApiErrorShape();
                     services.AddSpotJwtAuthentication(configuration);
                     services.AddSingleton<IRefreshTokenService>(_refreshTokenService);
+                    services.AddSingleton<IUserProfileService>(_userProfileService);
                 });
                 webHost.Configure(app =>
                 {
@@ -134,6 +138,121 @@ public sealed class AuthControllerTests : IDisposable
         Assert.False(_refreshTokenService.WasCalled);
     }
 
+    [Fact]
+    public async Task GetMe_ValidToken_Returns200WithTheCallersProfile()
+    {
+        var userId = Guid.NewGuid();
+        _userProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(userId, body.GetProperty("id").GetGuid());
+        Assert.Equal(userId, _userProfileService.LastRequestedUserId);
+    }
+
+    [Fact]
+    public async Task GetMe_NoAccessToken_Returns401()
+    {
+        var client = _server.CreateClient();
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(_userProfileService.LastRequestedUserId);
+    }
+
+    [Fact]
+    public async Task GetMe_TokenNamesAUserThatNoLongerExists_Returns401()
+    {
+        _userProfileService.ProfileToReturn = null;
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateMe_ValidBody_Returns200_AndForwardsTheParsedRequest()
+    {
+        var userId = Guid.NewGuid();
+        _userProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(userId, _userProfileService.LastRequestedUserId);
+        Assert.True(_userProfileService.LastUpdateRequest!.FirstName.IsSet);
+        Assert.Equal("Nuevo Nombre", _userProfileService.LastUpdateRequest.FirstName.Value);
+        Assert.False(_userProfileService.LastUpdateRequest.Phone.IsSet);
+    }
+
+    [Fact]
+    public async Task UpdateMe_ExplicitNullPhone_IsForwardedAsSetWithNullValue()
+    {
+        var userId = Guid.NewGuid();
+        _userProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { phone = (string?)null });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(_userProfileService.LastUpdateRequest!.Phone.IsSet);
+        Assert.Null(_userProfileService.LastUpdateRequest.Phone.Value);
+    }
+
+    [Fact]
+    public async Task UpdateMe_NoAccessToken_Returns401_AndDoesNotCallTheService()
+    {
+        var client = _server.CreateClient();
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(_userProfileService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMe_EmptyFirstName_Returns400WithErrorShape_AndDoesNotCallTheService()
+    {
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(_userProfileService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMe_TokenNamesAUserThatNoLongerExists_Returns401()
+    {
+        _userProfileService.ProfileToReturn = null;
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private static UserDto SampleProfile(Guid userId) => new(
+        Id: userId,
+        Email: "maria@example.com",
+        FirstName: "María",
+        LastName: "Rodríguez",
+        Phone: "+506 8888-1234",
+        ProfilePhotoUrl: null,
+        Role: "CLIENT",
+        IsActive: true,
+        LinkedProviders: [],
+        CreatedAt: DateTimeOffset.UtcNow,
+        UpdatedAt: DateTimeOffset.UtcNow);
+
     private HttpClient CreateAuthenticatedClient(Guid userId, DateTime? notBefore = null, DateTime? expires = null)
     {
         var client = _server.CreateClient();
@@ -176,6 +295,27 @@ public sealed class AuthControllerTests : IDisposable
             LastCalledWithUserId = userId;
             LastCalledWithRawToken = rawRefreshToken;
             return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Records how it was called instead of touching any real persistence.</summary>
+    private sealed class FakeUserProfileService : IUserProfileService
+    {
+        public UserDto? ProfileToReturn { get; set; }
+        public Guid? LastRequestedUserId { get; private set; }
+        public UpdateProfileRequest? LastUpdateRequest { get; private set; }
+
+        public Task<UserDto?> GetProfileAsync(Guid userId, CancellationToken ct = default)
+        {
+            LastRequestedUserId = userId;
+            return Task.FromResult(ProfileToReturn);
+        }
+
+        public Task<UserDto?> UpdateProfileAsync(Guid userId, UpdateProfileRequest request, CancellationToken ct = default)
+        {
+            LastRequestedUserId = userId;
+            LastUpdateRequest = request;
+            return Task.FromResult(ProfileToReturn);
         }
     }
 }
