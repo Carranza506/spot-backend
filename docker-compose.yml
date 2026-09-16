@@ -186,6 +186,46 @@ services:
     networks:
       - spot-network
 
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Spot.Gateway/Dockerfile
+    depends_on:
+      auth-api:
+        condition: service_healthy
+      business-api:
+        condition: service_healthy
+      booking-api:
+        condition: service_healthy
+      aisearch-api:
+        condition: service_healthy
+      notifications-api:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Overrides the localhost-based defaults in appsettings.json with the Compose service
+      # names, on the internal port 8080 every other Dockerfile in this repo exposes.
+      ReverseProxy__Clusters__auth__Destinations__destination1__Address: http://auth-api:8080/
+      ReverseProxy__Clusters__business__Destinations__destination1__Address: http://business-api:8080/
+      ReverseProxy__Clusters__booking__Destinations__destination1__Address: http://booking-api:8080/
+      ReverseProxy__Clusters__aisearch__Destinations__destination1__Address: http://aisearch-api:8080/
+      ReverseProxy__Clusters__notifications__Destinations__destination1__Address: http://notifications-api:8080/
+      Logging__Console__FormatterName: json
+    ports:
+      - "5195:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
 volumes:
   postgres_data:
 
