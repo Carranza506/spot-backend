@@ -93,7 +93,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
       Logging__Console__FormatterName: json
+    secrets:
+      - jwt_public_key
     ports:
       - "5151:8080"
     healthcheck:

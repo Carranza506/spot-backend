@@ -131,9 +131,10 @@ dotnet user-secrets set "Jwt:PublicKeyPem" "$(cat ../../jwt-public.pem)"
 `Jwt:Issuer`, `Jwt:Audience`, and `Jwt:ExpiresInMinutes` already have non-secret defaults in
 `appsettings.Development.json`; only the keys need to be supplied this way.
 
-Once a future issue wires `AddSpotJwtAuthentication` into another microservice (Business, Booking,
-etc.), that service's own user-secrets only need `Jwt:PublicKeyPem` (plus `Jwt:Issuer`/`Jwt:Audience`)
-— it must never have access to the private key.
+`Spot.Business.Api` also validates tokens now (#55 — `SUPERADMIN`-gated category management), the
+same way: its own user-secrets only need `Jwt:PublicKeyPem` (plus `Jwt:Issuer`/`Jwt:Audience`) — it
+must never have access to the private key. The same applies once a future issue wires
+`AddSpotJwtAuthentication` into any of the remaining services (Booking, etc.).
 
 **3. Production — environment variables.** ASP.NET Core maps double-underscore env vars to
 config sections, so set (on `Spot.Auth.Api`, and on every validating service for the public key):
