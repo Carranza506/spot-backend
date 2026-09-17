@@ -96,6 +96,9 @@ public sealed class CategoryService(ICategoryRepository repository) : ICategoryS
         return CategoryDto.FromEntity(category);
     }
 
+    public Task<bool> DeleteAsync(Guid categoryId, CancellationToken ct = default) =>
+        repository.DeleteAsync(categoryId, ct);
+
     /// <summary>Shared by Create and Update: a parent must exist and must itself be a root category.</summary>
     private async Task ValidateParentExistsAndIsRootAsync(Guid parentCategoryId, CancellationToken ct)
     {

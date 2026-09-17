@@ -9,11 +9,9 @@ using Spot.Shared.Pagination;
 namespace Spot.Business.Api.Controllers;
 
 /// <summary>
-/// contracts/spot-api.yaml, "Business" tag, category endpoints. <c>GET /business/categories</c>,
-/// <c>POST /business/categories</c> and <c>PATCH /business/categories/{categoryId}</c> (#55) are
-/// implemented so far — delete is a separate, not-yet-implemented step under the same issue.
-/// Listing is public, so there's no class-level [Authorize]: the SUPERADMIN-only actions apply it
-/// per-action instead, same as AuthController.
+/// contracts/spot-api.yaml, "Business" tag, category endpoints — full CRUD for #55. Listing is
+/// public, so there's no class-level [Authorize]: the SUPERADMIN-only actions apply it per-action
+/// instead, same as AuthController.
 /// </summary>
 [ApiController]
 [Route("business/categories")]
@@ -100,6 +98,34 @@ public class CategoriesController(ICategoryService categoryService) : Controller
         catch (DuplicateCategoryException)
         {
             return Conflict(new ApiError("CATEGORY_ALREADY_EXISTS", "Ya existe una categoría con ese nombre bajo el mismo padre."));
+        }
+    }
+
+    /// <summary>
+    /// DELETE /business/categories/{categoryId}: requires SUPERADMIN. Never cascades — a
+    /// category with subcategories cannot be deleted (remove/reparent them first).
+    /// </summary>
+    [HttpDelete("{categoryId}")]
+    [Authorize(Roles = "SUPERADMIN")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> DeleteCategory(Guid categoryId, CancellationToken ct)
+    {
+        try
+        {
+            var deleted = await categoryService.DeleteAsync(categoryId, ct);
+            if (!deleted)
+                return NotFound(new ApiError("NOT_FOUND", "La categoría indicada no existe."));
+
+            return NoContent();
+        }
+        catch (CategoryHasSubcategoriesException)
+        {
+            return Conflict(new ApiError(
+                "CATEGORY_HAS_SUBCATEGORIES", "No se puede eliminar una categoría que tiene subcategorías."));
         }
     }
 

@@ -78,10 +78,42 @@ public sealed class CategoryRepository(BusinessDbContext db) : ICategoryReposito
         await db.Entry(category).ReloadAsync(ct);
     }
 
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct = default)
+    {
+        var category = await GetByIdAsync(id, ct);
+        if (category is null)
+            return false;
+
+        // Up-front check for a clean 409 in the common case — see the catch below for the
+        // race-proof fallback (a subcategory created concurrently, after this check passed).
+        if (category.SubCategories.Count > 0)
+            throw new CategoryHasSubcategoriesException(id);
+
+        db.Categories.Remove(category);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsSubcategoriesForeignKeyViolation(ex))
+        {
+            throw new CategoryHasSubcategoriesException(id);
+        }
+
+        return true;
+    }
+
     private static bool IsUniqueNameViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException
         {
             SqlState: PostgresErrorCodes.UniqueViolation,
             ConstraintName: "IX_categories_parent_category_id_name",
+        };
+
+    private static bool IsSubcategoriesForeignKeyViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.ForeignKeyViolation,
+            ConstraintName: "FK_categories_categories_parent_category_id",
         };
 }

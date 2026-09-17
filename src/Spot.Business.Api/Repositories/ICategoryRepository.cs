@@ -45,4 +45,13 @@ public interface ICategoryRepository
     /// </summary>
     /// <exception cref="DuplicateCategoryException">Same race-proof safety net as <see cref="CreateAsync"/>.</exception>
     Task SaveChangesAsync(Category category, CancellationToken ct = default);
+
+    /// <returns>False if no category with <paramref name="id"/> exists; true if it was deleted.</returns>
+    /// <exception cref="CategoryHasSubcategoriesException">
+    /// The category has one or more subcategories — re-checked against the database's
+    /// <c>ON DELETE RESTRICT</c> foreign key to close the race window between the check and the
+    /// delete (e.g. a subcategory created concurrently, after this method's own check passed).
+    /// Deletion never cascades to subcategories.
+    /// </exception>
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
 }

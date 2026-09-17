@@ -29,4 +29,10 @@ public interface ICategoryService
     /// A category with the same (parentCategoryId, name) already exists.
     /// </exception>
     Task<CategoryDto?> UpdateAsync(Guid categoryId, CategoryUpdateRequest request, CancellationToken ct = default);
+
+    /// <returns>False if no category with <paramref name="categoryId"/> exists; true if deleted.</returns>
+    /// <exception cref="Repositories.CategoryHasSubcategoriesException">
+    /// The category has one or more subcategories. Deletion never cascades.
+    /// </exception>
+    Task<bool> DeleteAsync(Guid categoryId, CancellationToken ct = default);
 }
