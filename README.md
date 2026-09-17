@@ -135,6 +135,20 @@ No vault decision has been made yet for production key storage — this is inten
 place that needs to change once one is: `JwtOptions` and the code that consumes it only know about
 `IConfiguration`, never about where a value physically comes from.
 
+## Gemini API key
+
+`Spot.AiSearch.Api` calls the Gemini API to parse free-text search queries into structured
+criteria. `Gemini:Model`, `Gemini:BaseUrl`, and `Gemini:TimeoutSeconds` already have non-secret
+defaults in `appsettings.json`; only the key needs to be supplied, the same way as the JWT keys
+above — never in an `appsettings*.json` file:
+
+```bash
+cd src/Spot.AiSearch.Api
+dotnet user-secrets set "Gemini:ApiKey" "<your-gemini-api-key>"
+```
+
+In production, set the `Gemini__ApiKey` environment variable instead.
+
 ## Running a single microservice
 
 ```bash

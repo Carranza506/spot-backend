@@ -2,8 +2,10 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Spot.AiSearch.Api.Data;
+using Spot.AiSearch.Api.Options;
 using Spot.AiSearch.Api.Repositories;
 using Spot.AiSearch.Api.Services;
+using Spot.AiSearch.Api.Services.Gemini;
 using Spot.Shared.Auth;
 using Spot.Shared.Errors;
 
@@ -43,6 +45,9 @@ builder.Services.AddDbContext<AiSearchDbContext>(options =>
 
 builder.Services.AddScoped<IAiRequestRepository, AiRequestRepository>();
 builder.Services.AddScoped<IAiRequestService, AiRequestService>();
+
+builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
+builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
 
 // Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the
 // "Jwt" section — the same setup every microservice uses. See Spot.Shared.Auth.
