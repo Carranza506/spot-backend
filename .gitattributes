@@ -1,0 +1,4 @@
+# Shell scripts run inside Linux containers and need LF line endings no matter what
+# core.autocrlf a contributor's Windows checkout uses — CRLF corrupts the shebang line
+# (`#!/bin/sh\r`) and the container fails with "no such file or directory" at startup.
+*.sh text eol=lf
