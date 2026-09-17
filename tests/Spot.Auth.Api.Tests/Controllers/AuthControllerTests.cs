@@ -90,6 +90,59 @@ public sealed class AuthControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task Refresh_ValidToken_Returns200WithTheNewPair()
+    {
+        _refreshTokenService.TokensToReturn = new AuthTokensDto("new-access-token", "new-refresh-token", "Bearer", 3600);
+        var client = _server.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/refresh", new { refreshToken = "an-old-refresh-token" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("new-access-token", body.GetProperty("accessToken").GetString());
+        Assert.Equal("new-refresh-token", body.GetProperty("refreshToken").GetString());
+        Assert.Equal("an-old-refresh-token", _refreshTokenService.LastRefreshCalledWithRawToken);
+    }
+
+    [Fact]
+    public async Task Refresh_NoAccessToken_StillReachesTheEndpoint()
+    {
+        // Public per the contract (security: []) — unlike every other Auth endpoint, this one
+        // must NOT require a bearer token, since the refresh token itself is the credential.
+        _refreshTokenService.TokensToReturn = new AuthTokensDto("new-access-token", "new-refresh-token", "Bearer", 3600);
+        var client = _server.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/refresh", new { refreshToken = "an-old-refresh-token" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Refresh_InvalidOrExpiredToken_Returns401WithErrorShape()
+    {
+        _refreshTokenService.TokensToReturn = null;
+        var client = _server.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/refresh", new { refreshToken = "not-a-real-token" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("UNAUTHORIZED", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Refresh_MissingRefreshToken_Returns400WithErrorBody()
+    {
+        var client = _server.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/refresh", new { });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
     public async Task Logout_ValidTokenAndBody_Returns204_AndRevokesForTheCallingUser()
     {
         var userId = Guid.NewGuid();
@@ -288,6 +341,8 @@ public sealed class AuthControllerTests : IDisposable
         public bool WasCalled { get; private set; }
         public Guid? LastCalledWithUserId { get; private set; }
         public string? LastCalledWithRawToken { get; private set; }
+        public AuthTokensDto? TokensToReturn { get; set; }
+        public string? LastRefreshCalledWithRawToken { get; private set; }
 
         public Task RevokeAsync(Guid userId, string rawRefreshToken, CancellationToken ct = default)
         {
@@ -295,6 +350,12 @@ public sealed class AuthControllerTests : IDisposable
             LastCalledWithUserId = userId;
             LastCalledWithRawToken = rawRefreshToken;
             return Task.CompletedTask;
+        }
+
+        public Task<AuthTokensDto?> RefreshAsync(string rawRefreshToken, CancellationToken ct = default)
+        {
+            LastRefreshCalledWithRawToken = rawRefreshToken;
+            return Task.FromResult(TokensToReturn);
         }
     }
 

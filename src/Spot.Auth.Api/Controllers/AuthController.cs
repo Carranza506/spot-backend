@@ -7,15 +7,36 @@ using Spot.Shared.Errors;
 namespace Spot.Auth.Api.Controllers;
 
 /// <summary>
-/// contracts/spot-api.yaml, "Auth" tag. <c>POST /auth/logout</c> (#51) and
-/// <c>GET</c>/<c>PATCH /auth/me</c> (#52) are implemented so far — login/register/refresh/
-/// change-password are separate, not-yet-implemented issues under the same parent (#42).
+/// contracts/spot-api.yaml, "Auth" tag. <c>POST /auth/logout</c> (#51), <c>GET</c>/<c>PATCH
+/// /auth/me</c> (#52), and <c>POST /auth/refresh</c> (#50) are implemented so far —
+/// login/register/change-password are separate, not-yet-implemented issues under the same
+/// parent (#42).
 /// </summary>
 [ApiController]
 [Route("auth")]
 [Authorize]
 public class AuthController(IRefreshTokenService refreshTokenService, IUserProfileService userProfileService) : ControllerBase
 {
+    /// <summary>
+    /// POST /auth/refresh: exchanges a valid refresh token for a new access/refresh token pair.
+    /// Public per the contract (<c>security: []</c>) — there is no access token yet at this
+    /// point, only the refresh token itself, so this overrides the controller-level
+    /// <see cref="AuthorizeAttribute"/>.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    [ProducesResponseType(typeof(AuthTokensDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken ct)
+    {
+        var tokens = await refreshTokenService.RefreshAsync(request.RefreshToken, ct);
+        if (tokens is null)
+            return Unauthorized(new ApiError("UNAUTHORIZED", "Refresh token inválido, expirado o revocado."));
+
+        return Ok(tokens);
+    }
+
     /// <summary>
     /// POST /auth/logout: revokes the given refresh token. Requires a valid access token (any
     /// authenticated role) — enforced by <see cref="AuthorizeAttribute"/> above, not per-action.

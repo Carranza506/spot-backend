@@ -42,6 +42,8 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 
+builder.Services.Configure<RefreshTokenOptions>(builder.Configuration.GetSection(RefreshTokenOptions.SectionName));
+
 // Stateless — safe as a singleton, same as JwtTokenService above.
 builder.Services.AddSingleton<IRefreshTokenHasher, Sha256RefreshTokenHasher>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
