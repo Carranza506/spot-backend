@@ -1,3 +1,5 @@
+using Spot.Auth.Api.DTOs;
+
 namespace Spot.Auth.Api.Services;
 
 /// <summary>
@@ -18,4 +20,16 @@ public interface IRefreshTokenService
     /// would let a caller use logout to probe for valid-but-not-theirs refresh tokens.
     /// </remarks>
     Task RevokeAsync(Guid userId, string rawRefreshToken, CancellationToken ct = default);
+
+    /// <summary>
+    /// Rotates <paramref name="rawRefreshToken"/> for a new access/refresh token pair: the given
+    /// token is revoked and a freshly issued one takes its place, so a stolen-and-reused refresh
+    /// token cannot be replayed after its legitimate owner has refreshed past it.
+    /// </summary>
+    /// <returns>
+    /// The new token pair, or <see langword="null"/> if <paramref name="rawRefreshToken"/> is
+    /// not an active token (unknown, already revoked, expired) or names a user that no longer
+    /// exists.
+    /// </returns>
+    Task<AuthTokensDto?> RefreshAsync(string rawRefreshToken, CancellationToken ct = default);
 }

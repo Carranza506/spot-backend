@@ -100,6 +100,72 @@ public sealed class RefreshTokenRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task FindActiveByHashAsync_HashOnly_MatchingHash_ReturnsTokenRegardlessOfOwner()
+    {
+        // Unlike the userId-scoped overload, this one is used by /auth/refresh, which has no
+        // access token to read an owner from yet — the hash alone must be enough to find it.
+        var userId = Guid.NewGuid();
+        var token = await SeedTokenAsync(userId, "hash-1");
+
+        var found = await _repository.FindActiveByHashAsync("hash-1");
+
+        Assert.NotNull(found);
+        Assert.Equal(token.Id, found!.Id);
+    }
+
+    [Fact]
+    public async Task FindActiveByHashAsync_HashOnly_AlreadyRevoked_ReturnsNull()
+    {
+        var userId = Guid.NewGuid();
+        await SeedTokenAsync(userId, "hash-1", revokedAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        var found = await _repository.FindActiveByHashAsync("hash-1");
+
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public async Task FindActiveByHashAsync_HashOnly_Expired_ReturnsNull()
+    {
+        var userId = Guid.NewGuid();
+        await SeedTokenAsync(userId, "hash-1", expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+
+        var found = await _repository.FindActiveByHashAsync("hash-1");
+
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public async Task FindActiveByHashAsync_HashOnly_UnknownHash_ReturnsNull()
+    {
+        var userId = Guid.NewGuid();
+        await SeedTokenAsync(userId, "hash-1");
+
+        var found = await _repository.FindActiveByHashAsync("some-other-hash");
+
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public async Task CreateAsync_PersistsTheNewToken()
+    {
+        var token = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = Guid.NewGuid(),
+            TokenHash = "new-hash",
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30),
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+
+        await _repository.CreateAsync(token);
+
+        await using var freshDb = new AuthDbContext(_options);
+        var persisted = await freshDb.RefreshTokens.SingleAsync(x => x.Id == token.Id);
+        Assert.Equal("new-hash", persisted.TokenHash);
+    }
+
+    [Fact]
     public async Task RevokeAsync_SetsRevokedAt_AndPersistsIt()
     {
         var userId = Guid.NewGuid();

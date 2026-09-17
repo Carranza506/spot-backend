@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Spot.Auth.Api.Data;
+using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Services;
 using Spot.Shared.Errors;
@@ -12,7 +13,11 @@ namespace Spot.Auth.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("dev")]
-public class DevController(ITokenService tokenService, IHostEnvironment env, AuthDbContext db) : ControllerBase
+public class DevController(
+    ITokenService tokenService,
+    IHostEnvironment env,
+    AuthDbContext db,
+    IRefreshTokenIssuer refreshTokenIssuer) : ControllerBase
 {
     [HttpPost("token")]
     public async Task<IActionResult> IssueToken([FromQuery] string role = nameof(UserRole.SUPERADMIN), CancellationToken ct = default)
@@ -37,10 +42,30 @@ public class DevController(ITokenService tokenService, IHostEnvironment env, Aut
             Role = parsedRole,
         };
         db.Users.Add(user);
+
+        // Must be saved before the refresh token below is created: User.Id is store-generated
+        // (gen_random_uuid(), not set client-side), so it's still Guid.Empty until this
+        // SaveChangesAsync round-trips and reads it back — the refresh_tokens FK would otherwise
+        // point at a user row that doesn't exist yet.
         await db.SaveChangesAsync(ct);
 
-        var token = tokenService.IssueAccessToken(user.Id.ToString(), parsedRole.ToString());
+        // Also persists a matching refresh_tokens row: with no /auth/login endpoint yet either,
+        // this is the only way to get a real, active refresh token to exercise POST /auth/refresh
+        // against (see Spot.Auth.Api.http).
+        var issued = refreshTokenIssuer.Issue();
+        db.RefreshTokens.Add(new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            TokenHash = issued.HashValue,
+            ExpiresAt = issued.ExpiresAt,
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
 
-        return Ok(token);
+        await db.SaveChangesAsync(ct);
+
+        var accessToken = tokenService.IssueAccessToken(user.Id.ToString(), parsedRole.ToString());
+
+        return Ok(new AuthTokensDto(accessToken.Value, issued.RawValue, "Bearer", accessToken.ExpiresInSeconds));
     }
 }

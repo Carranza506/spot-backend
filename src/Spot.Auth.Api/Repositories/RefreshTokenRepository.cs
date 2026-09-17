@@ -20,9 +20,28 @@ public class RefreshTokenRepository(AuthDbContext db) : IRefreshTokenRepository
             ct);
     }
 
+    public Task<RefreshToken?> FindActiveByHashAsync(string tokenHash, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        // Tracked (not AsNoTracking): same reasoning as the userId-scoped overload above — the
+        // caller (RefreshTokenService.RefreshAsync) immediately revokes what it finds.
+        return db.RefreshTokens.FirstOrDefaultAsync(
+            x => x.TokenHash == tokenHash
+                && x.RevokedAt == null
+                && x.ExpiresAt > now,
+            ct);
+    }
+
     public Task RevokeAsync(RefreshToken token, CancellationToken ct = default)
     {
         token.RevokedAt = DateTimeOffset.UtcNow;
+        return db.SaveChangesAsync(ct);
+    }
+
+    public Task CreateAsync(RefreshToken token, CancellationToken ct = default)
+    {
+        db.RefreshTokens.Add(token);
         return db.SaveChangesAsync(ct);
     }
 }

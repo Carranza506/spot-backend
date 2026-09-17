@@ -8,11 +8,11 @@ using Spot.Shared.Errors;
 namespace Spot.Auth.Api.Controllers;
 
 /// <summary>
-/// contracts/spot-api.yaml, "Auth" tag. <c>POST /auth/register</c>, <c>POST /auth/logout</c>
-/// (#51) and <c>GET</c>/<c>PATCH /auth/me</c> (#52) are implemented so far — login/refresh/
-/// change-password are separate, not-yet-implemented issues under the same parent (#42).
-/// Register must stay reachable without a token, so authorization is applied per-action below
-/// instead of at the class level.
+/// contracts/spot-api.yaml, "Auth" tag. <c>POST /auth/register</c>, <c>POST /auth/refresh</c>
+/// (#50), <c>POST /auth/logout</c> (#51), and <c>GET</c>/<c>PATCH /auth/me</c> (#52) are
+/// implemented so far — login/change-password are separate, not-yet-implemented issues under
+/// the same parent (#42). Register and refresh must stay reachable without an access token, so
+/// authorization is applied per-action below instead of at the class level.
 /// </summary>
 [ApiController]
 [Route("auth")]
@@ -37,6 +37,24 @@ public class AuthController(
         {
             return Conflict(new ApiError("EMAIL_ALREADY_REGISTERED", "Ese correo ya está registrado."));
         }
+    }
+
+    /// <summary>
+    /// POST /auth/refresh: exchanges a valid refresh token for a new access/refresh token pair.
+    /// Public per the contract (<c>security: []</c>) — there is no access token yet at this
+    /// point, only the refresh token itself, so (like Register above) no <see cref="AuthorizeAttribute"/> here.
+    /// </summary>
+    [HttpPost("refresh")]
+    [ProducesResponseType(typeof(AuthTokensDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken ct)
+    {
+        var tokens = await refreshTokenService.RefreshAsync(request.RefreshToken, ct);
+        if (tokens is null)
+            return Unauthorized(new ApiError("UNAUTHORIZED", "Refresh token inválido, expirado o revocado."));
+
+        return Ok(tokens);
     }
 
     /// <summary>

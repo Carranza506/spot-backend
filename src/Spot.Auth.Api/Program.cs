@@ -47,8 +47,10 @@ builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 // Stateless — safe as a singleton, same as JwtTokenService above.
 builder.Services.AddSingleton<IRefreshTokenHasher, Sha256RefreshTokenHasher>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-// Revokes an existing refresh token (POST /auth/logout) — not to be confused with
-// IRefreshTokenIssuer below, which mints a new one (POST /auth/register, and later /login).
+// Revokes (POST /auth/logout) and rotates (POST /auth/refresh) existing refresh tokens — not to
+// be confused with IRefreshTokenIssuer below, which mints a token from scratch (POST
+// /auth/register, and later /login). RefreshTokenService itself depends on IRefreshTokenIssuer
+// to mint the replacement token during a rotation.
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 
 builder.Services.Configure<RefreshTokenOptions>(builder.Configuration.GetSection(RefreshTokenOptions.SectionName));
