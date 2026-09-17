@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Repositories;
 
 namespace Spot.Auth.Api.Tests.Controllers;
@@ -131,6 +132,129 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.False(factory.RefreshTokenService.WasCalled);
     }
+
+    [Fact]
+    public async Task GetMe_ValidToken_Returns200WithTheCallersProfile()
+    {
+        factory.UserProfileService.Reset();
+        var userId = Guid.NewGuid();
+        factory.UserProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(userId, body.GetProperty("id").GetGuid());
+        Assert.Equal(userId, factory.UserProfileService.LastRequestedUserId);
+    }
+
+    [Fact]
+    public async Task GetMe_NoAccessToken_Returns401()
+    {
+        factory.UserProfileService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(factory.UserProfileService.LastRequestedUserId);
+    }
+
+    [Fact]
+    public async Task GetMe_TokenNamesAUserThatNoLongerExists_Returns401()
+    {
+        factory.UserProfileService.Reset();
+        factory.UserProfileService.ProfileToReturn = null;
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateMe_ValidBody_Returns200_AndForwardsTheParsedRequest()
+    {
+        factory.UserProfileService.Reset();
+        var userId = Guid.NewGuid();
+        factory.UserProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(userId, factory.UserProfileService.LastRequestedUserId);
+        Assert.True(factory.UserProfileService.LastUpdateRequest!.FirstName.IsSet);
+        Assert.Equal("Nuevo Nombre", factory.UserProfileService.LastUpdateRequest.FirstName.Value);
+        Assert.False(factory.UserProfileService.LastUpdateRequest.Phone.IsSet);
+    }
+
+    [Fact]
+    public async Task UpdateMe_ExplicitNullPhone_IsForwardedAsSetWithNullValue()
+    {
+        factory.UserProfileService.Reset();
+        var userId = Guid.NewGuid();
+        factory.UserProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { phone = (string?)null });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(factory.UserProfileService.LastUpdateRequest!.Phone.IsSet);
+        Assert.Null(factory.UserProfileService.LastUpdateRequest.Phone.Value);
+    }
+
+    [Fact]
+    public async Task UpdateMe_NoAccessToken_Returns401_AndDoesNotCallTheService()
+    {
+        factory.UserProfileService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(factory.UserProfileService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMe_EmptyFirstName_Returns400WithErrorShape_AndDoesNotCallTheService()
+    {
+        factory.UserProfileService.Reset();
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserProfileService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMe_TokenNamesAUserThatNoLongerExists_Returns401()
+    {
+        factory.UserProfileService.Reset();
+        factory.UserProfileService.ProfileToReturn = null;
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private static UserDto SampleProfile(Guid userId) => new(
+        Id: userId,
+        Email: "maria@example.com",
+        FirstName: "María",
+        LastName: "Rodríguez",
+        Phone: "+506 8888-1234",
+        ProfilePhotoUrl: null,
+        Role: "CLIENT",
+        IsActive: true,
+        LinkedProviders: [],
+        CreatedAt: DateTimeOffset.UtcNow,
+        UpdatedAt: DateTimeOffset.UtcNow);
 
     private HttpClient CreateAuthenticatedClient(Guid userId)
     {

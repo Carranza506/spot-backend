@@ -34,6 +34,15 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
         }
     }
 
+    public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        db.Users.Include(u => u.AuthProviders).FirstOrDefaultAsync(u => u.Id == id, ct);
+
+    public async Task SaveChangesAsync(User user, CancellationToken ct = default)
+    {
+        await db.SaveChangesAsync(ct);
+        await db.Entry(user).ReloadAsync(ct);
+    }
+
     private static bool IsUniqueEmailViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "IX_users_email" };
 }

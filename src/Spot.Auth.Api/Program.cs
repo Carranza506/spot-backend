@@ -57,6 +57,7 @@ builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
 // Validates incoming access tokens (public key only) for [Authorize] endpoints such as
 // POST /auth/logout — separate from JwtTokenService above, which signs new tokens with the

@@ -2,7 +2,7 @@ using Spot.Auth.Api.Models;
 
 namespace Spot.Auth.Api.DTOs;
 
-/// <summary>Matches the User schema in contracts/spot-api.yaml. Never carries PasswordHash.</summary>
+/// <summary>Matches the "User" schema in contracts/spot-api.yaml. Never carries PasswordHash.</summary>
 public sealed record UserDto(
     Guid Id,
     string Email,
@@ -16,6 +16,7 @@ public sealed record UserDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt)
 {
+    /// <summary>Requires <see cref="User.AuthProviders"/> to already be loaded (see IUserRepository.GetByIdAsync).</summary>
     public static UserDto FromEntity(User user) => new(
         Id: user.Id,
         Email: user.Email,
@@ -25,9 +26,7 @@ public sealed record UserDto(
         ProfilePhotoUrl: user.ProfilePhotoUrl,
         Role: user.Role.ToString(),
         IsActive: user.IsActive,
-        // Social login (Google, etc.) is a separate issue — a user created via /auth/register
-        // never has a linked provider.
-        LinkedProviders: [],
+        LinkedProviders: user.AuthProviders.Select(p => p.Provider.ToString()).ToList(),
         CreatedAt: user.CreatedAt,
         UpdatedAt: user.UpdatedAt);
 }
