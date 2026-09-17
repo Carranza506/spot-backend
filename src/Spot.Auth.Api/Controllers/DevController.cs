@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Spot.Auth.Api.Data;
 using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Services;
 using Spot.Shared.Errors;
@@ -11,10 +12,10 @@ namespace Spot.Auth.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("dev")]
-public class DevController(ITokenService tokenService, IHostEnvironment env) : ControllerBase
+public class DevController(ITokenService tokenService, IHostEnvironment env, AuthDbContext db) : ControllerBase
 {
     [HttpPost("token")]
-    public IActionResult IssueToken([FromQuery] string role = nameof(UserRole.SUPERADMIN))
+    public async Task<IActionResult> IssueToken([FromQuery] string role = nameof(UserRole.SUPERADMIN), CancellationToken ct = default)
     {
         if (!env.IsDevelopment())
             return NotFound();
@@ -24,8 +25,21 @@ public class DevController(ITokenService tokenService, IHostEnvironment env) : C
                 "BAD_REQUEST",
                 $"role debe ser uno de: {string.Join(", ", Enum.GetNames<UserRole>())}."));
 
-        var userId = Guid.NewGuid().ToString();
-        var token = tokenService.IssueAccessToken(userId, parsedRole.ToString());
+        // Also persists a matching row in `users` (Development-only, same as this whole
+        // controller): with no /auth/register endpoint on this branch yet, a bare token isn't
+        // enough to exercise endpoints like GET/PATCH /auth/me that load the caller's own user
+        // record — they'd 401 with "valid token, no such user" otherwise.
+        var user = new User
+        {
+            Email = $"dev-{Guid.NewGuid():N}@spot.cr",
+            FirstName = "Dev",
+            LastName = "User",
+            Role = parsedRole,
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync(ct);
+
+        var token = tokenService.IssueAccessToken(user.Id.ToString(), parsedRole.ToString());
 
         return Ok(token);
     }

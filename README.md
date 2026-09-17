@@ -61,6 +61,20 @@ dotnet ef database update --project src/Spot.Notifications.Api # 5.
 
 Each service that needs data access uses its own connection string, configured in `appsettings.Development.json` **(not committed, see the environment variables section below)**.
 
+### Spot.Auth.Api — connection string and migrations
+
+`Spot.Auth.Api` owns `users` and `refresh_tokens` via EF Core (`AuthDbContext`). Set the local
+connection string once via user-secrets (never in an `appsettings*.json` file, since it can carry
+a password):
+
+```bash
+cd src/Spot.Auth.Api
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=spot_dev;Username=postgres;Password=..."
+```
+
+In production, set the connection string the same way the JWT keys are set — an environment
+variable ASP.NET Core maps automatically: `ConnectionStrings__DefaultConnection`.
+
 > **If you already have a local `spot_dev` from before this change:** each `DbContext` now points
 > at a per-service migrations history table (`__EFMigrationsHistory_auth`, `_business`, `_booking`,
 > `_aisearch`, `_notifications`) instead of the single shared default `__EFMigrationsHistory`. If
@@ -75,6 +89,7 @@ Each service that needs data access uses its own connection string, configured i
 > ```
 > Do not hand-edit it, and do not `psql -f` it to set up a database — always use the `dotnet ef
 > database update` sequence above.
+
 
 ## Environment variables / local configuration
 

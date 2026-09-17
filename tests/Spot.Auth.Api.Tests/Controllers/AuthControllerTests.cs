@@ -1,117 +1,113 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Text.Json;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.TestHost;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.IdentityModel.Tokens;
-using Spot.Auth.Api.Configuration;
-using Spot.Auth.Api.Services;
-using Spot.Shared.Auth;
+using Spot.Auth.Api.DTOs;
+using Spot.Auth.Api.Repositories;
 
 namespace Spot.Auth.Api.Tests.Controllers;
 
-/// <summary>
-/// End-to-end tests for <c>POST /auth/logout</c> through a real request pipeline (routing, JWT
-/// auth, model binding, the controller) — same <see cref="TestServer"/> approach as
-/// Spot.Shared.Tests' JwtAuthenticationExtensionsTests, so the [Authorize] behavior itself isn't
-/// re-tested here. <see cref="IRefreshTokenService"/> is faked so these tests stay about the
-/// HTTP/contract layer; RefreshTokenService's own logic is covered by RefreshTokenServiceTests.
-/// </summary>
-public sealed class AuthControllerTests : IDisposable
+public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApiFactory>
 {
-    private const string Issuer = "https://api.spot.cr";
-    private const string Audience = "spot-clients";
-
-    private readonly RSA _signingKey = RSA.Create(2048);
-    private readonly FakeRefreshTokenService _refreshTokenService = new();
-    private readonly IHost _host;
-    private readonly TestServer _server;
-
-    public AuthControllerTests()
+    [Fact]
+    public async Task Register_WithValidBody_Returns201WithAuthResponse()
     {
-        var configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Issuer"] = Issuer,
-                ["Jwt:Audience"] = Audience,
-                ["Jwt:PublicKeyPem"] = _signingKey.ExportSubjectPublicKeyInfoPem(),
-            })
-            .Build();
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
 
-        _host = new HostBuilder()
-            .ConfigureWebHost(webHost =>
-            {
-                webHost.UseTestServer();
-                webHost.ConfigureServices(services =>
-                {
-                    // ConfigureSpotApiErrorShape() is the exact same call Program.cs makes —
-                    // shared on purpose, so this test host and the real app can't silently
-                    // drift into answering 400s with two different bodies.
-                    //
-                    // AddApplicationPart is required here specifically because this test host
-                    // (unlike the real app) doesn't run from the Spot.Auth.Api assembly, so
-                    // AddControllers()'s default assembly scan would never find AuthController
-                    // and every request below would 404 instead of exercising real behavior.
-                    services.AddControllers()
-                        .AddApplicationPart(typeof(Spot.Auth.Api.Controllers.AuthController).Assembly)
-                        .ConfigureSpotApiErrorShape();
-                    services.AddSpotJwtAuthentication(configuration);
-                    services.AddSingleton<IRefreshTokenService>(_refreshTokenService);
-                });
-                webHost.Configure(app =>
-                {
-                    app.UseRouting();
-                    app.UseAuthentication();
-                    app.UseAuthorization();
-                    app.UseEndpoints(endpoints => endpoints.MapControllers());
-                });
-            })
-            .Start();
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "new.user@example.com",
+            password = "SuperClave#2026",
+            firstName = "María",
+            lastName = "Rodríguez",
+        });
 
-        _server = _host.GetTestServer();
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("new.user@example.com", body.GetProperty("user").GetProperty("email").GetString());
+        Assert.Equal("CLIENT", body.GetProperty("user").GetProperty("role").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("accessToken").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("refreshToken").GetString()));
+        Assert.Equal("Bearer", body.GetProperty("tokens").GetProperty("tokenType").GetString());
     }
 
-    public void Dispose()
+    [Fact]
+    public async Task Register_WithDuplicateEmail_Returns409WithConflictBody()
     {
-        _host.Dispose();
-        _signingKey.Dispose();
+        factory.UserRepository.Reset();
+        factory.UserRepository.ExceptionToThrow = new DuplicateEmailException("taken@example.com");
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "taken@example.com",
+            password = "SuperClave#2026",
+            firstName = "María",
+            lastName = "Rodríguez",
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("EMAIL_ALREADY_REGISTERED", body.GetProperty("code").GetString());
+        Assert.True(body.TryGetProperty("timestamp", out _));
+    }
+
+    [Theory]
+    [InlineData("not-an-email", "SuperClave#2026", "María", "Rodríguez")] // invalid email
+    [InlineData("valid@example.com", "short", "María", "Rodríguez")] // password too short
+    [InlineData("valid@example.com", "SuperClave#2026", "", "Rodríguez")] // missing first name
+    public async Task Register_WithInvalidBody_Returns400WithErrorShape(
+        string email, string password, string firstName, string lastName)
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new { email, password, firstName, lastName });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("message").GetString()));
+        Assert.True(body.TryGetProperty("timestamp", out _));
+
+        // The invalid request must never have reached the repository.
+        Assert.Null(factory.UserRepository.CreatedUser);
     }
 
     [Fact]
     public async Task Logout_ValidTokenAndBody_Returns204_AndRevokesForTheCallingUser()
     {
+        factory.RefreshTokenService.Reset();
         var userId = Guid.NewGuid();
         var client = CreateAuthenticatedClient(userId);
 
         var response = await client.PostAsJsonAsync("/auth/logout", new { refreshToken = "some-refresh-token" });
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-        Assert.Equal(userId, _refreshTokenService.LastCalledWithUserId);
-        Assert.Equal("some-refresh-token", _refreshTokenService.LastCalledWithRawToken);
+        Assert.Equal(userId, factory.RefreshTokenService.LastCalledWithUserId);
+        Assert.Equal("some-refresh-token", factory.RefreshTokenService.LastCalledWithRawToken);
     }
 
     [Fact]
     public async Task Logout_NoAccessToken_Returns401_AndDoesNotCallTheService()
     {
-        var client = _server.CreateClient();
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync("/auth/logout", new { refreshToken = "some-refresh-token" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.False(_refreshTokenService.WasCalled);
+        Assert.False(factory.RefreshTokenService.WasCalled);
     }
 
     [Fact]
     public async Task Logout_MissingRefreshToken_Returns400WithErrorBody()
     {
+        factory.RefreshTokenService.Reset();
         var client = CreateAuthenticatedClient(Guid.NewGuid());
 
         var response = await client.PostAsJsonAsync("/auth/logout", new { });
@@ -119,63 +115,151 @@ public sealed class AuthControllerTests : IDisposable
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
-        Assert.False(_refreshTokenService.WasCalled);
+        Assert.False(factory.RefreshTokenService.WasCalled);
     }
 
     [Fact]
     public async Task Logout_ExpiredAccessToken_Returns401_AndDoesNotCallTheService()
     {
-        var client = CreateAuthenticatedClient(
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
+        var expiredToken = factory.IssueAccessToken(
             Guid.NewGuid(), notBefore: DateTime.UtcNow.AddMinutes(-30), expires: DateTime.UtcNow.AddMinutes(-5));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", expiredToken);
 
         var response = await client.PostAsJsonAsync("/auth/logout", new { refreshToken = "some-refresh-token" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.False(_refreshTokenService.WasCalled);
+        Assert.False(factory.RefreshTokenService.WasCalled);
     }
 
-    private HttpClient CreateAuthenticatedClient(Guid userId, DateTime? notBefore = null, DateTime? expires = null)
+    [Fact]
+    public async Task GetMe_ValidToken_Returns200WithTheCallersProfile()
     {
-        var client = _server.CreateClient();
-        var token = CreateToken(userId, notBefore ?? DateTime.UtcNow.AddMinutes(-1), expires ?? DateTime.UtcNow.AddMinutes(30));
-        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        factory.UserProfileService.Reset();
+        var userId = Guid.NewGuid();
+        factory.UserProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(userId, body.GetProperty("id").GetGuid());
+        Assert.Equal(userId, factory.UserProfileService.LastRequestedUserId);
+    }
+
+    [Fact]
+    public async Task GetMe_NoAccessToken_Returns401()
+    {
+        factory.UserProfileService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(factory.UserProfileService.LastRequestedUserId);
+    }
+
+    [Fact]
+    public async Task GetMe_TokenNamesAUserThatNoLongerExists_Returns401()
+    {
+        factory.UserProfileService.Reset();
+        factory.UserProfileService.ProfileToReturn = null;
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateMe_ValidBody_Returns200_AndForwardsTheParsedRequest()
+    {
+        factory.UserProfileService.Reset();
+        var userId = Guid.NewGuid();
+        factory.UserProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(userId, factory.UserProfileService.LastRequestedUserId);
+        Assert.True(factory.UserProfileService.LastUpdateRequest!.FirstName.IsSet);
+        Assert.Equal("Nuevo Nombre", factory.UserProfileService.LastUpdateRequest.FirstName.Value);
+        Assert.False(factory.UserProfileService.LastUpdateRequest.Phone.IsSet);
+    }
+
+    [Fact]
+    public async Task UpdateMe_ExplicitNullPhone_IsForwardedAsSetWithNullValue()
+    {
+        factory.UserProfileService.Reset();
+        var userId = Guid.NewGuid();
+        factory.UserProfileService.ProfileToReturn = SampleProfile(userId);
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { phone = (string?)null });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(factory.UserProfileService.LastUpdateRequest!.Phone.IsSet);
+        Assert.Null(factory.UserProfileService.LastUpdateRequest.Phone.Value);
+    }
+
+    [Fact]
+    public async Task UpdateMe_NoAccessToken_Returns401_AndDoesNotCallTheService()
+    {
+        factory.UserProfileService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(factory.UserProfileService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMe_EmptyFirstName_Returns400WithErrorShape_AndDoesNotCallTheService()
+    {
+        factory.UserProfileService.Reset();
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserProfileService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMe_TokenNamesAUserThatNoLongerExists_Returns401()
+    {
+        factory.UserProfileService.Reset();
+        factory.UserProfileService.ProfileToReturn = null;
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nuevo Nombre" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    private static UserDto SampleProfile(Guid userId) => new(
+        Id: userId,
+        Email: "maria@example.com",
+        FirstName: "María",
+        LastName: "Rodríguez",
+        Phone: "+506 8888-1234",
+        ProfilePhotoUrl: null,
+        Role: "CLIENT",
+        IsActive: true,
+        LinkedProviders: [],
+        CreatedAt: DateTimeOffset.UtcNow,
+        UpdatedAt: DateTimeOffset.UtcNow);
+
+    private HttpClient CreateAuthenticatedClient(Guid userId)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.IssueAccessToken(userId));
         return client;
-    }
-
-    private string CreateToken(Guid userId, DateTime notBefore, DateTime expires)
-    {
-        var credentials = new SigningCredentials(new RsaSecurityKey(_signingKey), SecurityAlgorithms.RsaSha256);
-        var claims = new[]
-        {
-            new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
-            new Claim("role", "CLIENT"),
-        };
-
-        var token = new JwtSecurityTokenHandler().CreateJwtSecurityToken(
-            issuer: Issuer,
-            audience: Audience,
-            subject: new ClaimsIdentity(claims),
-            notBefore: notBefore,
-            expires: expires,
-            issuedAt: notBefore,
-            signingCredentials: credentials);
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    /// <summary>Records how it was called instead of touching any real persistence.</summary>
-    private sealed class FakeRefreshTokenService : IRefreshTokenService
-    {
-        public bool WasCalled { get; private set; }
-        public Guid? LastCalledWithUserId { get; private set; }
-        public string? LastCalledWithRawToken { get; private set; }
-
-        public Task RevokeAsync(Guid userId, string rawRefreshToken, CancellationToken ct = default)
-        {
-            WasCalled = true;
-            LastCalledWithUserId = userId;
-            LastCalledWithRawToken = rawRefreshToken;
-            return Task.CompletedTask;
-        }
     }
 }
