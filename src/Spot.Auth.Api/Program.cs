@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Npgsql.NameTranslation;
@@ -7,6 +8,7 @@ using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Repositories;
 using Spot.Auth.Api.Services;
 using Spot.Shared.Auth;
+using Spot.Shared.Errors;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,9 +49,16 @@ builder.Services.Configure<RefreshTokenOptions>(builder.Configuration.GetSection
 // Stateless — safe as a singleton, same as JwtTokenService above.
 builder.Services.AddSingleton<IRefreshTokenHasher, Sha256RefreshTokenHasher>();
 builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+// Revokes an existing refresh token (POST /auth/logout) — not to be confused with
+// IRefreshTokenIssuer below, which mints a new one (POST /auth/register, and later /login).
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 
+builder.Services.Configure<RefreshTokenOptions>(builder.Configuration.GetSection(RefreshTokenOptions.SectionName));
+builder.Services.AddSingleton<IRefreshTokenIssuer, RefreshTokenIssuer>();
+builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
+
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
 // Validates incoming access tokens (public key only) for [Authorize] endpoints such as
@@ -62,6 +71,13 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
+app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    await context.Response.WriteAsJsonAsync(
+        new ApiError("INTERNAL_ERROR", "Ocurrió un error inesperado. Por favor intenta de nuevo más tarde."));
+}));
+
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -69,3 +85,5 @@ app.MapControllers();
 app.MapHealthChecks("/health");
 
 app.Run();
+
+public partial class Program;
