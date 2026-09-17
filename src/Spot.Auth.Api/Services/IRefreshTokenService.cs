@@ -1,19 +1,21 @@
 namespace Spot.Auth.Api.Services;
 
 /// <summary>
-/// Generates opaque refresh tokens. Pure and persistence-free by design: it has no idea a
-/// database exists, so it stays trivially unit-testable, and callers decide how/when to persist
-/// the hash (typically atomically alongside whatever else the operation is doing).
+/// Business logic for refresh tokens that spans hashing and persistence — the layer a
+/// controller talks to instead of the repository directly.
 /// </summary>
 public interface IRefreshTokenService
 {
-    /// <summary>Generates a new random refresh token and its expiration.</summary>
-    IssuedRefreshToken Issue();
+    /// <summary>
+    /// Revokes the refresh token identified by <paramref name="rawRefreshToken"/>, if it belongs
+    /// to <paramref name="userId"/> and is still active (see <see cref="IRefreshTokenRepository"/>).
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does not report whether a matching token was found: the token might not
+    /// exist, might belong to someone else, or might already be revoked/expired — from the
+    /// caller's point of view (already holding a valid access token) the outcome is the same
+    /// either way, "this session is not active". Distinguishing those cases in the response
+    /// would let a caller use logout to probe for valid-but-not-theirs refresh tokens.
+    /// </remarks>
+    Task RevokeAsync(Guid userId, string rawRefreshToken, CancellationToken ct = default);
 }
-
-/// <summary>
-/// <paramref name="RawValue"/> is the one-time value to hand back to the client — never persist
-/// it. <paramref name="HashValue"/> is what a repository should store instead, so a leaked
-/// database can never be used to impersonate a session.
-/// </summary>
-public sealed record IssuedRefreshToken(string RawValue, string HashValue, DateTime ExpiresAt);

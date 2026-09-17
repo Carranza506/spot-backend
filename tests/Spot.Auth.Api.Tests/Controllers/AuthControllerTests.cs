@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Spot.Auth.Api.Repositories;
@@ -74,5 +75,67 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
 
         // The invalid request must never have reached the repository.
         Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task Logout_ValidTokenAndBody_Returns204_AndRevokesForTheCallingUser()
+    {
+        factory.RefreshTokenService.Reset();
+        var userId = Guid.NewGuid();
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.PostAsJsonAsync("/auth/logout", new { refreshToken = "some-refresh-token" });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(userId, factory.RefreshTokenService.LastCalledWithUserId);
+        Assert.Equal("some-refresh-token", factory.RefreshTokenService.LastCalledWithRawToken);
+    }
+
+    [Fact]
+    public async Task Logout_NoAccessToken_Returns401_AndDoesNotCallTheService()
+    {
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/logout", new { refreshToken = "some-refresh-token" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.False(factory.RefreshTokenService.WasCalled);
+    }
+
+    [Fact]
+    public async Task Logout_MissingRefreshToken_Returns400WithErrorBody()
+    {
+        factory.RefreshTokenService.Reset();
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PostAsJsonAsync("/auth/logout", new { });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.False(factory.RefreshTokenService.WasCalled);
+    }
+
+    [Fact]
+    public async Task Logout_ExpiredAccessToken_Returns401_AndDoesNotCallTheService()
+    {
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
+        var expiredToken = factory.IssueAccessToken(
+            Guid.NewGuid(), notBefore: DateTime.UtcNow.AddMinutes(-30), expires: DateTime.UtcNow.AddMinutes(-5));
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", expiredToken);
+
+        var response = await client.PostAsJsonAsync("/auth/logout", new { refreshToken = "some-refresh-token" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.False(factory.RefreshTokenService.WasCalled);
+    }
+
+    private HttpClient CreateAuthenticatedClient(Guid userId)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", factory.IssueAccessToken(userId));
+        return client;
     }
 }

@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Spot.Auth.Api.Configuration;
 using Spot.Auth.Api.Data;
@@ -11,20 +10,7 @@ using Spot.Shared.Errors;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddControllers()
-    .ConfigureApiBehaviorOptions(options =>
-    {
-        options.InvalidModelStateResponseFactory = context =>
-        {
-            var message = context.ModelState.Values
-                .SelectMany(v => v.Errors)
-                .Select(e => e.ErrorMessage)
-                .FirstOrDefault(e => !string.IsNullOrWhiteSpace(e))
-                ?? "La solicitud no es válida.";
-
-            return new BadRequestObjectResult(new ApiError("BAD_REQUEST", message));
-        };
-    });
+builder.Services.AddControllers().ConfigureSpotApiErrorShape();
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
@@ -35,12 +21,24 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 
+// Stateless — safe as a singleton, same as JwtTokenService above.
+builder.Services.AddSingleton<IRefreshTokenHasher, Sha256RefreshTokenHasher>();
+builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+// Revokes an existing refresh token (POST /auth/logout) — not to be confused with
+// IRefreshTokenIssuer below, which mints a new one (POST /auth/register, and later /login).
+builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
+
 builder.Services.Configure<RefreshTokenOptions>(builder.Configuration.GetSection(RefreshTokenOptions.SectionName));
-builder.Services.AddSingleton<IRefreshTokenService, RefreshTokenService>();
+builder.Services.AddSingleton<IRefreshTokenIssuer, RefreshTokenIssuer>();
 builder.Services.AddSingleton<IPasswordHasher<User>, PasswordHasher<User>>();
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+
+// Validates incoming access tokens (public key only) for [Authorize] endpoints such as
+// POST /auth/logout — separate from JwtTokenService above, which signs new tokens with the
+// private key. Same shared setup every other microservice uses.
+builder.Services.AddSpotJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
@@ -55,6 +53,7 @@ app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
 }));
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");

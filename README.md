@@ -39,13 +39,6 @@ src/
 
 ## Database
 
-The full schema lives in `db/Spot.sql`. To create the local database:
-
-```bash
-psql -U postgres -c "CREATE DATABASE spot_dev;"
-psql -U postgres -d spot_dev -f db/Spot.sql
-
-
 All five services share **one physical Postgres database** (`spot_dev`), and **EF Core migrations
 are the single authoritative source of the schema** — not a raw SQL script. `db/Spot.sql` is kept
 only as a generated, human-readable reference snapshot of the schema (see the note at the end of
@@ -55,7 +48,6 @@ Each service owns its own migrations and its own `__EFMigrationsHistory_<service
 `Program.cs`), so applying them is safe to do independently per service — but **the order below
 must be followed on a fresh database**: `Spot.Auth.Api` creates `users` first, which every other
 service's migrations add a foreign key to.
-```
 
 ```bash
 psql -U postgres -c "CREATE DATABASE spot_dev;"
@@ -65,11 +57,9 @@ dotnet ef database update --project src/Spot.Business.Api      # 2. requires pos
 dotnet ef database update --project src/Spot.Booking.Api       # 3. requires btree_gist
 dotnet ef database update --project src/Spot.AiSearch.Api      # 4.
 dotnet ef database update --project src/Spot.Notifications.Api # 5.
-
 ```
 
 Each service that needs data access uses its own connection string, configured in `appsettings.Development.json` **(not committed, see the environment variables section below)**.
-
 
 ### Spot.Auth.Api — connection string and migrations
 
@@ -82,20 +72,8 @@ cd src/Spot.Auth.Api
 dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Database=spot_dev;Username=postgres;Password=..."
 ```
 
-If `spot_dev` was created from `db/Spot.sql`, the `users`/`refresh_tokens` tables (and the
-`user_role` enum) already exist — `Spot.Auth.Api`'s `InitialCreate` migration detects and skips
-re-creating the enum, but do **not** also run `dotnet ef database update` against that same
-database, since it would try to re-create the tables themselves and fail. Migrations are meant for
-a database that doesn't already have them (e.g. a fresh `spot_dev` created without running
-`db/Spot.sql`, or CI):
-
-```bash
-dotnet ef database update
-```
-
 In production, set the connection string the same way the JWT keys are set — an environment
 variable ASP.NET Core maps automatically: `ConnectionStrings__DefaultConnection`.
-
 
 > **If you already have a local `spot_dev` from before this change:** each `DbContext` now points
 > at a per-service migrations history table (`__EFMigrationsHistory_auth`, `_business`, `_booking`,
@@ -125,8 +103,9 @@ Then fill in the real values there (connection string, JWT secret, API keys). **
 
 ## RSA keys for JWT
 
-Access tokens are RS256 JWTs: `Spot.Auth.Api` signs with an RSA **private** key, and every other
-microservice validates the signature with the matching **public** key only (via
+Access tokens are RS256 JWTs: `Spot.Auth.Api` signs with an RSA **private** key, and every
+microservice — including `Spot.Auth.Api` itself, for its own `[Authorize]` endpoints like
+`POST /auth/logout` — validates the signature with the matching **public** key only (via
 `AddSpotJwtAuthentication` in `Spot.Shared`). The private key must never be committed or shared
 outside `Spot.Auth.Api`.
 

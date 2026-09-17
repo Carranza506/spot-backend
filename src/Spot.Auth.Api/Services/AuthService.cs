@@ -9,7 +9,7 @@ public sealed class AuthService(
     IUserRepository userRepository,
     IPasswordHasher<User> passwordHasher,
     ITokenService tokenService,
-    IRefreshTokenService refreshTokenService) : IAuthService
+    IRefreshTokenIssuer refreshTokenIssuer) : IAuthService
 {
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
@@ -25,7 +25,7 @@ public sealed class AuthService(
         // reaches the repository or the database.
         user.PasswordHash = passwordHasher.HashPassword(user, request.Password);
 
-        var issuedRefreshToken = refreshTokenService.Issue();
+        var issuedRefreshToken = refreshTokenIssuer.Issue();
         var refreshToken = new RefreshToken
         {
             TokenHash = issuedRefreshToken.HashValue,

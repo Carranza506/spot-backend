@@ -100,7 +100,7 @@ public class AuthServiceTests
         FakeUserRepository repo, out FakeTokenService tokenService, IPasswordHasher<User>? hasher = null)
     {
         tokenService = new FakeTokenService();
-        var refreshTokenService = new RefreshTokenService(Options.Create(new RefreshTokenOptions()));
-        return new AuthService(repo, hasher ?? new PasswordHasher<User>(), tokenService, refreshTokenService);
+        var refreshTokenIssuer = new RefreshTokenIssuer(Options.Create(new RefreshTokenOptions()), new Sha256RefreshTokenHasher());
+        return new AuthService(repo, hasher ?? new PasswordHasher<User>(), tokenService, refreshTokenIssuer);
     }
 }
