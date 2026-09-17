@@ -33,7 +33,7 @@ public sealed class RefreshTokenServiceTests : IDisposable
             new Sha256RefreshTokenHasher(),
             new UserRepository(_db),
             _tokenService,
-            Options.Create(new RefreshTokenOptions { ExpiresInDays = 30 }));
+            new RefreshTokenIssuer(Options.Create(new RefreshTokenOptions { ExpirationDays = 30 }), new Sha256RefreshTokenHasher()));
     }
 
     public void Dispose() => _db.Dispose();

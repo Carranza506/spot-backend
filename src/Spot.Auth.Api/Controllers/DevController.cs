@@ -1,6 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
-using Spot.Auth.Api.Configuration;
 using Spot.Auth.Api.Data;
 using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Models;
@@ -19,8 +17,7 @@ public class DevController(
     ITokenService tokenService,
     IHostEnvironment env,
     AuthDbContext db,
-    IRefreshTokenHasher refreshTokenHasher,
-    IOptions<RefreshTokenOptions> refreshTokenOptions) : ControllerBase
+    IRefreshTokenIssuer refreshTokenIssuer) : ControllerBase
 {
     [HttpPost("token")]
     public async Task<IActionResult> IssueToken([FromQuery] string role = nameof(UserRole.SUPERADMIN), CancellationToken ct = default)
@@ -55,13 +52,13 @@ public class DevController(
         // Also persists a matching refresh_tokens row: with no /auth/login endpoint yet either,
         // this is the only way to get a real, active refresh token to exercise POST /auth/refresh
         // against (see Spot.Auth.Api.http).
-        var rawRefreshToken = RefreshTokenGenerator.GenerateRaw();
+        var issued = refreshTokenIssuer.Issue();
         db.RefreshTokens.Add(new RefreshToken
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            TokenHash = refreshTokenHasher.Hash(rawRefreshToken),
-            ExpiresAt = DateTimeOffset.UtcNow.AddDays(refreshTokenOptions.Value.ExpiresInDays),
+            TokenHash = issued.HashValue,
+            ExpiresAt = issued.ExpiresAt,
             CreatedAt = DateTimeOffset.UtcNow,
         });
 
@@ -69,6 +66,6 @@ public class DevController(
 
         var accessToken = tokenService.IssueAccessToken(user.Id.ToString(), parsedRole.ToString());
 
-        return Ok(new AuthTokensDto(accessToken.Value, rawRefreshToken, "Bearer", accessToken.ExpiresInSeconds));
+        return Ok(new AuthTokensDto(accessToken.Value, issued.RawValue, "Bearer", accessToken.ExpiresInSeconds));
     }
 }

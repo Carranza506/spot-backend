@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Options;
-using Spot.Auth.Api.Configuration;
 using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Repositories;
@@ -11,7 +9,7 @@ public class RefreshTokenService(
     IRefreshTokenHasher hasher,
     IUserRepository userRepository,
     ITokenService tokenService,
-    IOptions<RefreshTokenOptions> options) : IRefreshTokenService
+    IRefreshTokenIssuer refreshTokenIssuer) : IRefreshTokenService
 {
     public async Task RevokeAsync(Guid userId, string rawRefreshToken, CancellationToken ct = default)
     {
@@ -48,13 +46,16 @@ public class RefreshTokenService(
         // so a stolen copy of it can't be replayed for a second token pair.
         await repository.RevokeAsync(token, ct);
 
-        var newRawToken = RefreshTokenGenerator.GenerateRaw();
+        // Reuses IRefreshTokenIssuer — the same one AuthService.RegisterAsync uses — so issuing
+        // a refresh token can never silently drift between the two call sites (entropy, hashing,
+        // lifetime).
+        var issued = refreshTokenIssuer.Issue();
         var newToken = new RefreshToken
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            TokenHash = hasher.Hash(newRawToken),
-            ExpiresAt = DateTimeOffset.UtcNow.AddDays(options.Value.ExpiresInDays),
+            TokenHash = issued.HashValue,
+            ExpiresAt = issued.ExpiresAt,
             CreatedAt = DateTimeOffset.UtcNow,
         };
         await repository.CreateAsync(newToken, ct);
@@ -63,7 +64,7 @@ public class RefreshTokenService(
 
         return new AuthTokensDto(
             AccessToken: accessToken.Value,
-            RefreshToken: newRawToken,
+            RefreshToken: issued.RawValue,
             TokenType: "Bearer",
             ExpiresIn: accessToken.ExpiresInSeconds);
     }
