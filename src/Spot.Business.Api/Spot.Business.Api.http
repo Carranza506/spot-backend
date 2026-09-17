@@ -1,6 +1,25 @@
 @Spot.Business.Api_HostAddress = http://localhost:5151
 
-GET {{Spot.Business.Api_HostAddress}}/weatherforecast/
+### List categories - all (any level, paginated)
+GET {{Spot.Business.Api_HostAddress}}/business/categories?page=1&pageSize=20
+Accept: application/json
+
+###
+
+### List categories - root only
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=null
+Accept: application/json
+
+###
+
+### List categories - subcategories of a specific parent
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=6228d226-c50a-43af-bbae-835a224f0335
+Accept: application/json
+
+###
+
+### List categories - malformed parentCategoryId -> 400 (Error schema)
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=not-a-guid
 Accept: application/json
 
 ###
