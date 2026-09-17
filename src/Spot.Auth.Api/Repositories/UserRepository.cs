@@ -37,10 +37,23 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         db.Users.Include(u => u.AuthProviders).FirstOrDefaultAsync(u => u.Id == id, ct);
 
+    public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
+        db.Users.Include(u => u.AuthProviders).FirstOrDefaultAsync(u => u.Email == email, ct);
+
     public async Task SaveChangesAsync(User user, CancellationToken ct = default)
     {
         await db.SaveChangesAsync(ct);
         await db.Entry(user).ReloadAsync(ct);
+    }
+
+    public Task AddRefreshTokenAsync(User user, RefreshToken refreshToken, CancellationToken ct = default)
+    {
+        // Unlike CreateAsync, user.Id is already known (this user was already persisted), so
+        // it's set directly rather than relying on navigation fix-up — that fix-up only exists
+        // to solve "the parent doesn't have an id yet", which isn't the case here.
+        refreshToken.UserId = user.Id;
+        db.RefreshTokens.Add(refreshToken);
+        return db.SaveChangesAsync(ct);
     }
 
     private static bool IsUniqueEmailViolation(DbUpdateException ex) =>

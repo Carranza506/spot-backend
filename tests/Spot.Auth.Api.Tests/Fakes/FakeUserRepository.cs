@@ -34,6 +34,9 @@ public sealed class FakeUserRepository : IUserRepository
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_users.GetValueOrDefault(id));
 
+    public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
+        Task.FromResult(_users.Values.FirstOrDefault(u => u.Email == email));
+
     public Task SaveChangesAsync(User user, CancellationToken ct = default)
     {
         user.UpdatedAt = DateTime.UtcNow;
@@ -41,10 +44,23 @@ public sealed class FakeUserRepository : IUserRepository
         return Task.CompletedTask;
     }
 
+    public RefreshToken? LastAddedRefreshToken { get; private set; }
+
+    public Task AddRefreshTokenAsync(User user, RefreshToken refreshToken, CancellationToken ct = default)
+    {
+        LastAddedRefreshToken = refreshToken;
+        _users[user.Id] = user;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Seeds a user directly (e.g. for login tests), bypassing <see cref="CreateAsync"/>.</summary>
+    public void Seed(User user) => _users[user.Id] = user;
+
     public void Reset()
     {
         CreatedUser = null;
         CreatedRefreshToken = null;
+        LastAddedRefreshToken = null;
         ExceptionToThrow = null;
         _users.Clear();
     }
