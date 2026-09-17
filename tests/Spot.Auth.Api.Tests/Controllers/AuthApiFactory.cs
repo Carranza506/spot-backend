@@ -14,8 +14,9 @@ namespace Spot.Auth.Api.Tests.Controllers;
 
 /// <summary>
 /// Runs the real Spot.Auth.Api pipeline (routing, model validation, ConfigureApiBehaviorOptions,
-/// JWT auth, the global exception handler) with IUserRepository and IRefreshTokenService swapped
-/// for in-memory fakes, so these tests never need a real Postgres database.
+/// JWT auth, the global exception handler) with IUserRepository, IRefreshTokenService and
+/// IUserProfileService swapped for in-memory fakes, so these tests never need a real Postgres
+/// database.
 /// </summary>
 public sealed class AuthApiFactory : WebApplicationFactory<Program>
 {
@@ -24,6 +25,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
 
     public FakeUserRepository UserRepository { get; } = new();
     public FakeRefreshTokenService RefreshTokenService { get; } = new();
+    public FakeUserProfileService UserProfileService { get; } = new();
 
     // One key pair for the whole fixture, used both to configure the app's own JWT signing
     // (Jwt:PrivateKeyPem) and validation (Jwt:PublicKeyPem, via AddSpotJwtAuthentication) — and
@@ -63,6 +65,9 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IRefreshTokenService>();
             services.AddSingleton<IRefreshTokenService>(RefreshTokenService);
+
+            services.RemoveAll<IUserProfileService>();
+            services.AddSingleton<IUserProfileService>(UserProfileService);
         });
     }
 
