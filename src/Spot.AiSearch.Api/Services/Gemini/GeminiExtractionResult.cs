@@ -8,6 +8,12 @@ namespace Spot.AiSearch.Api.Services.Gemini;
 /// <see cref="AiRequest"/> row without the client having to know about the database — it stays a
 /// stateless natural-language parser, per the architecture decision in issue #45.
 /// </summary>
+/// <param name="ExtractedParameters">
+/// Non-null only when <see cref="Status"/> is <see cref="AiRequestStatus.SUCCESS"/>. Ownership
+/// passes to the caller: <see cref="GeminiClient"/> never disposes it. Dispose it once you're
+/// done reading it, or serialize it (e.g. <c>.RootElement.GetRawText()</c>) and drop the
+/// reference before persisting an <see cref="AiRequest"/> row.
+/// </param>
 public sealed record GeminiExtractionResult(
     AiRequestStatus Status,
     string? RawResponse,

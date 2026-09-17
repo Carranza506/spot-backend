@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Spot.AiSearch.Api.Models;
@@ -80,6 +81,45 @@ public sealed class GeminiClientTests
         Assert.NotNull(capturedRequest);
         Assert.Equal("test-api-key", capturedRequest!.Headers.GetValues("x-goog-api-key").Single());
         Assert.DoesNotContain("key=", capturedRequest.RequestUri!.Query);
+    }
+
+    [Fact]
+    public async Task ExtractSearchCriteriaAsync_SendsExpectedRequestBodyShape()
+    {
+        string? capturedBody = null;
+        var client = CreateClient(async (request, _) =>
+        {
+            // Read the body here, not after SendAsync returns: GeminiClient disposes its
+            // HttpRequestMessage (and its Content) once the response comes back.
+            capturedBody = await request.Content!.ReadAsStringAsync();
+            return JsonResponse(HttpStatusCode.OK, new
+            {
+                candidates = new[]
+                {
+                    new { content = new { role = "model", parts = new[] { new { text = "{}" } } } },
+                },
+            });
+        }, out _);
+
+        await client.ExtractSearchCriteriaAsync("Busco un corte de cabello mañana en la tarde");
+
+        Assert.NotNull(capturedBody);
+        using var json = JsonDocument.Parse(capturedBody!);
+        var root = json.RootElement;
+
+        // Tuned deliberately (see GeminiApiModels.cs) to disable multi-step reasoning for what is
+        // a plain extraction task — a regression here silently reintroduces the token/latency cost.
+        Assert.Equal(0, root.GetProperty("generationConfig").GetProperty("thinkingConfig").GetProperty("thinkingBudget").GetInt32());
+        Assert.True(root.GetProperty("generationConfig").TryGetProperty("responseSchema", out var responseSchema));
+        Assert.Equal("OBJECT", responseSchema.GetProperty("type").GetString());
+        Assert.True(responseSchema.GetProperty("properties").TryGetProperty("serviceQuery", out _));
+
+        var systemInstructionText = root.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString();
+        var expectedToday = DateOnly.FromDateTime(DateTime.UtcNow + TimeSpan.FromHours(-6));
+        Assert.Contains(expectedToday.ToString("yyyy-MM-dd"), systemInstructionText);
+
+        var userText = root.GetProperty("contents")[0].GetProperty("parts")[0].GetProperty("text").GetString();
+        Assert.Equal("Busco un corte de cabello mañana en la tarde", userText);
     }
 
     [Fact]

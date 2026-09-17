@@ -46,8 +46,18 @@ builder.Services.AddDbContext<AiSearchDbContext>(options =>
 builder.Services.AddScoped<IAiRequestRepository, AiRequestRepository>();
 builder.Services.AddScoped<IAiRequestService, AiRequestService>();
 
-builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
+var geminiSection = builder.Configuration.GetSection(GeminiOptions.SectionName);
+builder.Services.Configure<GeminiOptions>(geminiSection);
 builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
+
+// Fails fast at boot, same as AddSpotJwtAuthentication, instead of letting every Gemini call
+// fail at first use with a 403 that looks like an API problem rather than a config one.
+if (string.IsNullOrWhiteSpace(geminiSection.Get<GeminiOptions>()?.ApiKey))
+{
+    throw new InvalidOperationException(
+        $"{GeminiOptions.SectionName}:{nameof(GeminiOptions.ApiKey)} is missing. Set it via user-secrets " +
+        "in development or the Gemini__ApiKey environment variable in production (see README.md).");
+}
 
 // Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the
 // "Jwt" section — the same setup every microservice uses. See Spot.Shared.Auth.
