@@ -13,6 +13,10 @@
          database, not a hand-rolled fake — see RefreshTokenRepositoryTests.cs for why InMemory
          instead of Testcontainers+real Postgres. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.7" />
+    <!-- Pinned to match InMemory's own version above: without this, NuGet resolves the older
+         9.0.1 pulled in transitively by Spot.Auth.Api's Npgsql provider as the "primary"
+         reference and warns (MSB3277) about the unresolved conflict with InMemory's 9.0.7. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.7" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />

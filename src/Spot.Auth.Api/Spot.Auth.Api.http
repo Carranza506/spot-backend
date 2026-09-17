@@ -1,6 +1,35 @@
 @Spot.Auth.Api_HostAddress = http://localhost:5228
 
-GET {{Spot.Auth.Api_HostAddress}}/weatherforecast/
+### Issue a dev access token (Development only) — also creates a matching row in `users`.
+# @name issueDevToken
+POST {{Spot.Auth.Api_HostAddress}}/dev/token?role=CLIENT
 Accept: application/json
+
+###
+@accessToken = {{issueDevToken.response.body.value}}
+
+### GET /auth/me
+GET {{Spot.Auth.Api_HostAddress}}/auth/me
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### PATCH /auth/me
+PATCH {{Spot.Auth.Api_HostAddress}}/auth/me
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "firstName": "Nuevo Nombre",
+  "phone": null
+}
+
+### POST /auth/logout
+POST {{Spot.Auth.Api_HostAddress}}/auth/logout
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "refreshToken": "some-refresh-token"
+}
 
 ###
