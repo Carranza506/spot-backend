@@ -3,7 +3,6 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
@@ -32,20 +31,31 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     // like POST /auth/logout) that the running app will actually accept.
     private readonly RSA _jwtKey = RSA.Create(2048);
 
+    public AuthApiFactory()
+    {
+        // NOT done via ConfigureWebHost's ConfigureAppConfiguration: AddSpotJwtAuthentication
+        // reads Jwt:* eagerly, synchronously, at the top level of Program.cs, before
+        // `builder.Build()` runs — but WebApplicationFactory only splices its ConfigureWebHost
+        // customizations into the builder at the moment `.Build()` is intercepted, which is too
+        // late for code that already read configuration earlier in the same script. Environment
+        // variables are read by WebApplicationBuilder.CreateBuilder() itself, so — unlike
+        // ConfigureAppConfiguration — they're already in place before any of Program.cs's own
+        // code runs. Set in the constructor so they exist before this fixture's host ever starts.
+        //
+        // Issuer/Audience are set here too (not just the two PEM keys), and not left to whatever
+        // appsettings.json/appsettings.Development.json happen to say: a contributor's own local,
+        // gitignored appsettings.Development.json can freely set a different Jwt:Issuer for their
+        // own manual testing (e.g. a localhost callback URL), and Development-environment config
+        // overrides the base appsettings.json — silently breaking IssueAccessToken() below unless
+        // this fixture pins its own values independent of whatever the developer's machine has.
+        Environment.SetEnvironmentVariable("Jwt__Issuer", Issuer);
+        Environment.SetEnvironmentVariable("Jwt__Audience", Audience);
+        Environment.SetEnvironmentVariable("Jwt__PrivateKeyPem", _jwtKey.ExportRSAPrivateKeyPem());
+        Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", _jwtKey.ExportSubjectPublicKeyInfoPem());
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.ConfigureAppConfiguration((_, config) =>
-        {
-            config.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["Jwt:Issuer"] = Issuer,
-                ["Jwt:Audience"] = Audience,
-                ["Jwt:ExpiresInMinutes"] = "60",
-                ["Jwt:PrivateKeyPem"] = _jwtKey.ExportRSAPrivateKeyPem(),
-                ["Jwt:PublicKeyPem"] = _jwtKey.ExportSubjectPublicKeyInfoPem(),
-            });
-        });
-
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<IUserRepository>();
@@ -88,7 +98,14 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         if (disposing)
+        {
             _jwtKey.Dispose();
+            // Don't leak these into other test processes/classes running after this fixture.
+            Environment.SetEnvironmentVariable("Jwt__Issuer", null);
+            Environment.SetEnvironmentVariable("Jwt__Audience", null);
+            Environment.SetEnvironmentVariable("Jwt__PrivateKeyPem", null);
+            Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", null);
+        }
 
         base.Dispose(disposing);
     }
