@@ -14,4 +14,35 @@ public interface ICategoryRepository
         int page,
         int pageSize,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Loads a category by id, including its direct subcategories, or null if none exists. The
+    /// returned entity is tracked, so a caller can mutate it in place and persist the change with
+    /// <see cref="SaveChangesAsync"/>.
+    /// </summary>
+    Task<Category?> GetByIdAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether a category named <paramref name="name"/> already exists under
+    /// <paramref name="parentCategoryId"/>. Pass <paramref name="excludeId"/> when checking this
+    /// for an update, so the category being updated doesn't collide with itself.
+    /// </summary>
+    Task<bool> ExistsByParentAndNameAsync(
+        Guid? parentCategoryId, string name, Guid? excludeId = null, CancellationToken ct = default);
+
+    /// <exception cref="DuplicateCategoryException">
+    /// A category with the same (ParentCategoryId, Name) already exists — re-checked against the
+    /// database's unique index to close the race window between two concurrent creates. Callers
+    /// are expected to have already checked <see cref="ExistsByParentAndNameAsync"/> up front;
+    /// this is only the race-proof safety net, same pattern as Spot.Auth.Api's UserRepository.
+    /// </exception>
+    Task CreateAsync(Category category, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists changes made to a tracked <see cref="Category"/> (from <see cref="GetByIdAsync"/>)
+    /// and refreshes its scalar properties from the database afterwards (<c>UpdatedAt</c> is set
+    /// by a Postgres trigger, not application code).
+    /// </summary>
+    /// <exception cref="DuplicateCategoryException">Same race-proof safety net as <see cref="CreateAsync"/>.</exception>
+    Task SaveChangesAsync(Category category, CancellationToken ct = default);
 }
