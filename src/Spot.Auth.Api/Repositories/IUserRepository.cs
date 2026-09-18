@@ -22,6 +22,21 @@ public interface IUserRepository
     Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default);
 
     /// <summary>
+    /// Loads the user linked to a given social login identity, including their linked auth
+    /// providers, or null if no such link exists yet. The returned entity is tracked (see
+    /// <see cref="GetByIdAsync"/>).
+    /// </summary>
+    Task<User?> GetByProviderAsync(AuthProvider provider, string providerUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Loads a user by email, including their linked auth providers, or null if no such user
+    /// exists. The returned entity is tracked (see <see cref="GetByIdAsync"/>).
+    /// </summary>
+    /// <remarks>Case-sensitive, same as the unique index on <c>users.email</c> — callers must
+    /// normalize the email themselves (see AuthService.NormalizeEmail).</remarks>
+    Task<User?> GetByEmailAsync(string email, CancellationToken ct = default);
+
+    /// <summary>
     /// Persists changes made to a tracked <see cref="User"/> and refreshes its scalar
     /// properties from the database afterwards. The refresh matters specifically for
     /// <c>UpdatedAt</c>: it is set by a Postgres trigger (see the

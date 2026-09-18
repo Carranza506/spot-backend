@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Repositories;
+using Spot.Auth.Api.Services;
 
 namespace Spot.Auth.Api.Tests.Controllers;
 
@@ -76,6 +77,52 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
 
         // The invalid request must never have reached the repository.
         Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task Google_ValidToken_Returns200WithAuthResponse()
+    {
+        factory.UserRepository.Reset();
+        factory.GoogleIdTokenValidator.IdentityToReturn =
+            new GoogleIdentity("google-sub", "new.googler@example.com", "María", "Rodríguez", null);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/google", new { idToken = "a-google-id-token" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("new.googler@example.com", body.GetProperty("user").GetProperty("email").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("accessToken").GetString()));
+        Assert.Equal("a-google-id-token", factory.GoogleIdTokenValidator.LastIdToken);
+    }
+
+    [Fact]
+    public async Task Google_InvalidToken_Returns401WithErrorBody()
+    {
+        factory.UserRepository.Reset();
+        factory.GoogleIdTokenValidator.IdentityToReturn = null; // simulates a bad signature/expired/wrong-audience token
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/google", new { idToken = "not-a-real-token" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("UNAUTHORIZED", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task Google_MissingIdToken_Returns400WithErrorShape()
+    {
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/google", new { });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
     }
 
     [Fact]

@@ -59,6 +59,10 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 
+builder.Services.Configure<GoogleAuthOptions>(builder.Configuration.GetSection(GoogleAuthOptions.SectionName));
+// Stateless — safe as a singleton, same as JwtTokenService/IRefreshTokenIssuer above.
+builder.Services.AddSingleton<IGoogleIdTokenValidator, GoogleIdTokenValidator>();
+
 // Validates incoming access tokens (public key only) for [Authorize] endpoints such as
 // POST /auth/logout — separate from JwtTokenService above, which signs new tokens with the
 // private key. Same shared setup every other microservice uses.

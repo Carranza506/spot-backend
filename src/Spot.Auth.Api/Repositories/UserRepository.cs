@@ -37,6 +37,13 @@ public sealed class UserRepository(AuthDbContext db) : IUserRepository
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         db.Users.Include(u => u.AuthProviders).FirstOrDefaultAsync(u => u.Id == id, ct);
 
+    public Task<User?> GetByProviderAsync(AuthProvider provider, string providerUserId, CancellationToken ct = default) =>
+        db.Users.Include(u => u.AuthProviders)
+            .FirstOrDefaultAsync(u => u.AuthProviders.Any(p => p.Provider == provider && p.ProviderUserId == providerUserId), ct);
+
+    public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
+        db.Users.Include(u => u.AuthProviders).FirstOrDefaultAsync(u => u.Email == email, ct);
+
     public async Task SaveChangesAsync(User user, CancellationToken ct = default)
     {
         await db.SaveChangesAsync(ct);
