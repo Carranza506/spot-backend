@@ -14,9 +14,9 @@ namespace Spot.Auth.Api.Tests.Controllers;
 
 /// <summary>
 /// Runs the real Spot.Auth.Api pipeline (routing, model validation, ConfigureApiBehaviorOptions,
-/// JWT auth, the global exception handler) with IUserRepository, IRefreshTokenService and
-/// IUserProfileService swapped for in-memory fakes, so these tests never need a real Postgres
-/// database.
+/// JWT auth, the global exception handler) with IUserRepository, IRefreshTokenService,
+/// IUserProfileService and IGoogleIdTokenValidator swapped for in-memory fakes, so these tests
+/// never need a real Postgres database or a real Google ID token.
 /// </summary>
 public sealed class AuthApiFactory : WebApplicationFactory<Program>
 {
@@ -26,6 +26,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
     public FakeUserRepository UserRepository { get; } = new();
     public FakeRefreshTokenService RefreshTokenService { get; } = new();
     public FakeUserProfileService UserProfileService { get; } = new();
+    public FakeGoogleIdTokenValidator GoogleIdTokenValidator { get; } = new();
 
     // One key pair for the whole fixture, used both to configure the app's own JWT signing
     // (Jwt:PrivateKeyPem) and validation (Jwt:PublicKeyPem, via AddSpotJwtAuthentication) — and
@@ -68,6 +69,9 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
 
             services.RemoveAll<IUserProfileService>();
             services.AddSingleton<IUserProfileService>(UserProfileService);
+
+            services.RemoveAll<IGoogleIdTokenValidator>();
+            services.AddSingleton<IGoogleIdTokenValidator>(GoogleIdTokenValidator);
         });
     }
 

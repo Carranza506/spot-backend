@@ -34,6 +34,13 @@ public sealed class FakeUserRepository : IUserRepository
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_users.GetValueOrDefault(id));
 
+    public Task<User?> GetByProviderAsync(AuthProvider provider, string providerUserId, CancellationToken ct = default) =>
+        Task.FromResult(_users.Values.FirstOrDefault(
+            u => u.AuthProviders.Any(p => p.Provider == provider && p.ProviderUserId == providerUserId)));
+
+    public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
+        Task.FromResult(_users.Values.FirstOrDefault(u => u.Email == email));
+
     public Task SaveChangesAsync(User user, CancellationToken ct = default)
     {
         user.UpdatedAt = DateTime.UtcNow;
@@ -47,5 +54,16 @@ public sealed class FakeUserRepository : IUserRepository
         CreatedRefreshToken = null;
         ExceptionToThrow = null;
         _users.Clear();
+    }
+
+    /// <summary>Pre-populates an existing user, bypassing CreateAsync — for tests that need a
+    /// user to already exist (e.g. a returning Google user, or an email/password account being
+    /// linked to Google for the first time).</summary>
+    public void Seed(User user)
+    {
+        if (user.Id == Guid.Empty)
+            user.Id = Guid.NewGuid();
+
+        _users[user.Id] = user;
     }
 }
