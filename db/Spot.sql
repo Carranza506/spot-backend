@@ -179,6 +179,15 @@ CREATE INDEX idx_audit_logs_user_created ON audit_logs(user_id,created_at DESC);
 CREATE INDEX idx_audit_logs_entity ON audit_logs(entity_type,entity_id);
 CREATE INDEX idx_audit_logs_created ON audit_logs(created_at DESC);
 
+CREATE TYPE device_platform AS ENUM ('android','ios','web');
+
+CREATE TABLE device_tokens (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ token TEXT NOT NULL, platform device_platform NOT NULL, is_active BOOLEAN NOT NULL DEFAULT TRUE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX "IX_device_tokens_token" ON device_tokens(token);
+CREATE INDEX idx_device_tokens_user ON device_tokens(user_id);
+
 ALTER TABLE bookings ADD CONSTRAINT excl_active_booking_overlap
 EXCLUDE USING GIST (business_id WITH =, tstzrange(start_at,end_at,'[)') WITH &&)
 WHERE(status IN ('PENDING','CONFIRMED'));

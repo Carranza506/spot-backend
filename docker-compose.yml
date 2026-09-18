@@ -174,7 +174,12 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      # Needed since #77: every /notifications/device-tokens action requires a valid access
+      # token (AddSpotJwtAuthentication), so this service only ever needs the public key.
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
       Logging__Console__FormatterName: json
+    secrets:
+      - jwt_public_key
     ports:
       - "5102:8080"
     healthcheck:
