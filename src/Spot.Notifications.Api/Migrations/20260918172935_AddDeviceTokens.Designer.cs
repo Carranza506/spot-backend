@@ -3,6 +3,7 @@ using System;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Spot.Notifications.Api.Data;
@@ -13,9 +14,11 @@ using Spot.Notifications.Api.Models;
 namespace Spot.Notifications.Api.Migrations
 {
     [DbContext(typeof(NotificationsDbContext))]
-    partial class NotificationsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260918172935_AddDeviceTokens")]
+    partial class AddDeviceTokens
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
