@@ -2,7 +2,9 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Identity;
 using Spot.Auth.Api.DTOs;
+using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Repositories;
 
 namespace Spot.Auth.Api.Tests.Controllers;
@@ -31,6 +33,51 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("accessToken").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("refreshToken").GetString()));
         Assert.Equal("Bearer", body.GetProperty("tokens").GetProperty("tokenType").GetString());
+    }
+
+    [Fact]
+    public async Task Register_WithBusinessOwnerRole_Returns201WithBusinessOwnerRole()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "owner@example.com",
+            password = "SuperClave#2026",
+            firstName = "María",
+            lastName = "Rodríguez",
+            role = "BUSINESS_OWNER",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BUSINESS_OWNER", body.GetProperty("user").GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task Register_WithSuperadminRole_Returns400WithErrorShape()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "wannabe.admin@example.com",
+            password = "SuperClave#2026",
+            firstName = "María",
+            lastName = "Rodríguez",
+            role = "SUPERADMIN",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+
+        // The invalid request must never have reached the repository — no account is created.
+        Assert.Null(factory.UserRepository.CreatedUser);
     }
 
     [Fact]
@@ -76,6 +123,85 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
 
         // The invalid request must never have reached the repository.
         Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task Login_CorrectCredentials_Returns200WithAuthResponse()
+    {
+        factory.UserRepository.Reset();
+        SeedLoginUser(out var email, out var password);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/login", new { email, password });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(email, body.GetProperty("user").GetProperty("email").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("accessToken").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("refreshToken").GetString()));
+    }
+
+    [Fact]
+    public async Task Login_WrongPassword_Returns401WithInvalidCredentialsBody()
+    {
+        factory.UserRepository.Reset();
+        SeedLoginUser(out var email, out _);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/login", new { email, password = "OtraClave#0000" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_CREDENTIALS", body.GetProperty("code").GetString());
+    }
+
+    /// <summary>
+    /// The security-critical check for this ticket, at the HTTP level: an unknown email must
+    /// answer with the exact same status code and error code as a wrong password — never a
+    /// different shape that would let a caller distinguish the two.
+    /// </summary>
+    [Fact]
+    public async Task Login_UnknownEmail_Returns401WithTheSameBodyShapeAsWrongPassword()
+    {
+        factory.UserRepository.Reset();
+        SeedLoginUser(out _, out _);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/login", new { email = "nobody@example.com", password = "SomePassword#123" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_CREDENTIALS", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Login_MalformedBody_Returns400WithErrorShape()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/login", new { email = "not-an-email", password = "" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    private void SeedLoginUser(out string email, out string password)
+    {
+        email = "login.user@example.com";
+        password = "SuperClave#2026";
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            FirstName = "Login",
+            LastName = "User",
+            Role = UserRole.CLIENT,
+        };
+        user.PasswordHash = new PasswordHasher<User>().HashPassword(user, password);
+        factory.UserRepository.Seed(user);
     }
 
     [Fact]

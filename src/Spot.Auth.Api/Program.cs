@@ -24,9 +24,16 @@ builder.Services.AddHealthChecks();
 // The snake-case translator must be passed explicitly — MapEnum<T>()'s own default translator
 // does NOT match HasPostgresEnum<T>()'s, so without it Npgsql looks up a PG type named
 // "UserRole" (nothing matches) instead of the real lowercase "user_role" the migration created.
+//
+// A single shared instance, not `new NpgsqlSnakeCaseNameTranslator()` at each call site: the
+// AddDbContext options lambda below runs again for every DbContext instance EF Core creates
+// (i.e. every request scope), so a fresh instance there made the options compare unequal each
+// time — EF Core couldn't recognize them as the same configuration and built a brand new internal
+// IServiceProvider per request, eventually tripping ManyServiceProvidersCreatedWarning and 500s.
+var nameTranslator = new NpgsqlSnakeCaseNameTranslator();
 var npgsqlDataSource = new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("DefaultConnection"))
-    .MapEnum<UserRole>(nameTranslator: new NpgsqlSnakeCaseNameTranslator())
-    .MapEnum<AuthProvider>(nameTranslator: new NpgsqlSnakeCaseNameTranslator())
+    .MapEnum<UserRole>(nameTranslator: nameTranslator)
+    .MapEnum<AuthProvider>(nameTranslator: nameTranslator)
     .Build();
 
 builder.Services.AddDbContext<AuthDbContext>(options =>
@@ -38,8 +45,8 @@ builder.Services.AddDbContext<AuthDbContext>(options =>
             // (used to read RETURNING values after INSERT/UPDATE) need the SAME enums registered
             // here too, on the EF-specific options builder, or they still read the column as a
             // plain int and blow up with the same "unmapped enums" error.
-            .MapEnum<UserRole>(nameTranslator: new NpgsqlSnakeCaseNameTranslator())
-            .MapEnum<AuthProvider>(nameTranslator: new NpgsqlSnakeCaseNameTranslator())));
+            .MapEnum<UserRole>(nameTranslator: nameTranslator)
+            .MapEnum<AuthProvider>(nameTranslator: nameTranslator)));
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
