@@ -85,7 +85,18 @@ public sealed class GeminiClient(
                 return GeminiExtractionResult.Error((int)stopwatch.ElapsedMilliseconds, "GEMINI_API_ERROR", errorMessage);
             }
 
-            var payload = JsonSerializer.Deserialize<GeminiGenerateContentResponse>(body, SerializerOptions);
+            GeminiGenerateContentResponse? payload;
+            try
+            {
+                payload = JsonSerializer.Deserialize<GeminiGenerateContentResponse>(body, SerializerOptions);
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "Gemini API returned a non-JSON or truncated response envelope.");
+                return GeminiExtractionResult.Error(
+                    (int)stopwatch.ElapsedMilliseconds, "GEMINI_MALFORMED_RESPONSE", "Gemini response envelope was not valid JSON.");
+            }
+
             var text = payload?.Candidates?.FirstOrDefault()?.Content?.Parts?.FirstOrDefault()?.Text;
 
             if (string.IsNullOrWhiteSpace(text))

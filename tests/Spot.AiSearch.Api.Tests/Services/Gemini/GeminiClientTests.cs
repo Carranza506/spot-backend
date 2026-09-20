@@ -156,6 +156,21 @@ public sealed class GeminiClientTests
     }
 
     [Fact]
+    public async Task ExtractSearchCriteriaAsync_ResponseEnvelopeIsNotJson_MapsToMalformedResponseError()
+    {
+        var client = CreateClient((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("this is not json at all"),
+        }), out _);
+
+        var result = await client.ExtractSearchCriteriaAsync("cualquier consulta");
+
+        Assert.Equal(AiRequestStatus.ERROR, result.Status);
+        Assert.Equal("GEMINI_MALFORMED_RESPONSE", result.ErrorCode);
+        Assert.Null(result.ExtractedParameters);
+    }
+
+    [Fact]
     public async Task ExtractSearchCriteriaAsync_RequestExceedsTimeout_MapsToTimeoutStatus()
     {
         var options = Options;
