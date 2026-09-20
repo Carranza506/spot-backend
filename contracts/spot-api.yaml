@@ -382,6 +382,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
@@ -411,6 +412,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/Category'
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Business]
+      operationId: deleteCategory
+      summary: Delete a category
+      description: |-
+        Required role: `SUPERADMIN`. A category with existing subcategories
+        cannot be deleted — reparent or remove its subcategories first.
+        Deleting a category never cascade-deletes its subcategories.
+      responses:
+        '204':
+          description: Category deleted.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }

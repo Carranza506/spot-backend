@@ -25,6 +25,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/publish .
+COPY docker/entrypoint-jwt.sh /entrypoint-jwt.sh
+RUN chmod +x /entrypoint-jwt.sh
 
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
@@ -32,4 +34,5 @@ EXPOSE 8080
 # Run as the non-root "app" user baked into the base image instead of root (default).
 USER $APP_UID
 
-ENTRYPOINT ["dotnet", "Spot.Business.Api.dll"]
+# Business.Api validates tokens (AddSpotJwtAuthentication), so it only ever needs the public key.
+ENTRYPOINT ["/entrypoint-jwt.sh", "Spot.Business.Api.dll"]
