@@ -19,7 +19,7 @@ public sealed class AuthService(
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
             Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
-            Role = UserRole.CLIENT,
+            Role = request.Role ?? UserRole.CLIENT,
         };
         // Hashed before the entity is ever tracked/persisted — the plain-text password never
         // reaches the repository or the database.

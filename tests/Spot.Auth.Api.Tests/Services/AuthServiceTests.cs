@@ -61,6 +61,19 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task RegisterAsync_WithBusinessOwnerRole_UsesTheRequestedRole()
+    {
+        var repo = new FakeUserRepository();
+        var service = CreateService(repo, out _);
+        var request = ValidRequest();
+        request.Role = UserRole.BUSINESS_OWNER;
+
+        await service.RegisterAsync(request);
+
+        Assert.Equal(UserRole.BUSINESS_OWNER, repo.CreatedUser!.Role);
+    }
+
+    [Fact]
     public async Task RegisterAsync_IssuesAccessTokenForTheNewUserWithClientRole()
     {
         var repo = new FakeUserRepository();

@@ -36,6 +36,51 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
     }
 
     [Fact]
+    public async Task Register_WithBusinessOwnerRole_Returns201WithBusinessOwnerRole()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "owner@example.com",
+            password = "SuperClave#2026",
+            firstName = "María",
+            lastName = "Rodríguez",
+            role = "BUSINESS_OWNER",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BUSINESS_OWNER", body.GetProperty("user").GetProperty("role").GetString());
+    }
+
+    [Fact]
+    public async Task Register_WithSuperadminRole_Returns400WithErrorShape()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "wannabe.admin@example.com",
+            password = "SuperClave#2026",
+            firstName = "María",
+            lastName = "Rodríguez",
+            role = "SUPERADMIN",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+
+        // The invalid request must never have reached the repository — no account is created.
+        Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
     public async Task Register_WithDuplicateEmail_Returns409WithConflictBody()
     {
         factory.UserRepository.Reset();
