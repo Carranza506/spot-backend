@@ -40,6 +40,39 @@ Content-Type: application/json
 
 ###
 
+### Login - success
+POST {{Spot.Auth.Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "maria.rodriguez@example.com",
+  "password": "SuperClave#2026"
+}
+
+###
+
+### Login - wrong password -> 401 (same body shape as unknown email)
+POST {{Spot.Auth.Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "maria.rodriguez@example.com",
+  "password": "WrongPassword#0000"
+}
+
+###
+
+### Login - unknown email -> 401 (same body shape as wrong password)
+POST {{Spot.Auth.Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "nobody@example.com",
+  "password": "SuperClave#2026"
+}
+
+###
+
 ### Issue a dev access token (Development only) — also creates a matching row in `users`.
 # @name issueDevToken
 POST {{Spot.Auth.Api_HostAddress}}/dev/token?role=CLIENT

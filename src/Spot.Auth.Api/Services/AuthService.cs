@@ -41,6 +41,35 @@ public sealed class AuthService(
             new AuthTokensDto(accessToken.Value, issuedRefreshToken.RawValue, "Bearer", accessToken.ExpiresInSeconds));
     }
 
+    public async Task<AuthResponseDto?> LoginAsync(LoginRequest request, CancellationToken ct = default)
+    {
+        var user = await userRepository.GetByEmailAsync(NormalizeEmail(request.Email), ct);
+
+        // No such user, or an account with no password set (e.g. Google-only sign-up, once
+        // social login exists) — either way this returns null exactly like a wrong password
+        // below, so the controller answers with the same 401 no matter which one happened.
+        if (user is null || user.PasswordHash is null)
+            return null;
+
+        var verification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
+        if (verification is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded))
+            return null;
+
+        var issuedRefreshToken = refreshTokenIssuer.Issue();
+        var refreshToken = new RefreshToken
+        {
+            TokenHash = issuedRefreshToken.HashValue,
+            ExpiresAt = issuedRefreshToken.ExpiresAt,
+        };
+        await userRepository.AddRefreshTokenAsync(user, refreshToken, ct);
+
+        var accessToken = tokenService.IssueAccessToken(user.Id.ToString(), user.Role.ToString());
+
+        return new AuthResponseDto(
+            UserDto.FromEntity(user),
+            new AuthTokensDto(accessToken.Value, issuedRefreshToken.RawValue, "Bearer", accessToken.ExpiresInSeconds));
+    }
+
     /// <summary>
     /// Lower-cases and trims the email so "Foo@Example.com" and "foo@example.com" are treated as
     /// the same account — the database's unique index on email is otherwise case-sensitive.

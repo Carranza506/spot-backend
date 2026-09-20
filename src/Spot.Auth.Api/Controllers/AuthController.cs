@@ -8,11 +8,11 @@ using Spot.Shared.Errors;
 namespace Spot.Auth.Api.Controllers;
 
 /// <summary>
-/// contracts/spot-api.yaml, "Auth" tag. <c>POST /auth/register</c>, <c>POST /auth/logout</c>
-/// (#51) and <c>GET</c>/<c>PATCH /auth/me</c> (#52) are implemented so far — login/refresh/
-/// change-password are separate, not-yet-implemented issues under the same parent (#42).
-/// Register must stay reachable without a token, so authorization is applied per-action below
-/// instead of at the class level.
+/// contracts/spot-api.yaml, "Auth" tag. <c>POST /auth/register</c>, <c>POST /auth/login</c>
+/// (#49), <c>POST /auth/logout</c> (#51) and <c>GET</c>/<c>PATCH /auth/me</c> (#52) are
+/// implemented so far — refresh/change-password are separate, not-yet-implemented issues under
+/// the same parent (#42). Register and Login must stay reachable without a token, so
+/// authorization is applied per-action below instead of at the class level.
 /// </summary>
 [ApiController]
 [Route("auth")]
@@ -37,6 +37,24 @@ public class AuthController(
         {
             return Conflict(new ApiError("EMAIL_ALREADY_REGISTERED", "Ese correo ya está registrado."));
         }
+    }
+
+    /// <summary>
+    /// POST /auth/login: public — no access token required (contract: security: []). Answers
+    /// with the exact same 401 whether the email doesn't exist or the password is wrong — never
+    /// revealing which one it was (see <see cref="IAuthService.LoginAsync"/>).
+    /// </summary>
+    [HttpPost("login")]
+    [ProducesResponseType(typeof(AuthResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
+    {
+        var result = await authService.LoginAsync(request, ct);
+        if (result is null)
+            return Unauthorized(new ApiError("INVALID_CREDENTIALS", "Credenciales inválidas."));
+
+        return Ok(result);
     }
 
     /// <summary>

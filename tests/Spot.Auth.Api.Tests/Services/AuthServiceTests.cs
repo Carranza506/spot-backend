@@ -96,6 +96,123 @@ public class AuthServiceTests
         await Assert.ThrowsAsync<DuplicateEmailException>(() => service.RegisterAsync(ValidRequest()));
     }
 
+    [Fact]
+    public async Task LoginAsync_CorrectPassword_ReturnsAuthResponseWithTokens()
+    {
+        var repo = new FakeUserRepository();
+        var hasher = new PasswordHasher<User>();
+        var service = CreateService(repo, out var tokenService, hasher);
+        var user = SeedUser(repo, hasher, "SuperClave#2026");
+
+        var response = await service.LoginAsync(new LoginRequest { Email = user.Email, Password = "SuperClave#2026" });
+
+        Assert.NotNull(response);
+        Assert.Equal(user.Id, response.User.Id);
+        Assert.Equal("fake-access-token", response.Tokens.AccessToken);
+        Assert.False(string.IsNullOrWhiteSpace(response.Tokens.RefreshToken));
+        Assert.Equal(user.Id.ToString(), tokenService.LastUserId);
+        Assert.NotNull(repo.LastAddedRefreshToken);
+    }
+
+    [Fact]
+    public async Task LoginAsync_NormalizesEmail_TrimmedAndCaseInsensitive()
+    {
+        var repo = new FakeUserRepository();
+        var hasher = new PasswordHasher<User>();
+        var service = CreateService(repo, out _, hasher);
+        var user = SeedUser(repo, hasher, "SuperClave#2026", email: "maria.rodriguez@example.com");
+
+        var response = await service.LoginAsync(
+            new LoginRequest { Email = "  Maria.Rodriguez@Example.com  ", Password = "SuperClave#2026" });
+
+        Assert.NotNull(response);
+        Assert.Equal(user.Id, response.User.Id);
+    }
+
+    [Fact]
+    public async Task LoginAsync_WrongPassword_ReturnsNull()
+    {
+        var repo = new FakeUserRepository();
+        var hasher = new PasswordHasher<User>();
+        var service = CreateService(repo, out _, hasher);
+        var user = SeedUser(repo, hasher, "SuperClave#2026");
+
+        var response = await service.LoginAsync(new LoginRequest { Email = user.Email, Password = "OtraClave#0000" });
+
+        Assert.Null(response);
+    }
+
+    [Fact]
+    public async Task LoginAsync_UnknownEmail_ReturnsNull()
+    {
+        var repo = new FakeUserRepository();
+        var service = CreateService(repo, out _);
+
+        var response = await service.LoginAsync(
+            new LoginRequest { Email = "nobody@example.com", Password = "SuperClave#2026" });
+
+        Assert.Null(response);
+    }
+
+    /// <summary>
+    /// The security-critical assertion for this ticket: an unknown email and a wrong password
+    /// must be indistinguishable to the caller — both null, nothing else observable differs.
+    /// </summary>
+    [Fact]
+    public async Task LoginAsync_UnknownEmailAndWrongPassword_ReturnTheSameResult()
+    {
+        var repo = new FakeUserRepository();
+        var hasher = new PasswordHasher<User>();
+        var service = CreateService(repo, out _, hasher);
+        var user = SeedUser(repo, hasher, "SuperClave#2026");
+
+        var unknownEmailResult = await service.LoginAsync(
+            new LoginRequest { Email = "nobody@example.com", Password = "SuperClave#2026" });
+        var wrongPasswordResult = await service.LoginAsync(
+            new LoginRequest { Email = user.Email, Password = "OtraClave#0000" });
+
+        Assert.Null(unknownEmailResult);
+        Assert.Null(wrongPasswordResult);
+    }
+
+    [Fact]
+    public async Task LoginAsync_UserWithNoPasswordSet_ReturnsNull_DoesNotThrow()
+    {
+        var repo = new FakeUserRepository();
+        // Simulates a Google-only account: never went through RegisterAsync, so PasswordHash is null.
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "google.only@example.com",
+            FirstName = "Google",
+            LastName = "User",
+            Role = UserRole.CLIENT,
+        };
+        repo.Seed(user);
+        var service = CreateService(repo, out _);
+
+        var response = await service.LoginAsync(
+            new LoginRequest { Email = user.Email, Password = "AnyPassword#123" });
+
+        Assert.Null(response);
+    }
+
+    private static User SeedUser(
+        FakeUserRepository repo, IPasswordHasher<User> hasher, string password, string email = "maria@example.com")
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            FirstName = "María",
+            LastName = "Rodríguez",
+            Role = UserRole.CLIENT,
+        };
+        user.PasswordHash = hasher.HashPassword(user, password);
+        repo.Seed(user);
+        return user;
+    }
+
     private static AuthService CreateService(
         FakeUserRepository repo, out FakeTokenService tokenService, IPasswordHasher<User>? hasher = null)
     {
