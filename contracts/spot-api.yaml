@@ -86,9 +86,10 @@ paths:
       summary: Register a new user
       security: []
       description: |-
-        Creates a new account with email and password. The default role is
-        `CLIENT`; a `BUSINESS_OWNER` account is granted through a separate
-        administrative flow (out of scope for the self-service MVP).
+        Creates a new account with email and password. `role` is optional and
+        defaults to `CLIENT`; a caller may also request `BUSINESS_OWNER`
+        directly. Any other value (including `SUPERADMIN`) is rejected with
+        400 — elevated roles beyond these two are never self-service.
 
         Access: public (no JWT required).
       requestBody:
@@ -2153,6 +2154,14 @@ components:
         firstName: { type: string, maxLength: 100 }
         lastName: { type: string, maxLength: 100 }
         phone: { type: string, maxLength: 30 }
+        role:
+          type: string
+          enum: [CLIENT, BUSINESS_OWNER]
+          default: CLIENT
+          description: >-
+            Optional. Defaults to CLIENT when omitted. Only CLIENT and
+            BUSINESS_OWNER may be requested here — SUPERADMIN is never
+            granted through self-service registration.
 
     LoginRequest:
       type: object
