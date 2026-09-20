@@ -23,9 +23,12 @@ public interface IRefreshTokenRepository
     Task<RefreshToken?> FindActiveByHashAsync(string tokenHash, CancellationToken ct = default);
 
     /// <summary>
-    /// Marks <paramref name="token"/> as revoked (sets <c>revoked_at</c>) and persists the change.
+    /// Atomically marks <paramref name="token"/> as revoked (sets <c>revoked_at</c>), but only if
+    /// it is still active. Returns <c>true</c> if this call revoked it, or <c>false</c> if it had
+    /// already been revoked by the time this write ran (e.g. a concurrent caller won the race) —
+    /// callers that must enforce single-use tokens (like refresh rotation) need to check this.
     /// </summary>
-    Task RevokeAsync(RefreshToken token, CancellationToken ct = default);
+    Task<bool> RevokeAsync(RefreshToken token, CancellationToken ct = default);
 
     /// <summary>
     /// Persists a newly issued <paramref name="token"/>.

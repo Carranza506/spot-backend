@@ -17,26 +17,29 @@ namespace Spot.Auth.Api.Tests.Services;
 /// </summary>
 public sealed class RefreshTokenServiceTests : IDisposable
 {
+    private readonly DbContextOptions<AuthDbContext> _options;
     private readonly AuthDbContext _db;
     private readonly FakeTokenService _tokenService = new();
     private readonly RefreshTokenService _service;
 
     public RefreshTokenServiceTests()
     {
-        var options = new DbContextOptionsBuilder<AuthDbContext>()
+        _options = new DbContextOptionsBuilder<AuthDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
 
-        _db = new AuthDbContext(options);
-        _service = new RefreshTokenService(
-            new RefreshTokenRepository(_db),
-            new Sha256RefreshTokenHasher(),
-            new UserRepository(_db),
-            _tokenService,
-            new RefreshTokenIssuer(Options.Create(new RefreshTokenOptions { ExpirationDays = 30 }), new Sha256RefreshTokenHasher()));
+        _db = new AuthDbContext(_options);
+        _service = CreateService(_db);
     }
 
     public void Dispose() => _db.Dispose();
+
+    private RefreshTokenService CreateService(AuthDbContext db) => new(
+        new RefreshTokenRepository(db),
+        new Sha256RefreshTokenHasher(),
+        new UserRepository(db),
+        _tokenService,
+        new RefreshTokenIssuer(Options.Create(new RefreshTokenOptions { ExpirationDays = 30 }), new Sha256RefreshTokenHasher()));
 
     [Fact]
     public async Task RevokeAsync_ValidOwnedToken_RevokesIt()
@@ -128,6 +131,30 @@ public sealed class RefreshTokenServiceTests : IDisposable
 
         Assert.NotNull(first);
         Assert.Null(replay);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_ConcurrentReplayAttempts_OnlyOneSucceeds()
+    {
+        // Unlike the sequential test above (which only proves a call made AFTER a prior one
+        // fully completed gets rejected — never in doubt), this drives two genuinely overlapping
+        // calls for the SAME refresh token, each through its own AuthDbContext/service instance
+        // against the same store, the way two concurrent HTTP requests actually would. Before the
+        // atomic conditional revoke, both could read the token as active and both walk away with
+        // a valid new token pair.
+        const string rawToken = "a-real-high-entropy-refresh-token";
+        var user = await SeedUserAsync();
+        await SeedTokenAsync(user.Id, rawToken);
+
+        await using var dbB = new AuthDbContext(_options);
+        var serviceB = CreateService(dbB);
+
+        var results = await Task.WhenAll(
+            _service.RefreshAsync(rawToken),
+            serviceB.RefreshAsync(rawToken));
+
+        Assert.Single(results, r => r is not null);
+        Assert.Single(results, r => r is null);
     }
 
     [Fact]

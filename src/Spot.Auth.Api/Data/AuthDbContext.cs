@@ -63,7 +63,10 @@ public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(
             e.Property(x => x.UserId).HasColumnName("user_id");
             e.Property(x => x.TokenHash).HasColumnName("token_hash").IsRequired();
             e.Property(x => x.ExpiresAt).HasColumnName("expires_at");
-            e.Property(x => x.RevokedAt).HasColumnName("revoked_at");
+            // A concurrency token (not just a plain column): RefreshTokenRepository.RevokeAsync
+            // relies on this so its UPDATE's WHERE clause includes the RevokedAt value it
+            // originally read, making the revoke conditional/atomic — see that method's remarks.
+            e.Property(x => x.RevokedAt).HasColumnName("revoked_at").IsConcurrencyToken();
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => x.UserId).HasDatabaseName("idx_refresh_tokens_user");

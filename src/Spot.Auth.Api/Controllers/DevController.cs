@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
 using Spot.Auth.Api.Data;
-using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Services;
 using Spot.Shared.Errors;
@@ -8,16 +7,13 @@ using Spot.Shared.Errors;
 namespace Spot.Auth.Api.Controllers;
 
 /// <summary>
-/// Issues real RS256 test tokens while there is no login flow yet. Only reachable in
-/// Development — returns 404 everywhere else, same as production would see a missing route.
+/// Issues real RS256 test tokens for roles <c>/auth/register</c> can't produce (it only ever
+/// creates CLIENT users), e.g. SUPERADMIN. Only reachable in Development — returns 404
+/// everywhere else, same as production would see a missing route.
 /// </summary>
 [ApiController]
 [Route("dev")]
-public class DevController(
-    ITokenService tokenService,
-    IHostEnvironment env,
-    AuthDbContext db,
-    IRefreshTokenIssuer refreshTokenIssuer) : ControllerBase
+public class DevController(ITokenService tokenService, IHostEnvironment env, AuthDbContext db) : ControllerBase
 {
     [HttpPost("token")]
     public async Task<IActionResult> IssueToken([FromQuery] string role = nameof(UserRole.SUPERADMIN), CancellationToken ct = default)
@@ -42,30 +38,10 @@ public class DevController(
             Role = parsedRole,
         };
         db.Users.Add(user);
-
-        // Must be saved before the refresh token below is created: User.Id is store-generated
-        // (gen_random_uuid(), not set client-side), so it's still Guid.Empty until this
-        // SaveChangesAsync round-trips and reads it back — the refresh_tokens FK would otherwise
-        // point at a user row that doesn't exist yet.
         await db.SaveChangesAsync(ct);
 
-        // Also persists a matching refresh_tokens row: with no /auth/login endpoint yet either,
-        // this is the only way to get a real, active refresh token to exercise POST /auth/refresh
-        // against (see Spot.Auth.Api.http).
-        var issued = refreshTokenIssuer.Issue();
-        db.RefreshTokens.Add(new RefreshToken
-        {
-            Id = Guid.NewGuid(),
-            UserId = user.Id,
-            TokenHash = issued.HashValue,
-            ExpiresAt = issued.ExpiresAt,
-            CreatedAt = DateTimeOffset.UtcNow,
-        });
+        var token = tokenService.IssueAccessToken(user.Id.ToString(), parsedRole.ToString());
 
-        await db.SaveChangesAsync(ct);
-
-        var accessToken = tokenService.IssueAccessToken(user.Id.ToString(), parsedRole.ToString());
-
-        return Ok(new AuthTokensDto(accessToken.Value, issued.RawValue, "Bearer", accessToken.ExpiresInSeconds));
+        return Ok(token);
     }
 }

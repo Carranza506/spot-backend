@@ -15,8 +15,11 @@ namespace Spot.Auth.Api.Tests.Repositories;
 /// maps to (uuid, text, timestamptz) is provider-agnostic — nothing here depends on a Postgres
 /// native enum, <c>jsonb</c>, PostGIS, or a trigger/exclusion-constraint the way e.g. Business.Api
 /// or Booking.Api's entities do. What's actually under test — the ownership/active-token
-/// filtering in <see cref="RefreshTokenRepository.FindActiveByHashAsync"/> — is a plain LINQ
-/// predicate that InMemory evaluates faithfully. If a future change makes this entity depend on
+/// filtering in <see cref="RefreshTokenRepository.FindActiveByHashAsync"/>, and (via
+/// <see cref="RevokeAsync_ConcurrentRevokes_OnlyOneSucceeds"/>) the optimistic-concurrency check
+/// EF's own SaveChanges pipeline performs for a property marked <c>IsConcurrencyToken()</c> — is
+/// provider-agnostic behavior that InMemory implements faithfully in its own change-tracker layer,
+/// not something that needs real SQL translation. If a future change makes this entity depend on
 /// Postgres-specific behavior, switch this suite to Testcontainers.PostgreSql instead.
 /// </remarks>
 public sealed class RefreshTokenRepositoryTests : IDisposable
@@ -166,14 +169,15 @@ public sealed class RefreshTokenRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task RevokeAsync_SetsRevokedAt_AndPersistsIt()
+    public async Task RevokeAsync_ActiveToken_ReturnsTrue_AndPersistsRevokedAt()
     {
         var userId = Guid.NewGuid();
         var token = await SeedTokenAsync(userId, "hash-1");
         var before = DateTimeOffset.UtcNow;
 
-        await _repository.RevokeAsync(token);
+        var revoked = await _repository.RevokeAsync(token);
 
+        Assert.True(revoked);
         Assert.NotNull(token.RevokedAt);
         Assert.True(token.RevokedAt >= before);
 
@@ -181,6 +185,39 @@ public sealed class RefreshTokenRepositoryTests : IDisposable
         // change was actually saved, not just mutated on the in-memory object graph.
         await using var freshDb = new AuthDbContext(_options);
         var persisted = await freshDb.RefreshTokens.SingleAsync(x => x.Id == token.Id);
+        Assert.NotNull(persisted.RevokedAt);
+    }
+
+    [Fact]
+    public async Task RevokeAsync_ConcurrentRevokes_OnlyOneSucceeds()
+    {
+        // The core of the concurrency fix: two overlapping calls revoking the SAME active token
+        // (as two genuinely simultaneous /auth/refresh requests replaying the same refresh token
+        // would) must not both succeed — that would defeat single-use rotation. Each side gets its
+        // own DbContext/tracked copy of the token, matching what two concurrent HTTP requests
+        // would actually do (each request scope resolves its own AuthDbContext), and RevokedAt
+        // being a concurrency token (see AuthDbContext) is what makes only one of the two
+        // SaveChangesAsync calls actually able to apply its update.
+        var userId = Guid.NewGuid();
+        await SeedTokenAsync(userId, "hash-1");
+
+        await using var dbA = new AuthDbContext(_options);
+        await using var dbB = new AuthDbContext(_options);
+        var repositoryA = new RefreshTokenRepository(dbA);
+        var repositoryB = new RefreshTokenRepository(dbB);
+
+        var tokenA = await repositoryA.FindActiveByHashAsync(userId, "hash-1");
+        var tokenB = await repositoryB.FindActiveByHashAsync(userId, "hash-1");
+
+        var results = await Task.WhenAll(
+            repositoryA.RevokeAsync(tokenA!),
+            repositoryB.RevokeAsync(tokenB!));
+
+        Assert.Single(results, true);
+        Assert.Single(results, false);
+
+        await using var freshDb = new AuthDbContext(_options);
+        var persisted = await freshDb.RefreshTokens.SingleAsync(x => x.UserId == userId);
         Assert.NotNull(persisted.RevokedAt);
     }
 

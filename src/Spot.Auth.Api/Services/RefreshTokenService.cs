@@ -43,8 +43,13 @@ public class RefreshTokenService(
             return null;
 
         // Revoke before issuing the replacement: the consumed token is rotated, not reusable,
-        // so a stolen copy of it can't be replayed for a second token pair.
-        await repository.RevokeAsync(token, ct);
+        // so a stolen copy of it can't be replayed for a second token pair. The revoke is
+        // atomic/conditional at the database level, so if a concurrent request for this same
+        // token already revoked it between our read above and this write, we lose the race and
+        // must not hand out a second pair for a single-use token.
+        var revoked = await repository.RevokeAsync(token, ct);
+        if (!revoked)
+            return null;
 
         // Reuses IRefreshTokenIssuer — the same one AuthService.RegisterAsync uses — so issuing
         // a refresh token can never silently drift between the two call sites (entropy, hashing,
