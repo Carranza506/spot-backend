@@ -17,4 +17,11 @@ public interface IRefreshTokenRepository
     /// Marks <paramref name="token"/> as revoked (sets <c>revoked_at</c>) and persists the change.
     /// </summary>
     Task RevokeAsync(RefreshToken token, CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes every currently-active refresh token belonging to <paramref name="userId"/> —
+    /// used by change-password to end every other session, on every device, the moment the
+    /// password changes. Already-revoked or expired tokens are left untouched.
+    /// </summary>
+    Task RevokeAllActiveForUserAsync(Guid userId, CancellationToken ct = default);
 }

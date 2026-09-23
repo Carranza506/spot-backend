@@ -9,7 +9,8 @@ public sealed class AuthService(
     IUserRepository userRepository,
     IPasswordHasher<User> passwordHasher,
     ITokenService tokenService,
-    IRefreshTokenIssuer refreshTokenIssuer) : IAuthService
+    IRefreshTokenIssuer refreshTokenIssuer,
+    IRefreshTokenService refreshTokenService) : IAuthService
 {
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
@@ -73,6 +74,31 @@ public sealed class AuthService(
         return new AuthResponseDto(
             UserDto.FromEntity(user),
             new AuthTokensDto(accessToken.Value, issuedRefreshToken.RawValue, "Bearer", accessToken.ExpiresInSeconds));
+    }
+
+    public async Task<bool> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken ct = default)
+    {
+        var user = await userRepository.GetByIdAsync(userId, ct);
+        if (user is null)
+            return false;
+
+        // No password set at all (e.g. a Google-only sign-up, once social login exists) — there
+        // is nothing valid to match, so any "current password" the caller sends is wrong.
+        if (user.PasswordHash is null)
+            throw new InvalidCurrentPasswordException();
+
+        var verification = passwordHasher.VerifyHashedPassword(user, user.PasswordHash, request.CurrentPassword);
+        if (verification is not (PasswordVerificationResult.Success or PasswordVerificationResult.SuccessRehashNeeded))
+            throw new InvalidCurrentPasswordException();
+
+        user.PasswordHash = passwordHasher.HashPassword(user, request.NewPassword);
+        await userRepository.SaveChangesAsync(user, ct);
+
+        // Only after the new password is actually saved: if persisting it had failed, sessions
+        // would have been revoked for nothing.
+        await refreshTokenService.RevokeAllActiveForUserAsync(userId, ct);
+
+        return true;
     }
 
     /// <summary>

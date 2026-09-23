@@ -9,10 +9,10 @@ namespace Spot.Auth.Api.Controllers;
 
 /// <summary>
 /// contracts/spot-api.yaml, "Auth" tag. <c>POST /auth/register</c>, <c>POST /auth/login</c>
-/// (#49), <c>POST /auth/logout</c> (#51) and <c>GET</c>/<c>PATCH /auth/me</c> (#52) are
-/// implemented so far — refresh/change-password are separate, not-yet-implemented issues under
-/// the same parent (#42). Register and Login must stay reachable without a token, so
-/// authorization is applied per-action below instead of at the class level.
+/// (#49), <c>POST /auth/logout</c> (#51), <c>GET</c>/<c>PATCH /auth/me</c> (#52) and
+/// <c>POST /auth/change-password</c> (#53) are implemented so far — refresh is a separate,
+/// not-yet-implemented issue under the same parent (#42). Register and Login must stay reachable
+/// without a token, so authorization is applied per-action below instead of at the class level.
 /// </summary>
 [ApiController]
 [Route("auth")]
@@ -55,6 +55,38 @@ public class AuthController(
             return Unauthorized(new ApiError("INVALID_CREDENTIALS", "Credenciales inválidas."));
 
         return Ok(result);
+    }
+
+    /// <summary>
+    /// POST /auth/change-password: requires a valid access token. Verifies the current password,
+    /// updates it, and revokes every one of the caller's active refresh tokens — every other
+    /// session/device must log in again.
+    /// </summary>
+    [HttpPost("change-password")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var userId))
+            return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
+
+        bool found;
+        try
+        {
+            found = await authService.ChangePasswordAsync(userId, request, ct);
+        }
+        catch (InvalidCurrentPasswordException)
+        {
+            return UnprocessableEntity(new ApiError("INVALID_CURRENT_PASSWORD", "La contraseña actual no es correcta."));
+        }
+
+        if (!found)
+            return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
+
+        return NoContent();
     }
 
     /// <summary>

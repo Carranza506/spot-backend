@@ -18,4 +18,7 @@ public class RefreshTokenService(IRefreshTokenRepository repository, IRefreshTok
 
         await repository.RevokeAsync(token, ct);
     }
+
+    public Task RevokeAllActiveForUserAsync(Guid userId, CancellationToken ct = default) =>
+        repository.RevokeAllActiveForUserAsync(userId, ct);
 }

@@ -245,6 +245,84 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
     }
 
     [Fact]
+    public async Task ChangePassword_CorrectCurrentPassword_Returns204_AndRevokesAllSessions()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out var currentPassword);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword, newPassword = "NewPassword#2026" });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(user.Id, factory.RefreshTokenService.LastRevokeAllForUserId);
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            new PasswordHasher<User>().VerifyHashedPassword(user, user.PasswordHash!, "NewPassword#2026"));
+    }
+
+    [Fact]
+    public async Task ChangePassword_WrongCurrentPassword_Returns422WithInvalidCurrentPasswordBody()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out _);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword = "WrongPassword#0000", newPassword = "NewPassword#2026" });
+
+        Assert.Equal((HttpStatusCode)422, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_CURRENT_PASSWORD", body.GetProperty("code").GetString());
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    [Fact]
+    public async Task ChangePassword_NoAccessToken_Returns401_AndDoesNotCallAnything()
+    {
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword = "Whatever#123", newPassword = "NewPassword#2026" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    [Fact]
+    public async Task ChangePassword_NewPasswordTooShort_Returns400WithErrorShape()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out var currentPassword);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword, newPassword = "short" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    private User SeedChangePasswordUser(out string password)
+    {
+        password = "OldPassword#2026";
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "change.password.user@example.com",
+            FirstName = "Change",
+            LastName = "Password",
+            Role = UserRole.CLIENT,
+        };
+        user.PasswordHash = new PasswordHasher<User>().HashPassword(user, password);
+        factory.UserRepository.Seed(user);
+        return user;
+    }
+
+    [Fact]
     public async Task Logout_ValidTokenAndBody_Returns204_AndRevokesForTheCallingUser()
     {
         factory.RefreshTokenService.Reset();
