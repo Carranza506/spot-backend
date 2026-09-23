@@ -8,7 +8,6 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
 {
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<BusinessEntity> Businesses => Set<BusinessEntity>();
-    public DbSet<BusinessOwner> BusinessOwners => Set<BusinessOwner>();
     public DbSet<BusinessCategory> BusinessCategories => Set<BusinessCategory>();
     public DbSet<BusinessLocation> BusinessLocations => Set<BusinessLocation>();
     public DbSet<BusinessContact> BusinessContacts => Set<BusinessContact>();
@@ -107,6 +106,7 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.ToTable("businesses");
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.AccountId).HasColumnName("account_id");
             e.Property(x => x.Name).HasColumnName("name").HasMaxLength(150).IsRequired();
             e.Property(x => x.Slug).HasColumnName("slug").HasMaxLength(180).IsRequired();
             e.Property(x => x.Description).HasColumnName("description");
@@ -119,7 +119,10 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasIndex(x => x.Slug).IsUnique();
+            e.HasIndex(x => x.AccountId).IsUnique();
             e.HasIndex(x => x.Name).HasDatabaseName("idx_businesses_name");
+            // Owned by Spot.Auth.Api; see Models/UserReference.cs.
+            e.HasOne<UserReference>().WithOne().HasForeignKey<BusinessEntity>(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<BusinessLocation>(e =>
@@ -233,19 +236,6 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasIndex(x => x.ServiceId).HasDatabaseName("idx_service_photos_service");
             e.HasOne(x => x.Service).WithMany(s => s.Photos).HasForeignKey(x => x.ServiceId).OnDelete(DeleteBehavior.Cascade);
-        });
-
-        modelBuilder.Entity<BusinessOwner>(e =>
-        {
-            e.ToTable("business_owners");
-            e.HasKey(x => new { x.BusinessId, x.UserId });
-            e.Property(x => x.BusinessId).HasColumnName("business_id");
-            e.Property(x => x.UserId).HasColumnName("user_id");
-            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
-            e.HasIndex(x => x.UserId).HasDatabaseName("idx_business_owners_user");
-            e.HasOne(x => x.Business).WithMany().HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
-            // db/Spot.sql:56
-            e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<BusinessCategory>(e =>

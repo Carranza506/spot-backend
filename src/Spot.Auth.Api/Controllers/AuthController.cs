@@ -105,7 +105,10 @@ public class AuthController(
     /// <summary>
     /// PATCH /auth/me: updates editable profile fields (firstName, lastName, phone,
     /// profilePhotoUrl) for the authenticated user. Never changes email or role — those aren't
-    /// even present on <see cref="UpdateProfileRequest"/>.
+    /// even present on <see cref="UpdateProfileRequest"/>. A CLIENT cannot clear firstName/lastName
+    /// to null or empty; a BUSINESS account cannot send either at all (its name lives on
+    /// <c>businesses.name</c>, edited via PATCH /business/businesses/me instead) — see
+    /// <see cref="UserProfileService"/>, which enforces this from the caller's loaded role.
     /// </summary>
     [HttpPatch("me")]
     [Authorize]
@@ -117,7 +120,16 @@ public class AuthController(
         if (!TryGetUserId(out var userId))
             return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
 
-        var profile = await userProfileService.UpdateProfileAsync(userId, request, ct);
+        UserDto? profile;
+        try
+        {
+            profile = await userProfileService.UpdateProfileAsync(userId, request, ct);
+        }
+        catch (ProfileFieldNotAllowedException ex)
+        {
+            return BadRequest(new ApiError("BAD_REQUEST", ex.Message, new { field = ex.Field }));
+        }
+
         if (profile is null)
             return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
 

@@ -21,8 +21,10 @@ public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(
             e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
             e.Property(x => x.Email).HasColumnName("email").HasMaxLength(255).IsRequired();
             e.Property(x => x.PasswordHash).HasColumnName("password_hash");
-            e.Property(x => x.FirstName).HasColumnName("first_name").HasMaxLength(100).IsRequired();
-            e.Property(x => x.LastName).HasColumnName("last_name").HasMaxLength(100).IsRequired();
+            // Nullable: a BUSINESS account has no person name (see ck_users_client_names in the
+            // RenameBusinessRoleAndNullableUserNames migration, which requires both only for CLIENT).
+            e.Property(x => x.FirstName).HasColumnName("first_name").HasMaxLength(100);
+            e.Property(x => x.LastName).HasColumnName("last_name").HasMaxLength(100);
             e.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(30);
             e.Property(x => x.ProfilePhotoUrl).HasColumnName("profile_photo_url");
             // Not HasDefaultValue(UserRole.CLIENT): for a native Postgres enum column, EF/Npgsql
