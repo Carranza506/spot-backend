@@ -11,7 +11,7 @@ public interface ITokenService
     /// Issues a signed RS256 access token for the given user.
     /// </summary>
     /// <param name="userId">The user's id, emitted as the <c>sub</c> claim.</param>
-    /// <param name="role">The user's role (e.g. CLIENT, BUSINESS_OWNER, SUPERADMIN), emitted as the <c>role</c> claim.</param>
+    /// <param name="role">The user's role (e.g. CLIENT, BUSINESS, SUPERADMIN), emitted as the <c>role</c> claim.</param>
     AccessToken IssueAccessToken(string userId, string role);
 }
 

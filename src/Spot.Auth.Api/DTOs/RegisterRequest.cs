@@ -17,19 +17,19 @@ public sealed class RegisterRequest : IValidatableObject
     [MaxLength(72)]
     public string Password { get; set; } = default!;
 
-    [Required]
+    /// <summary>Required only when the (effective) role is CLIENT — see <see cref="Validate"/>.</summary>
     [MaxLength(100)]
-    public string FirstName { get; set; } = default!;
+    public string? FirstName { get; set; }
 
-    [Required]
+    /// <summary>Required only when the (effective) role is CLIENT — see <see cref="Validate"/>.</summary>
     [MaxLength(100)]
-    public string LastName { get; set; } = default!;
+    public string? LastName { get; set; }
 
     [MaxLength(30)]
     public string? Phone { get; set; }
 
     /// <summary>
-    /// Omitted defaults to CLIENT (see AuthService.RegisterAsync). Only CLIENT and BUSINESS_OWNER
+    /// Omitted defaults to CLIENT (see AuthService.RegisterAsync). Only CLIENT and BUSINESS
     /// are ever accepted from the client — SUPERADMIN (or anything else) is rejected by
     /// <see cref="Validate"/> below, since the caller never gets to self-grant an elevated role.
     /// </summary>
@@ -38,7 +38,21 @@ public sealed class RegisterRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (Role is not (null or UserRole.CLIENT or UserRole.BUSINESS_OWNER))
-            yield return new ValidationResult("role debe ser CLIENT o BUSINESS_OWNER.", [nameof(Role)]);
+        if (Role is not (null or UserRole.CLIENT or UserRole.BUSINESS))
+        {
+            yield return new ValidationResult("role debe ser CLIENT o BUSINESS.", [nameof(Role)]);
+            yield break;
+        }
+
+        // A BUSINESS account is the business itself — no person name (see AuthService.RegisterAsync,
+        // which ignores firstName/lastName entirely for BUSINESS). Only CLIENT needs them.
+        if (Role is null or UserRole.CLIENT)
+        {
+            if (string.IsNullOrWhiteSpace(FirstName))
+                yield return new ValidationResult("firstName es requerido para cuentas CLIENT.", [nameof(FirstName)]);
+
+            if (string.IsNullOrWhiteSpace(LastName))
+                yield return new ValidationResult("lastName es requerido para cuentas CLIENT.", [nameof(LastName)]);
+        }
     }
 }

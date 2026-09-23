@@ -88,6 +88,55 @@ public sealed class UserProfileServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetProfileAsync_BusinessAccount_ReturnsNullNames()
+    {
+        var user = await SeedUserAsync(role: UserRole.BUSINESS);
+
+        var profile = await _service.GetProfileAsync(user.Id);
+
+        Assert.NotNull(profile);
+        Assert.Null(profile!.FirstName);
+        Assert.Null(profile.LastName);
+        Assert.Equal("BUSINESS", profile.Role);
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_BusinessAccount_SendingFirstName_ThrowsProfileFieldNotAllowed()
+    {
+        var user = await SeedUserAsync(role: UserRole.BUSINESS);
+        var request = new UpdateProfileRequest { FirstName = Optional<string>.Of("Nombre") };
+
+        var ex = await Assert.ThrowsAsync<ProfileFieldNotAllowedException>(
+            () => _service.UpdateProfileAsync(user.Id, request));
+        Assert.Equal(nameof(UpdateProfileRequest.FirstName), ex.Field);
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_BusinessAccount_SendingLastName_ThrowsProfileFieldNotAllowed()
+    {
+        var user = await SeedUserAsync(role: UserRole.BUSINESS);
+        var request = new UpdateProfileRequest { LastName = Optional<string>.Of("Nombre") };
+
+        var ex = await Assert.ThrowsAsync<ProfileFieldNotAllowedException>(
+            () => _service.UpdateProfileAsync(user.Id, request));
+        Assert.Equal(nameof(UpdateProfileRequest.LastName), ex.Field);
+    }
+
+    [Fact]
+    public async Task UpdateProfileAsync_BusinessAccount_UpdatingAnAllowedField_Succeeds()
+    {
+        var user = await SeedUserAsync(role: UserRole.BUSINESS);
+        var request = new UpdateProfileRequest { Phone = Optional<string?>.Of("+506 8888-1234") };
+
+        var profile = await _service.UpdateProfileAsync(user.Id, request);
+
+        Assert.NotNull(profile);
+        Assert.Equal("+506 8888-1234", profile!.Phone);
+        Assert.Null(profile.FirstName);
+        Assert.Null(profile.LastName);
+    }
+
+    [Fact]
     public async Task UpdateProfileAsync_UnknownUser_ReturnsNull()
     {
         var request = new UpdateProfileRequest { FirstName = Optional<string>.Of("Nombre") };
@@ -113,16 +162,17 @@ public sealed class UserProfileServiceTests : IDisposable
         Assert.Equal("+506 8888-1234", profile.Phone);
     }
 
-    private async Task<User> SeedUserAsync(string? phone = null)
+    private async Task<User> SeedUserAsync(string? phone = null, UserRole role = UserRole.CLIENT)
     {
         var user = new User
         {
             Id = Guid.NewGuid(),
-            Email = "maria@example.com",
-            FirstName = "María",
-            LastName = "Rodríguez",
+            Email = role == UserRole.BUSINESS ? "business@example.com" : "maria@example.com",
+            // A BUSINESS account never has a person name — matches AuthService.RegisterAsync.
+            FirstName = role == UserRole.BUSINESS ? null : "María",
+            LastName = role == UserRole.BUSINESS ? null : "Rodríguez",
             Phone = phone,
-            Role = UserRole.CLIENT,
+            Role = role,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

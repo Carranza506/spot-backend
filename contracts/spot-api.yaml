@@ -34,10 +34,12 @@ info:
 
     ## Roles
     Each operation documents in its description the role(s) from the `user_role`
-    enum (`CLIENT`, `BUSINESS_OWNER`, `SUPERADMIN`) authorized to invoke it.
+    enum (`CLIENT`, `BUSINESS`, `SUPERADMIN`) authorized to invoke it. A `BUSINESS`
+    account IS the business — `users` holds only its credentials, and its profile
+    is the one row in `businesses` where `account_id` matches that user (1:1).
     Operations on a specific business (services, hours, photos, etc.) also require
-    the authenticated `BUSINESS_OWNER` user to own that business (the
-    corresponding row in `business_owners`).
+    the authenticated `BUSINESS` user to own that business (`businesses.account_id`
+    equal to the caller's own id).
 
     ## Pagination
     Every listing endpoint accepts the `page` (>=1, default 1) and `pageSize`
@@ -87,7 +89,7 @@ paths:
       security: []
       description: |-
         Creates a new account with email and password. `role` is optional and
-        defaults to `CLIENT`; a caller may also request `BUSINESS_OWNER`
+        defaults to `CLIENT`; a caller may also request `BUSINESS`
         directly. Any other value (including `SUPERADMIN`) is rejected with
         400 — elevated roles beyond these two are never self-service.
 
@@ -221,7 +223,7 @@ paths:
       description: |-
         Revokes the given refresh token (`refresh_tokens.revoked_at`).
 
-        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -242,7 +244,7 @@ paths:
       operationId: getOwnProfile
       summary: Get the authenticated user's profile
       description: |-
-        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS`,
         `SUPERADMIN`).
       responses:
         '200':
@@ -273,7 +275,12 @@ paths:
         `last_name`, `phone`, `profile_photo_url`). Does not allow changing
         `email` or `role`.
 
-        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
+        A CLIENT cannot clear `firstName`/`lastName` to null or empty (400). A
+        BUSINESS account cannot send `firstName`/`lastName` at all (400) — its
+        name is `businesses.name`, edited via `PATCH /business/businesses/me`
+        instead.
+
+        Required role: any authenticated user (`CLIENT`, `BUSINESS`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -301,7 +308,7 @@ paths:
         Requires the current password to authorize the change. Revokes all of
         the user's active refresh tokens after the change.
 
-        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -507,10 +514,12 @@ paths:
       operationId: createBusiness
       summary: Create a business
       description: |-
-        Creates a business and registers the authenticated user as its owner in
-        `business_owners`.
+        Creates the business profile for the authenticated BUSINESS account
+        (`businesses.account_id`, taken from the JWT `sub` claim — never from
+        the request body). A business account can only ever have one business:
+        409 if this account already has one.
 
-        Required role: `BUSINESS_OWNER`.
+        Required role: `BUSINESS`.
       requestBody:
         required: true
         content:
@@ -534,6 +543,50 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /business/businesses/me:
+    get:
+      tags: [Business]
+      operationId: getOwnBusiness
+      summary: Get the authenticated account's own business
+      description: |-
+        Required role: `BUSINESS`.
+      responses:
+        '200':
+          description: The caller's business.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+    patch:
+      tags: [Business]
+      operationId: updateOwnBusiness
+      summary: Update the authenticated account's own business
+      description: |-
+        Required role: `BUSINESS`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessUpdateRequest'
+      responses:
+        '200':
+          description: Business updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Business'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
@@ -561,7 +614,7 @@ paths:
       operationId: updateBusiness
       summary: Update a business
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       requestBody:
         required: true
         content:
@@ -589,7 +642,7 @@ paths:
         Sets `businesses.is_active = false`. Does not physically delete the
         record because it has associated bookings and reviews.
 
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       responses:
         '204':
           description: Business deactivated.
@@ -626,7 +679,7 @@ paths:
         business. This endpoint creates the row if it doesn't exist or replaces
         it if it already does.
 
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       requestBody:
         required: true
         content:
@@ -680,7 +733,7 @@ paths:
       operationId: createBusinessContact
       summary: Add a contact to a business
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       requestBody:
         required: true
         content:
@@ -716,7 +769,7 @@ paths:
       operationId: deleteBusinessContact
       summary: Remove a contact from a business
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       responses:
         '204':
           description: Contact deleted.
@@ -761,7 +814,7 @@ paths:
         `openTime` and `closeTime` are required and `openTime < closeTime`
         (validated by the `business_hours` CHECK).
 
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       requestBody:
         required: true
         content:
@@ -837,7 +890,7 @@ paths:
         exceptions for the same date. If `isClosed=false`, requires
         `openTime < closeTime`.
 
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       requestBody:
         required: true
         content:
@@ -875,7 +928,7 @@ paths:
       operationId: deleteBusinessScheduleException
       summary: Delete a schedule exception
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       responses:
         '204':
           description: Exception deleted.
@@ -914,7 +967,7 @@ paths:
         Completely replaces the `business_categories` rows for the business with
         the given set of `categoryIds`.
 
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       requestBody:
         required: true
         content:
@@ -990,7 +1043,7 @@ paths:
       operationId: createService
       summary: Create a service for a business
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       requestBody:
         required: true
         content:
@@ -1039,7 +1092,7 @@ paths:
       operationId: updateService
       summary: Update a service
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business the service
+        Required role: `BUSINESS` who owns the business the service
         belongs to.
       requestBody:
         required: true
@@ -1068,7 +1121,7 @@ paths:
         preserve the historical integrity of `bookings` (which references
         `service_id`).
 
-        Required role: `BUSINESS_OWNER` who owns the business the service
+        Required role: `BUSINESS` who owns the business the service
         belongs to.
       responses:
         '204':
@@ -1108,7 +1161,7 @@ paths:
       operationId: uploadBusinessPhoto
       summary: Upload a business photo
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       requestBody:
         required: true
         content:
@@ -1145,7 +1198,7 @@ paths:
       operationId: deleteBusinessPhoto
       summary: Delete a business photo
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       responses:
         '204':
           description: Photo deleted.
@@ -1181,7 +1234,7 @@ paths:
       operationId: uploadServicePhoto
       summary: Upload a service photo
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business the service
+        Required role: `BUSINESS` who owns the business the service
         belongs to.
       requestBody:
         required: true
@@ -1218,7 +1271,7 @@ paths:
       operationId: deleteServicePhoto
       summary: Delete a service photo
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business the service
+        Required role: `BUSINESS` who owns the business the service
         belongs to.
       responses:
         '204':
@@ -1376,7 +1429,7 @@ paths:
       summary: Get a booking's details
       description: |-
         Required role: `CLIENT` who owns the booking (`bookings.user_id`),
-        `BUSINESS_OWNER` who owns the booking's business, or `SUPERADMIN`.
+        `BUSINESS` who owns the booking's business, or `SUPERADMIN`.
       responses:
         '200':
           description: Booking details.
@@ -1401,7 +1454,7 @@ paths:
         `CONFIRMED`; canceling a booking that is already `COMPLETED`,
         `CANCELLED`, or `NO_SHOW` responds `422`.
 
-        Required role: `CLIENT` who owns the booking or `BUSINESS_OWNER` who owns
+        Required role: `CLIENT` who owns the booking or `BUSINESS` who owns
         the booking's business.
       requestBody:
         required: false
@@ -1435,7 +1488,7 @@ paths:
         Transitions `status` to `COMPLETED`. Only valid from `CONFIRMED`;
         otherwise responds `422`. Enables the client to leave a review.
 
-        Required role: `BUSINESS_OWNER` who owns the booking's business.
+        Required role: `BUSINESS` who owns the booking's business.
       responses:
         '200':
           description: Booking marked as completed.
@@ -1460,7 +1513,7 @@ paths:
         Transitions `status` to `NO_SHOW`. Only valid from `CONFIRMED`;
         otherwise responds `422`.
 
-        Required role: `BUSINESS_OWNER` who owns the booking's business.
+        Required role: `BUSINESS` who owns the booking's business.
       responses:
         '200':
           description: Booking marked as no-show.
@@ -1522,7 +1575,7 @@ paths:
       operationId: listBusinessBookings
       summary: List a business's bookings
       description: |-
-        Required role: `BUSINESS_OWNER` who owns the business.
+        Required role: `BUSINESS` who owns the business.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1658,7 +1711,7 @@ paths:
         summary is returned in the response's `aiRequest` field for
         traceability; the full history is queried via `GET /ai-search/requests`.
 
-        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -1789,7 +1842,7 @@ paths:
         Registers (or reactivates, if it already existed and was inactive) the
         authenticated user's device push token for sending notifications.
 
-        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS`,
         `SUPERADMIN`).
       requestBody:
         required: true
@@ -1838,7 +1891,7 @@ paths:
       operationId: listOwnNotifications
       summary: List the authenticated user's notifications
       description: |-
-        Required role: any authenticated user (`CLIENT`, `BUSINESS_OWNER`,
+        Required role: any authenticated user (`CLIENT`, `BUSINESS`,
         `SUPERADMIN`), over their own notifications.
       parameters:
         - $ref: '#/components/parameters/PageParam'
@@ -2097,7 +2150,7 @@ components:
     # ---------- Enums ----------
     UserRole:
       type: string
-      enum: [CLIENT, BUSINESS_OWNER, SUPERADMIN]
+      enum: [CLIENT, BUSINESS, SUPERADMIN]
     ContactType:
       type: string
       enum: [PHONE, WHATSAPP, EMAIL, WEBSITE, FACEBOOK, INSTAGRAM, TIKTOK, OTHER]
@@ -2130,8 +2183,14 @@ components:
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
-        firstName: { type: string, maxLength: 100 }
-        lastName: { type: string, maxLength: 100 }
+        firstName:
+          type: [string, 'null']
+          maxLength: 100
+          description: Null for a BUSINESS account — its name is `businesses.name` instead.
+        lastName:
+          type: [string, 'null']
+          maxLength: 100
+          description: Null for a BUSINESS account — its name is `businesses.name` instead.
         phone: { type: [string, 'null'], maxLength: 30 }
         profilePhotoUrl: { type: [string, 'null'], format: uri }
         role: { $ref: '#/components/schemas/UserRole' }
@@ -2147,20 +2206,26 @@ components:
 
     RegisterRequest:
       type: object
-      required: [email, password, firstName, lastName]
+      required: [email, password]
       properties:
         email: { type: string, format: email }
         password: { type: string, format: password, minLength: 8, maxLength: 72 }
-        firstName: { type: string, maxLength: 100 }
-        lastName: { type: string, maxLength: 100 }
+        firstName:
+          type: string
+          maxLength: 100
+          description: Required when role is CLIENT (the default). Ignored for BUSINESS — a business account has no person name.
+        lastName:
+          type: string
+          maxLength: 100
+          description: Required when role is CLIENT (the default). Ignored for BUSINESS — a business account has no person name.
         phone: { type: string, maxLength: 30 }
         role:
           type: string
-          enum: [CLIENT, BUSINESS_OWNER]
+          enum: [CLIENT, BUSINESS]
           default: CLIENT
           description: >-
             Optional. Defaults to CLIENT when omitted. Only CLIENT and
-            BUSINESS_OWNER may be requested here — SUPERADMIN is never
+            BUSINESS may be requested here — SUPERADMIN is never
             granted through self-service registration.
 
     LoginRequest:
@@ -2194,8 +2259,18 @@ components:
     UpdateProfileRequest:
       type: object
       properties:
-        firstName: { type: string, maxLength: 100 }
-        lastName: { type: string, maxLength: 100 }
+        firstName:
+          type: string
+          maxLength: 100
+          description: >-
+            CLIENT only: cannot be cleared to null or empty (400). Rejected outright (400) for a
+            BUSINESS account — its name is edited via PATCH /business/businesses/me instead.
+        lastName:
+          type: string
+          maxLength: 100
+          description: >-
+            CLIENT only: cannot be cleared to null or empty (400). Rejected outright (400) for a
+            BUSINESS account — its name is edited via PATCH /business/businesses/me instead.
         phone: { type: [string, 'null'], maxLength: 30 }
         profilePhotoUrl: { type: [string, 'null'], format: uri }
 

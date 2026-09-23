@@ -13,13 +13,18 @@ public sealed class AuthService(
 {
     public async Task<AuthResponseDto> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
+        var role = request.Role ?? UserRole.CLIENT;
+
         var user = new User
         {
             Email = NormalizeEmail(request.Email),
-            FirstName = request.FirstName.Trim(),
-            LastName = request.LastName.Trim(),
+            // A BUSINESS account is the business itself — it never has a person name, regardless
+            // of what the request sent (RegisterRequest.Validate only requires these for CLIENT;
+            // it never forbids them for BUSINESS, so this is what actually enforces "null names").
+            FirstName = role == UserRole.CLIENT ? request.FirstName!.Trim() : null,
+            LastName = role == UserRole.CLIENT ? request.LastName!.Trim() : null,
             Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
-            Role = request.Role ?? UserRole.CLIENT,
+            Role = role,
         };
         // Hashed before the entity is ever tracked/persisted — the plain-text password never
         // reaches the repository or the database.
