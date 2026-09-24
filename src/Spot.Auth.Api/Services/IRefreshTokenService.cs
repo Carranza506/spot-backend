@@ -32,4 +32,10 @@ public interface IRefreshTokenService
     /// exists.
     /// </returns>
     Task<AuthTokensDto?> RefreshAsync(string rawRefreshToken, CancellationToken ct = default);
+
+    /// <summary>
+    /// Revokes every active refresh token belonging to <paramref name="userId"/> — used after a
+    /// successful password change to end every other session on every device.
+    /// </summary>
+    Task RevokeAllActiveForUserAsync(Guid userId, CancellationToken ct = default);
 }

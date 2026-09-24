@@ -192,7 +192,7 @@ public class CategoriesControllerTests(CategoriesApiFactory factory) : IClassFix
     {
         factory.CategoryRepository.Reset();
         var category = factory.CategoryRepository.Seed(new Category { Name = "Salud" });
-        var client = CreateAuthenticatedClient("BUSINESS_OWNER");
+        var client = CreateAuthenticatedClient("BUSINESS");
 
         var response = await client.PatchAsJsonAsync($"/business/categories/{category.Id}", new { name = "X" });
 

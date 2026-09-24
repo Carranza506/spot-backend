@@ -13,6 +13,7 @@ public sealed class FakeRefreshTokenService : IRefreshTokenService
     public string? LastCalledWithRawToken { get; private set; }
     public AuthTokensDto? TokensToReturn { get; set; }
     public string? LastRefreshCalledWithRawToken { get; private set; }
+    public Guid? LastRevokeAllForUserId { get; private set; }
 
     public Task RevokeAsync(Guid userId, string rawRefreshToken, CancellationToken ct = default)
     {
@@ -28,6 +29,12 @@ public sealed class FakeRefreshTokenService : IRefreshTokenService
         return Task.FromResult(TokensToReturn);
     }
 
+    public Task RevokeAllActiveForUserAsync(Guid userId, CancellationToken ct = default)
+    {
+        LastRevokeAllForUserId = userId;
+        return Task.CompletedTask;
+    }
+
     public void Reset()
     {
         WasCalled = false;
@@ -35,5 +42,6 @@ public sealed class FakeRefreshTokenService : IRefreshTokenService
         LastCalledWithRawToken = null;
         TokensToReturn = null;
         LastRefreshCalledWithRawToken = null;
+        LastRevokeAllForUserId = null;
     }
 }

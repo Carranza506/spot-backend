@@ -221,6 +221,36 @@ public sealed class RefreshTokenRepositoryTests : IDisposable
         Assert.NotNull(persisted.RevokedAt);
     }
 
+    [Fact]
+    public async Task RevokeAllActiveForUserAsync_RevokesOnlyThatUsersActiveTokens()
+    {
+        var userId = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var active1 = await SeedTokenAsync(userId, "hash-1");
+        var active2 = await SeedTokenAsync(userId, "hash-2");
+        var alreadyRevoked = await SeedTokenAsync(userId, "hash-3", revokedAt: DateTimeOffset.UtcNow.AddHours(-1));
+        var expired = await SeedTokenAsync(userId, "hash-4", expiresAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+        var othersToken = await SeedTokenAsync(other, "hash-5");
+
+        await _repository.RevokeAllActiveForUserAsync(userId);
+
+        await using var freshDb = new AuthDbContext(_options);
+        Assert.NotNull((await freshDb.RefreshTokens.SingleAsync(x => x.Id == active1.Id)).RevokedAt);
+        Assert.NotNull((await freshDb.RefreshTokens.SingleAsync(x => x.Id == active2.Id)).RevokedAt);
+        // Untouched: already revoked, already expired, and belonging to someone else.
+        Assert.Equal(alreadyRevoked.RevokedAt, (await freshDb.RefreshTokens.SingleAsync(x => x.Id == alreadyRevoked.Id)).RevokedAt);
+        Assert.Null((await freshDb.RefreshTokens.SingleAsync(x => x.Id == expired.Id)).RevokedAt);
+        Assert.Null((await freshDb.RefreshTokens.SingleAsync(x => x.Id == othersToken.Id)).RevokedAt);
+    }
+
+    [Fact]
+    public async Task RevokeAllActiveForUserAsync_NoActiveTokens_DoesNotThrow()
+    {
+        var exception = await Record.ExceptionAsync(() => _repository.RevokeAllActiveForUserAsync(Guid.NewGuid()));
+
+        Assert.Null(exception);
+    }
+
     private async Task<RefreshToken> SeedTokenAsync(
         Guid userId,
         string tokenHash,

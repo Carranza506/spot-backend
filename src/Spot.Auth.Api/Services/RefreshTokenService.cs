@@ -73,4 +73,7 @@ public class RefreshTokenService(
             TokenType: "Bearer",
             ExpiresIn: accessToken.ExpiresInSeconds);
     }
+
+    public Task RevokeAllActiveForUserAsync(Guid userId, CancellationToken ct = default) =>
+        repository.RevokeAllActiveForUserAsync(userId, ct);
 }

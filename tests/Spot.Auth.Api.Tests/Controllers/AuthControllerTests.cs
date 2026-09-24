@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Repositories;
+using Spot.Auth.Api.Services;
 
 namespace Spot.Auth.Api.Tests.Controllers;
 
@@ -36,7 +37,47 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
     }
 
     [Fact]
-    public async Task Register_WithBusinessOwnerRole_Returns201WithBusinessOwnerRole()
+    public async Task Register_WithBusinessRole_Returns201WithNullNames()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "business@example.com",
+            password = "SuperClave#2026",
+            role = "BUSINESS",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BUSINESS", body.GetProperty("user").GetProperty("role").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("user").GetProperty("firstName").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("user").GetProperty("lastName").ValueKind);
+    }
+
+    [Fact]
+    public async Task Register_ClientRoleWithoutNames_Returns400WithErrorShape()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "no.names@example.com",
+            password = "SuperClave#2026",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task Register_WithOldBusinessOwnerRoleLabel_Returns400WithErrorShape()
     {
         factory.UserRepository.Reset();
         var client = factory.CreateClient();
@@ -45,15 +86,14 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         {
             email = "owner@example.com",
             password = "SuperClave#2026",
-            firstName = "María",
-            lastName = "Rodríguez",
             role = "BUSINESS_OWNER",
         });
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("BUSINESS_OWNER", body.GetProperty("user").GetProperty("role").GetString());
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserRepository.CreatedUser);
     }
 
     [Fact]
@@ -261,6 +301,84 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
     }
 
     [Fact]
+    public async Task ChangePassword_CorrectCurrentPassword_Returns204_AndRevokesAllSessions()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out var currentPassword);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword, newPassword = "NewPassword#2026" });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(user.Id, factory.RefreshTokenService.LastRevokeAllForUserId);
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            new PasswordHasher<User>().VerifyHashedPassword(user, user.PasswordHash!, "NewPassword#2026"));
+    }
+
+    [Fact]
+    public async Task ChangePassword_WrongCurrentPassword_Returns422WithInvalidCurrentPasswordBody()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out _);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword = "WrongPassword#0000", newPassword = "NewPassword#2026" });
+
+        Assert.Equal((HttpStatusCode)422, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_CURRENT_PASSWORD", body.GetProperty("code").GetString());
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    [Fact]
+    public async Task ChangePassword_NoAccessToken_Returns401_AndDoesNotCallAnything()
+    {
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword = "Whatever#123", newPassword = "NewPassword#2026" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    [Fact]
+    public async Task ChangePassword_NewPasswordTooShort_Returns400WithErrorShape()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out var currentPassword);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword, newPassword = "short" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    private User SeedChangePasswordUser(out string password)
+    {
+        password = "OldPassword#2026";
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "change.password.user@example.com",
+            FirstName = "Change",
+            LastName = "Password",
+            Role = UserRole.CLIENT,
+        };
+        user.PasswordHash = new PasswordHasher<User>().HashPassword(user, password);
+        factory.UserRepository.Seed(user);
+        return user;
+    }
+
+    [Fact]
     public async Task Logout_ValidTokenAndBody_Returns204_AndRevokesForTheCallingUser()
     {
         factory.RefreshTokenService.Reset();
@@ -344,6 +462,22 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
     }
 
     [Fact]
+    public async Task GetMe_BusinessAccount_ReturnsNullNames()
+    {
+        factory.UserProfileService.Reset();
+        var userId = Guid.NewGuid();
+        factory.UserProfileService.ProfileToReturn = SampleProfile(userId) with { FirstName = null, LastName = null, Role = "BUSINESS" };
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("firstName").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("lastName").ValueKind);
+    }
+
+    [Fact]
     public async Task GetMe_TokenNamesAUserThatNoLongerExists_Returns401()
     {
         factory.UserProfileService.Reset();
@@ -411,6 +545,43 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
         Assert.Null(factory.UserProfileService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMe_EmptyLastName_Returns400WithErrorShape_AndDoesNotCallTheService()
+    {
+        factory.UserProfileService.Reset();
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { lastName = "" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserProfileService.LastUpdateRequest);
+    }
+
+    /// <summary>
+    /// The role itself is loaded server-side by the real UserProfileService (see
+    /// UserProfileServiceTests for that behavior against a real BUSINESS row) — this only proves
+    /// AuthController correctly maps a thrown ProfileFieldNotAllowedException to a 400 ApiError
+    /// with field-level details, using the fake to simulate what the service would throw.
+    /// </summary>
+    [Fact]
+    public async Task UpdateMe_ServiceRejectsFieldForCallersRole_Returns400WithFieldDetails()
+    {
+        factory.UserProfileService.Reset();
+        factory.UserProfileService.ExceptionToThrow = new ProfileFieldNotAllowedException(
+            "FirstName", "business name is edited through PATCH /business/businesses/me");
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nombre" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Equal("business name is edited through PATCH /business/businesses/me", body.GetProperty("message").GetString());
+        Assert.Equal("FirstName", body.GetProperty("details").GetProperty("field").GetString());
     }
 
     [Fact]

@@ -219,6 +219,22 @@ public sealed class RefreshTokenServiceTests : IDisposable
         return user;
     }
 
+    [Fact]
+    public async Task RevokeAllActiveForUserAsync_RevokesTheUsersActiveTokens_ButNotAnotherUsers()
+    {
+        var userId = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var mine = await SeedTokenAsync(userId, "my-token");
+        var someoneElses = await SeedTokenAsync(other, "their-token");
+
+        await _service.RevokeAllActiveForUserAsync(userId);
+
+        var reloadedMine = await _db.RefreshTokens.AsNoTracking().SingleAsync(x => x.Id == mine.Id);
+        var reloadedTheirs = await _db.RefreshTokens.AsNoTracking().SingleAsync(x => x.Id == someoneElses.Id);
+        Assert.NotNull(reloadedMine.RevokedAt);
+        Assert.Null(reloadedTheirs.RevokedAt);
+    }
+
     private async Task<RefreshToken> SeedTokenAsync(
         Guid userId, string rawToken, DateTimeOffset? revokedAt = null, DateTimeOffset? expiresAt = null)
     {
