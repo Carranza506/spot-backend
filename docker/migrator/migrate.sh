@@ -14,6 +14,10 @@ if [ -n "$JWT_PUBLIC_KEY_FILE" ] && [ -f "$JWT_PUBLIC_KEY_FILE" ]; then
     export Jwt__PublicKeyPem="$(cat "$JWT_PUBLIC_KEY_FILE")"
 fi
 
+# Same root cause for Gemini:ApiKey: AiSearch.Api's Program.cs throws at startup if it is empty,
+# and `dotnet ef` runs that Program.cs too. The migrator never calls Gemini, so docker-compose.yml
+# passes a placeholder Gemini__ApiKey to this container; it is not a real key.
+
 run_migration() {
     project="$1"
     echo "==> dotnet ef database update --project $project"
