@@ -224,6 +224,66 @@ public class AuthServiceTests
         Assert.Null(response);
     }
 
+    [Fact]
+    public async Task ChangePasswordAsync_CorrectCurrentPassword_SavesTheNewHash_AndRevokesAllSessions()
+    {
+        var repo = new FakeUserRepository();
+        var hasher = new PasswordHasher<User>();
+        var refreshTokenService = new FakeRefreshTokenService();
+        var user = SeedUser(repo, hasher, "OldPassword#2026");
+        var service = CreateService(repo, out _, hasher, refreshTokenService);
+
+        var result = await service.ChangePasswordAsync(
+            user.Id, new ChangePasswordRequest { CurrentPassword = "OldPassword#2026", NewPassword = "NewPassword#2026" });
+
+        Assert.True(result);
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            hasher.VerifyHashedPassword(user, user.PasswordHash!, "NewPassword#2026"));
+        Assert.Equal(user.Id, refreshTokenService.LastRevokeAllForUserId);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_WrongCurrentPassword_ThrowsAndChangesNothing()
+    {
+        var repo = new FakeUserRepository();
+        var hasher = new PasswordHasher<User>();
+        var refreshTokenService = new FakeRefreshTokenService();
+        var user = SeedUser(repo, hasher, "OldPassword#2026");
+        var originalHash = user.PasswordHash;
+        var service = CreateService(repo, out _, hasher, refreshTokenService);
+
+        await Assert.ThrowsAsync<InvalidCurrentPasswordException>(() => service.ChangePasswordAsync(
+            user.Id, new ChangePasswordRequest { CurrentPassword = "WrongPassword#0000", NewPassword = "NewPassword#2026" }));
+
+        Assert.Equal(originalHash, user.PasswordHash);
+        Assert.Null(refreshTokenService.LastRevokeAllForUserId);
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_UserWithNoPasswordSet_Throws_DoesNotCrash()
+    {
+        var repo = new FakeUserRepository();
+        var user = new User { Id = Guid.NewGuid(), Email = "google.only@example.com", Role = UserRole.CLIENT };
+        repo.Seed(user);
+        var service = CreateService(repo, out _);
+
+        await Assert.ThrowsAsync<InvalidCurrentPasswordException>(() => service.ChangePasswordAsync(
+            user.Id, new ChangePasswordRequest { CurrentPassword = "AnyPassword#123", NewPassword = "NewPassword#2026" }));
+    }
+
+    [Fact]
+    public async Task ChangePasswordAsync_UnknownUserId_ReturnsFalse()
+    {
+        var repo = new FakeUserRepository();
+        var service = CreateService(repo, out _);
+
+        var result = await service.ChangePasswordAsync(
+            Guid.NewGuid(), new ChangePasswordRequest { CurrentPassword = "Whatever#123", NewPassword = "NewPassword#2026" });
+
+        Assert.False(result);
+    }
+
     private static User SeedUser(
         FakeUserRepository repo, IPasswordHasher<User> hasher, string password, string email = "maria@example.com")
     {
@@ -241,10 +301,18 @@ public class AuthServiceTests
     }
 
     private static AuthService CreateService(
-        FakeUserRepository repo, out FakeTokenService tokenService, IPasswordHasher<User>? hasher = null)
+        FakeUserRepository repo,
+        out FakeTokenService tokenService,
+        IPasswordHasher<User>? hasher = null,
+        IRefreshTokenService? refreshTokenService = null)
     {
         tokenService = new FakeTokenService();
         var refreshTokenIssuer = new RefreshTokenIssuer(Options.Create(new RefreshTokenOptions()), new Sha256RefreshTokenHasher());
-        return new AuthService(repo, hasher ?? new PasswordHasher<User>(), tokenService, refreshTokenIssuer);
+        return new AuthService(
+            repo,
+            hasher ?? new PasswordHasher<User>(),
+            tokenService,
+            refreshTokenIssuer,
+            refreshTokenService ?? new FakeRefreshTokenService());
     }
 }
