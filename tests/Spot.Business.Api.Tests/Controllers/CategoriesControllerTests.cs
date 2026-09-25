@@ -6,6 +6,7 @@ using Spot.Business.Api.Models;
 
 namespace Spot.Business.Api.Tests.Controllers;
 
+[Collection(ApiFactoryCollection.Name)]
 public class CategoriesControllerTests(CategoriesApiFactory factory) : IClassFixture<CategoriesApiFactory>
 {
     [Fact]
