@@ -7,8 +7,9 @@ using Spot.Shared.Errors;
 namespace Spot.Auth.Api.Controllers;
 
 /// <summary>
-/// Issues real RS256 test tokens while there is no login flow yet. Only reachable in
-/// Development — returns 404 everywhere else, same as production would see a missing route.
+/// Issues real RS256 test tokens for roles <c>/auth/register</c> can't produce (it only ever
+/// creates CLIENT users), e.g. SUPERADMIN. Only reachable in Development — returns 404
+/// everywhere else, same as production would see a missing route.
 /// </summary>
 [ApiController]
 [Route("dev")]

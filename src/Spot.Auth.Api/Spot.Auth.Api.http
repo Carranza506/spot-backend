@@ -1,6 +1,7 @@
 @Spot.Auth.Api_HostAddress = http://localhost:5228
 
 ### Register - success
+# @name registerClient
 POST {{Spot.Auth.Api_HostAddress}}/auth/register
 Content-Type: application/json
 
@@ -13,6 +14,8 @@ Content-Type: application/json
 }
 
 ###
+@accessToken = {{registerClient.response.body.tokens.accessToken}}
+@refreshToken = {{registerClient.response.body.tokens.refreshToken}}
 
 ### Register - duplicate email -> 409
 POST {{Spot.Auth.Api_HostAddress}}/auth/register
@@ -73,13 +76,15 @@ Content-Type: application/json
 
 ###
 
+### Issue a dev access token for a role /auth/register can't produce, e.g. SUPERADMIN
+### (Development only) — also creates a matching row in `users`.
+POST {{Spot.Auth.Api_HostAddress}}/dev/token?role=SUPERADMIN
+Accept: application/json
+
 ### Issue a dev access token (Development only) — also creates a matching row in `users`.
 # @name issueDevToken
 POST {{Spot.Auth.Api_HostAddress}}/dev/token?role=CLIENT
 Accept: application/json
-
-###
-@accessToken = {{issueDevToken.response.body.value}}
 
 ### GET /auth/me
 GET {{Spot.Auth.Api_HostAddress}}/auth/me
@@ -96,13 +101,21 @@ Content-Type: application/json
   "phone": null
 }
 
+### POST /auth/refresh
+POST {{Spot.Auth.Api_HostAddress}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
+}
+
 ### POST /auth/logout
 POST {{Spot.Auth.Api_HostAddress}}/auth/logout
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 {
-  "refreshToken": "some-refresh-token"
+  "refreshToken": "{{refreshToken}}"
 }
 
 ###
