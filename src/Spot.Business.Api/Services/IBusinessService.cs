@@ -1,4 +1,5 @@
 using Spot.Business.Api.DTOs;
+using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Services;
 
@@ -28,4 +29,16 @@ public interface IBusinessService
     /// <returns>False if no business with <paramref name="businessId"/> exists.</returns>
     /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
     Task<bool> DeactivateAsync(Guid businessId, Guid callerId, CancellationToken ct = default);
+
+    /// <summary>Public: the categories assigned to a business, paged. Null if no business with <paramref name="businessId"/> exists.</summary>
+    Task<PaginatedResponse<CategoryDto>?> ListCategoriesAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the full category set of a business. Null if no business with <paramref name="businessId"/> exists.
+    /// </summary>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    /// <exception cref="CategoryNotFoundException">One of <paramref name="categoryIds"/> doesn't exist.</exception>
+    Task<IReadOnlyList<CategoryDto>?> ReplaceCategoriesAsync(
+        Guid businessId, Guid callerId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default);
 }

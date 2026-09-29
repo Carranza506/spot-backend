@@ -1,3 +1,4 @@
+using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
@@ -13,6 +14,12 @@ public sealed class FakeBusinessRepository : IBusinessRepository
 {
     private readonly Dictionary<Guid, BusinessEntity> _businesses = [];
 
+    // Stands in for the real repository's shared BusinessDbContext (which reaches Categories
+    // through the same table business_categories joins against) — the fake needs its own registry
+    // to resolve a categoryId back into a Category for ReplaceCategoriesAsync's return value.
+    private readonly Dictionary<Guid, Category> _knownCategories = [];
+    private readonly Dictionary<Guid, List<Category>> _businessCategories = [];
+
     /// <summary>
     /// Slugs that SlugExistsAsync reports as free but CreateAsync rejects — simulates losing the
     /// race against a concurrent create between the up-front check and the insert.
@@ -25,6 +32,8 @@ public sealed class FakeBusinessRepository : IBusinessRepository
     {
         _businesses.Clear();
         SlugsTakenConcurrently.Clear();
+        _knownCategories.Clear();
+        _businessCategories.Clear();
     }
 
     /// <summary>Seeds a business directly, bypassing CreateAsync — for test setup.</summary>
@@ -75,5 +84,42 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         business.UpdatedAt = DateTimeOffset.UtcNow;
         _businesses[business.Id] = business;
         return Task.CompletedTask;
+    }
+
+    /// <summary>Registers a category so ReplaceCategoriesAsync can resolve it by id — for test setup.</summary>
+    public Category SeedCategory(Category category)
+    {
+        if (category.Id == Guid.Empty)
+            category.Id = Guid.NewGuid();
+
+        _knownCategories[category.Id] = category;
+        return category;
+    }
+
+    /// <summary>Seeds the categories currently assigned to a business — for GET-list test setup.</summary>
+    public void SeedBusinessCategories(Guid businessId, params Category[] categories)
+    {
+        foreach (var category in categories)
+            SeedCategory(category);
+
+        _businessCategories[businessId] = [.. categories];
+    }
+
+    public Task<(IReadOnlyList<Category> Items, int Total)> ListCategoriesAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var all = _businessCategories.GetValueOrDefault(businessId, []).OrderBy(c => c.Name).ToList();
+        var paged = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Task.FromResult(((IReadOnlyList<Category>)paged, all.Count));
+    }
+
+    public Task<IReadOnlyList<Category>> ReplaceCategoriesAsync(
+        Guid businessId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default)
+    {
+        var categories = categoryIds.Select(id => _knownCategories[id]).OrderBy(c => c.Name).ToList();
+        _businessCategories[businessId] = categories;
+
+        return Task.FromResult((IReadOnlyList<Category>)categories);
     }
 }

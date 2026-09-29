@@ -13,7 +13,10 @@ namespace Spot.Business.Api.Tests.Controllers;
 
 /// <summary>
 /// Same shape as <see cref="CategoriesApiFactory"/>: the real Spot.Business.Api pipeline and the
-/// REAL BusinessService, with only IBusinessRepository swapped for an in-memory fake.
+/// REAL BusinessService, with IBusinessRepository AND ICategoryRepository swapped for in-memory
+/// fakes — BusinessService now depends on both (it validates categoryIds against
+/// ICategoryRepository for PUT .../categories), and only ICategoryRepository was already
+/// registered against a real Postgres-backed CategoryRepository in Program.cs.
 /// </summary>
 public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
 {
@@ -21,6 +24,7 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
     public const string Audience = "spot-clients";
 
     public FakeBusinessRepository BusinessRepository { get; } = new();
+    public FakeCategoryRepository CategoryRepository { get; } = new();
 
     private readonly RSA _jwtKey = RSA.Create(2048);
 
@@ -40,6 +44,8 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IBusinessRepository>();
             services.AddSingleton<IBusinessRepository>(BusinessRepository);
+            services.RemoveAll<ICategoryRepository>();
+            services.AddSingleton<ICategoryRepository>(CategoryRepository);
         });
     }
 
