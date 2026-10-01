@@ -1,5 +1,6 @@
 using Spot.Business.Api.DTOs;
 using Spot.Shared.Pagination;
+using BusinessEntity = Spot.Business.Api.Models.Business;
 
 namespace Spot.Business.Api.Services;
 
@@ -41,4 +42,11 @@ public interface IBusinessService
     /// <exception cref="CategoryNotFoundException">One of <paramref name="categoryIds"/> doesn't exist.</exception>
     Task<IReadOnlyList<CategoryDto>?> ReplaceCategoriesAsync(
         Guid businessId, Guid callerId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// The ownership check behind every write on a business or its children (services, hours...):
+    /// the business, active or not, or null if no business with <paramref name="businessId"/> exists.
+    /// </summary>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct = default);
 }

@@ -17,6 +17,8 @@ namespace Spot.Business.Api.Tests.Controllers;
 /// fakes — BusinessService now depends on both (it validates categoryIds against
 /// ICategoryRepository for PUT .../categories), and only ICategoryRepository was already
 /// registered against a real Postgres-backed CategoryRepository in Program.cs.
+/// IServiceOfferingRepository is swapped too, so ServicesControllerTests can share this factory:
+/// ServiceOfferingService checks ownership through BusinessService, so through the same IBusinessRepository.
 /// </summary>
 public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
 {
@@ -25,6 +27,7 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
 
     public FakeBusinessRepository BusinessRepository { get; } = new();
     public FakeCategoryRepository CategoryRepository { get; } = new();
+    public FakeServiceOfferingRepository ServiceRepository { get; } = new();
 
     private readonly RSA _jwtKey = RSA.Create(2048);
 
@@ -46,6 +49,8 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IBusinessRepository>(BusinessRepository);
             services.RemoveAll<ICategoryRepository>();
             services.AddSingleton<ICategoryRepository>(CategoryRepository);
+            services.RemoveAll<IServiceOfferingRepository>();
+            services.AddSingleton<IServiceOfferingRepository>(ServiceRepository);
         });
     }
 
