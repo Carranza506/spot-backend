@@ -134,6 +134,56 @@ public class BusinessesController(IBusinessService businessService) : Controller
         }
     }
 
+    /// <summary>
+    /// GET /business/businesses/{businessId}/location: public (contract: security: []). 404 both for
+    /// an unknown/inactive business and for one that hasn't registered its location yet — with a
+    /// different message so clients can tell them apart.
+    /// </summary>
+    [HttpGet("{businessId:guid}/location")]
+    [ProducesResponseType(typeof(BusinessLocationDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetBusinessLocation(Guid businessId, CancellationToken ct)
+    {
+        try
+        {
+            var result = await businessService.GetPublicLocationAsync(businessId, ct);
+            return result is null ? BusinessNotFound() : Ok(result);
+        }
+        catch (BusinessLocationNotSetException)
+        {
+            return NotFound(new ApiError("NOT_FOUND", "El negocio todavía no tiene una ubicación registrada."));
+        }
+    }
+
+    /// <summary>
+    /// PUT /business/businesses/{businessId}/location: requires the BUSINESS account that owns it.
+    /// Creates the business's single location or replaces it (business_locations.business_id is
+    /// unique) — 200 in both cases, per the contract.
+    /// </summary>
+    [HttpPut("{businessId:guid}/location")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(BusinessLocationDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpsertBusinessLocation(
+        Guid businessId, [FromBody] BusinessLocationUpsertRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var result = await businessService.UpsertLocationAsync(businessId, callerId, request, ct);
+            return result is null ? BusinessNotFound() : Ok(result);
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+    }
+
     private NotFoundObjectResult BusinessNotFound() =>
         NotFound(new ApiError("NOT_FOUND", "El negocio indicado no existe."));
 
