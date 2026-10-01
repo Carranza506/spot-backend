@@ -1,3 +1,4 @@
+using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
@@ -13,6 +14,9 @@ public sealed class FakeBusinessRepository : IBusinessRepository
 {
     private readonly Dictionary<Guid, BusinessEntity> _businesses = [];
 
+    /// <summary>Keyed by business id — simulates the unique business_locations.business_id.</summary>
+    private readonly Dictionary<Guid, BusinessLocation> _locations = [];
+
     /// <summary>
     /// Slugs that SlugExistsAsync reports as free but CreateAsync rejects — simulates losing the
     /// race against a concurrent create between the up-front check and the insert.
@@ -25,6 +29,7 @@ public sealed class FakeBusinessRepository : IBusinessRepository
     {
         _businesses.Clear();
         SlugsTakenConcurrently.Clear();
+        _locations.Clear();
     }
 
     /// <summary>Seeds a business directly, bypassing CreateAsync — for test setup.</summary>
@@ -75,5 +80,30 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         business.UpdatedAt = DateTimeOffset.UtcNow;
         _businesses[business.Id] = business;
         return Task.CompletedTask;
+    }
+
+    public Task<BusinessLocation?> GetLocationAsync(Guid businessId, CancellationToken ct = default) =>
+        Task.FromResult(_locations.GetValueOrDefault(businessId));
+
+    /// <summary>Same contract as the real one: a replace keeps the existing row's id and createdAt.</summary>
+    public Task<BusinessLocation> UpsertLocationAsync(BusinessLocation location, CancellationToken ct = default)
+    {
+        var now = DateTimeOffset.UtcNow;
+
+        if (_locations.TryGetValue(location.BusinessId, out var existing))
+        {
+            location.Id = existing.Id;
+            location.CreatedAt = existing.CreatedAt;
+        }
+        else
+        {
+            location.Id = Guid.NewGuid();
+            location.CreatedAt = now;
+        }
+
+        location.UpdatedAt = now;
+        _locations[location.BusinessId] = location;
+
+        return Task.FromResult(location);
     }
 }

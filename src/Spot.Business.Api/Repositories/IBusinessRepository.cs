@@ -1,3 +1,4 @@
+using Spot.Business.Api.Models;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
 namespace Spot.Business.Api.Repositories;
@@ -35,4 +36,20 @@ public interface IBusinessRepository
     /// (<c>updated_at</c> is set by a Postgres trigger, not application code).
     /// </summary>
     Task SaveChangesAsync(BusinessEntity business, CancellationToken ct = default);
+
+    /// <summary>The business's location (business_locations), or null if it hasn't set one yet. Not tracked.</summary>
+    Task<BusinessLocation?> GetLocationAsync(Guid businessId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or replaces the single business_locations row of <c>location.BusinessId</c>
+    /// (business_id is unique): inserts <paramref name="location"/> if the business has no row
+    /// yet, otherwise copies its fields onto the existing row, keeping that row's id and
+    /// created_at. Returns the stored row refreshed from the database (id, created_at and
+    /// updated_at come from Postgres defaults/triggers, not application code).
+    /// </summary>
+    /// <remarks>
+    /// Race-safe: if a concurrent first PUT inserts the row between the lookup and the insert
+    /// (IX_business_locations_business_id), the insert is retried once as an update of that row.
+    /// </remarks>
+    Task<BusinessLocation> UpsertLocationAsync(BusinessLocation location, CancellationToken ct = default);
 }
