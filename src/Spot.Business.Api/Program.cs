@@ -34,7 +34,11 @@ builder.Services.AddHealthChecks();
 
 builder.Services.AddDbContext<BusinessDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
-        npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory_business")));
+        npgsql => npgsql
+            .MigrationsHistoryTable("__EFMigrationsHistory_business")
+            // Maps business_locations.location (geography(Point,4326)) to NetTopologySuite's
+            // Point. Without it Npgsql can't read or write PostGIS types (#58).
+            .UseNetTopologySuite()));
 
 builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
