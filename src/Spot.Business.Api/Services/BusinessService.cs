@@ -141,7 +141,7 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
     /// The single ownership check behind every /{businessId} write: null if the business doesn't
     /// exist (404), <see cref="BusinessAccessDeniedException"/> if it isn't the caller's (403).
     /// </summary>
-    private async Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct)
+    public async Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct = default)
     {
         var business = await repository.GetByIdAsync(businessId, ct);
         if (business is null)
