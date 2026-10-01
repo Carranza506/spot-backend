@@ -28,4 +28,20 @@ public interface IBusinessService
     /// <returns>False if no business with <paramref name="businessId"/> exists.</returns>
     /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
     Task<bool> DeactivateAsync(Guid businessId, Guid callerId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Public: the location of a business. Null if no business with <paramref name="businessId"/>
+    /// exists or it's inactive — same visibility rule as <see cref="GetPublicAsync"/>.
+    /// </summary>
+    /// <exception cref="BusinessLocationNotSetException">The business is visible but has no location yet.</exception>
+    Task<BusinessLocationDto?> GetPublicLocationAsync(Guid businessId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or replaces the business's single location. Works on an inactive business too (same
+    /// as PATCH), so an owner can fix the address before reactivating. Null if no business with
+    /// <paramref name="businessId"/> exists.
+    /// </summary>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    Task<BusinessLocationDto?> UpsertLocationAsync(
+        Guid businessId, Guid callerId, BusinessLocationUpsertRequest request, CancellationToken ct = default);
 }

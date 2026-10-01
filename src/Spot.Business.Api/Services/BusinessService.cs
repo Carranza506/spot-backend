@@ -1,4 +1,5 @@
 using Spot.Business.Api.DTOs;
+using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
@@ -100,6 +101,40 @@ public sealed class BusinessService(IBusinessRepository repository) : IBusinessS
         }
 
         return true;
+    }
+
+    public async Task<BusinessLocationDto?> GetPublicLocationAsync(Guid businessId, CancellationToken ct = default)
+    {
+        var business = await repository.GetByIdAsync(businessId, ct);
+        if (business is not { IsActive: true })
+            return null;
+
+        var location = await repository.GetLocationAsync(businessId, ct)
+            ?? throw new BusinessLocationNotSetException(businessId);
+
+        return BusinessLocationDto.FromEntity(location);
+    }
+
+    public async Task<BusinessLocationDto?> UpsertLocationAsync(
+        Guid businessId, Guid callerId, BusinessLocationUpsertRequest request, CancellationToken ct = default)
+    {
+        var business = await GetOwnedAsync(businessId, callerId, ct);
+        if (business is null)
+            return null;
+
+        var location = new BusinessLocation
+        {
+            BusinessId = businessId,
+            Address = request.Address.Trim(),
+            City = BusinessFieldRules.Normalize(request.City),
+            Province = BusinessFieldRules.Normalize(request.Province),
+            Country = BusinessFieldRules.Normalize(request.Country) ?? BusinessLocationUpsertRequest.DefaultCountry,
+            PostalCode = BusinessFieldRules.Normalize(request.PostalCode),
+            Location = request.Location.ToPoint(),
+        };
+
+        var stored = await repository.UpsertLocationAsync(location, ct);
+        return BusinessLocationDto.FromEntity(stored);
     }
 
     /// <summary>
