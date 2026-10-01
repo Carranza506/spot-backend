@@ -182,6 +182,38 @@ public sealed class CategoryRepositoryTests : IDisposable
         Assert.NotNull(await _repository.GetByIdAsync(root.Id));
     }
 
+    // ---------- ExistingIdsAsync ----------
+
+    [Fact]
+    public async Task ExistingIdsAsync_AllIdsExist_ReturnsAllOfThem()
+    {
+        var a = await SeedAsync(new Category { Name = "A" });
+        var b = await SeedAsync(new Category { Name = "B" });
+
+        var result = await _repository.ExistingIdsAsync([a.Id, b.Id]);
+
+        Assert.Equal(new HashSet<Guid> { a.Id, b.Id }, result.ToHashSet());
+    }
+
+    [Fact]
+    public async Task ExistingIdsAsync_SomeIdsUnknown_ReturnsOnlyTheExistingOnes()
+    {
+        var a = await SeedAsync(new Category { Name = "A" });
+        var unknown = Guid.NewGuid();
+
+        var result = await _repository.ExistingIdsAsync([a.Id, unknown]);
+
+        Assert.Equal([a.Id], result);
+    }
+
+    [Fact]
+    public async Task ExistingIdsAsync_NoneExist_ReturnsEmpty()
+    {
+        var result = await _repository.ExistingIdsAsync([Guid.NewGuid(), Guid.NewGuid()]);
+
+        Assert.Empty(result);
+    }
+
     private async Task<Category> SeedAsync(Category category)
     {
         if (category.Id == Guid.Empty)

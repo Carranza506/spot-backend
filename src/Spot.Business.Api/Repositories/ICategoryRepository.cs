@@ -54,4 +54,11 @@ public interface ICategoryRepository
     /// Deletion never cascades to subcategories.
     /// </exception>
     Task<bool> DeleteAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Of <paramref name="categoryIds"/>, which ones actually exist — a single query, for
+    /// bulk-validating a caller-supplied set (e.g. PUT /business/businesses/{businessId}/categories)
+    /// instead of one round-trip per id.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> ExistingIdsAsync(IEnumerable<Guid> categoryIds, CancellationToken ct = default);
 }

@@ -1,10 +1,11 @@
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Repositories;
+using Spot.Shared.Pagination;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
 namespace Spot.Business.Api.Services;
 
-public sealed class BusinessService(IBusinessRepository repository) : IBusinessService
+public sealed class BusinessService(IBusinessRepository repository, ICategoryRepository categoryRepository) : IBusinessService
 {
     /// <summary>
     /// How many times a create is retried after losing a slug race on IX_businesses_slug (each
@@ -100,6 +101,40 @@ public sealed class BusinessService(IBusinessRepository repository) : IBusinessS
         }
 
         return true;
+    }
+
+    public async Task<PaginatedResponse<CategoryDto>?> ListCategoriesAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var business = await repository.GetByIdAsync(businessId, ct);
+        if (business is null)
+            return null;
+
+        var (items, total) = await repository.ListCategoriesAsync(businessId, page, pageSize, ct);
+        var dtos = items.Select(CategoryDto.FromEntity).ToList();
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+
+        return new PaginatedResponse<CategoryDto>(dtos, new PaginationMeta(page, pageSize, total, totalPages));
+    }
+
+    public async Task<IReadOnlyList<CategoryDto>?> ReplaceCategoriesAsync(
+        Guid businessId, Guid callerId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default)
+    {
+        var business = await GetOwnedAsync(businessId, callerId, ct);
+        if (business is null)
+            return null;
+
+        var distinctIds = categoryIds.Distinct().ToList();
+        var existingIds = new HashSet<Guid>(await categoryRepository.ExistingIdsAsync(distinctIds, ct));
+
+        foreach (var categoryId in distinctIds)
+        {
+            if (!existingIds.Contains(categoryId))
+                throw new CategoryNotFoundException(categoryId);
+        }
+
+        var categories = await repository.ReplaceCategoriesAsync(businessId, distinctIds, ct);
+        return categories.Select(CategoryDto.FromEntity).ToList();
     }
 
     /// <summary>

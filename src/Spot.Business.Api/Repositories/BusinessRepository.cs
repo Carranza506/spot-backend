@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Spot.Business.Api.Data;
+using Spot.Business.Api.Models;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
 namespace Spot.Business.Api.Repositories;
@@ -42,6 +43,43 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
     {
         await db.SaveChangesAsync(ct);
         await db.Entry(business).ReloadAsync(ct);
+    }
+
+    public async Task<(IReadOnlyList<Category> Items, int Total)> ListCategoriesAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var query = db.BusinessCategories.AsNoTracking()
+            .Where(bc => bc.BusinessId == businessId)
+            .Select(bc => bc.Category);
+
+        var total = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderBy(c => c.Name)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
+
+    public async Task<IReadOnlyList<Category>> ReplaceCategoriesAsync(
+        Guid businessId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default)
+    {
+        var existing = await db.BusinessCategories.Where(bc => bc.BusinessId == businessId).ToListAsync(ct);
+        db.BusinessCategories.RemoveRange(existing);
+        db.BusinessCategories.AddRange(categoryIds.Select(categoryId => new BusinessCategory
+        {
+            BusinessId = businessId,
+            CategoryId = categoryId,
+        }));
+
+        await db.SaveChangesAsync(ct);
+
+        return await db.Categories.AsNoTracking()
+            .Where(c => categoryIds.Contains(c.Id))
+            .OrderBy(c => c.Name)
+            .ToListAsync(ct);
     }
 
     private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>

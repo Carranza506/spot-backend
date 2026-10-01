@@ -104,4 +104,10 @@ public sealed class FakeCategoryRepository : ICategoryRepository
         _categories.Remove(id);
         return Task.FromResult(true);
     }
+
+    public Task<IReadOnlyList<Guid>> ExistingIdsAsync(IEnumerable<Guid> categoryIds, CancellationToken ct = default)
+    {
+        var existing = categoryIds.Where(id => _categories.ContainsKey(id)).ToList();
+        return Task.FromResult((IReadOnlyList<Guid>)existing);
+    }
 }
