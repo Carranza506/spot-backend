@@ -18,6 +18,23 @@ namespace Spot.Business.Api.Controllers;
 [Route("business/businesses")]
 public class BusinessesController(IBusinessService businessService) : ControllerBase
 {
+    /// <summary>
+    /// GET /business/businesses: public (contract: security: []). Traditional search of active
+    /// businesses by text/category/city/province, paged. The contract's proximity params
+    /// (lat/lng/radiusKm) aren't handled here — that's #119 (PostGIS); they're ignored, not 400.
+    /// </summary>
+    [HttpGet]
+    [ProducesResponseType(typeof(PaginatedResponse<BusinessDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SearchBusinesses([FromQuery] BusinessSearchQuery query, CancellationToken ct)
+    {
+        if (query.Page < 1 || query.PageSize < 1 || query.PageSize > 100)
+            return BadRequest(new ApiError("BAD_REQUEST", "page debe ser >= 1 y pageSize entre 1 y 100."));
+
+        var result = await businessService.SearchAsync(query, ct);
+        return Ok(result);
+    }
+
     /// <summary>POST /business/businesses: requires BUSINESS. The account is always the caller's own JWT sub, never taken from the body.</summary>
     [HttpPost]
     [Authorize(Roles = "BUSINESS")]

@@ -42,6 +42,17 @@ public interface IBusinessRepository
         Guid businessId, int page, int pageSize, CancellationToken ct = default);
 
     /// <summary>
+    /// Active businesses matching the given filters (all optional, combined with AND), ordered by
+    /// name and paged. <paramref name="q"/> matches name/description case-insensitively;
+    /// <paramref name="categoryId"/> matches via business_categories; <paramref name="city"/>/
+    /// <paramref name="province"/> match via the business's location (a business with no location
+    /// is only excluded when one of those two is given).
+    /// </summary>
+    Task<(IReadOnlyList<BusinessEntity> Items, int Total)> SearchAsync(
+        string? q, Guid? categoryId, string? city, string? province,
+        int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
     /// Replaces the full business_categories set for <paramref name="businessId"/> with
     /// <paramref name="categoryIds"/> and returns the resulting categories. Callers are expected
     /// to have already validated every id exists (see <see cref="ICategoryRepository.ExistingIdsAsync"/>).

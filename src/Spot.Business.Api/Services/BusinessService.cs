@@ -67,6 +67,17 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
         return business is null ? null : BusinessDto.FromEntity(business);
     }
 
+    public async Task<PaginatedResponse<BusinessDto>> SearchAsync(BusinessSearchQuery query, CancellationToken ct = default)
+    {
+        var (items, total) = await repository.SearchAsync(
+            query.Q, query.CategoryId, query.City, query.Province, query.Page, query.PageSize, ct);
+
+        var dtos = items.Select(BusinessDto.FromEntity).ToList();
+        var totalPages = (int)Math.Ceiling(total / (double)query.PageSize);
+
+        return new PaginatedResponse<BusinessDto>(dtos, new PaginationMeta(query.Page, query.PageSize, total, totalPages));
+    }
+
     public async Task<BusinessDto?> UpdateAsync(
         Guid businessId, Guid callerId, BusinessUpdateRequest request, CancellationToken ct = default)
     {

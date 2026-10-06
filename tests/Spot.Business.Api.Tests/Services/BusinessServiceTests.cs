@@ -164,4 +164,77 @@ public sealed class BusinessServiceTests
 
         Assert.Null(result);
     }
+
+    // ---------- SearchAsync ----------
+
+    [Fact]
+    public async Task SearchAsync_Q_IsCaseInsensitive_OverNameAndDescription()
+    {
+        _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Salón Bella" });
+        _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Otro", Description = "El mejor SALÓN del centro" });
+        _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Ferretería" });
+
+        var result = await _service.SearchAsync(new BusinessSearchQuery { Q = "salón" });
+
+        Assert.Equal(2, result.Pagination.Total);
+        Assert.Equal(["Otro", "Salón Bella"], result.Data.Select(b => b.Name));
+    }
+
+    [Fact]
+    public async Task SearchAsync_NoLocationFilter_IncludesBusinessWithoutLocation()
+    {
+        _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Sin ubicación" });
+
+        var result = await _service.SearchAsync(new BusinessSearchQuery());
+
+        Assert.Single(result.Data);
+    }
+
+    [Fact]
+    public async Task SearchAsync_CityFilter_ExcludesBusinessWithoutLocation()
+    {
+        _repository.Seed(new BusinessEntity
+        {
+            AccountId = Guid.NewGuid(), Name = "Con ubicación",
+            Location = new BusinessLocation { Address = "x", City = "San José", Location = "POINT(0 0)" },
+        });
+        _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Sin ubicación" });
+
+        var result = await _service.SearchAsync(new BusinessSearchQuery { City = "San José" });
+
+        Assert.Equal(["Con ubicación"], result.Data.Select(b => b.Name));
+    }
+
+    [Fact]
+    public async Task SearchAsync_CombinesFiltersWithAnd()
+    {
+        var match = _repository.Seed(new BusinessEntity
+        {
+            AccountId = Guid.NewGuid(), Name = "Peluquería Centro",
+            Location = new BusinessLocation { Address = "x", City = "Heredia", Location = "POINT(0 0)" },
+        });
+        // Same name match, wrong city — must be excluded by the AND.
+        _repository.Seed(new BusinessEntity
+        {
+            AccountId = Guid.NewGuid(), Name = "Peluquería Sur",
+            Location = new BusinessLocation { Address = "x", City = "Cartago", Location = "POINT(0 0)" },
+        });
+
+        var result = await _service.SearchAsync(new BusinessSearchQuery { Q = "peluquería", City = "Heredia" });
+
+        Assert.Equal([match.Name], result.Data.Select(b => b.Name));
+    }
+
+    [Fact]
+    public async Task SearchAsync_WrapsPaginationMetadata()
+    {
+        for (var i = 0; i < 3; i++)
+            _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = $"Negocio {i}" });
+
+        var result = await _service.SearchAsync(new BusinessSearchQuery { Page = 1, PageSize = 2 });
+
+        Assert.Equal(2, result.Data.Count);
+        Assert.Equal(3, result.Pagination.Total);
+        Assert.Equal(2, result.Pagination.TotalPages);
+    }
 }

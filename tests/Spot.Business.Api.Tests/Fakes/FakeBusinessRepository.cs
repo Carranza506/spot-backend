@@ -122,4 +122,35 @@ public sealed class FakeBusinessRepository : IBusinessRepository
 
         return Task.FromResult((IReadOnlyList<Category>)categories);
     }
+
+    public Task<(IReadOnlyList<BusinessEntity> Items, int Total)> SearchAsync(
+        string? q, Guid? categoryId, string? city, string? province,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        // Mirrors BusinessRepository.SearchAsync: active only, AND of the given filters, ordered by name.
+        IEnumerable<BusinessEntity> matches = _businesses.Values.Where(b => b.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var term = q.Trim();
+            matches = matches.Where(b =>
+                b.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || (b.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        if (categoryId is { } catId)
+            matches = matches.Where(b => _businessCategories.GetValueOrDefault(b.Id, []).Any(c => c.Id == catId));
+
+        // A business with no location is only excluded when city/province is actually filtered on.
+        if (!string.IsNullOrWhiteSpace(city))
+            matches = matches.Where(b => b.Location?.City == city.Trim());
+
+        if (!string.IsNullOrWhiteSpace(province))
+            matches = matches.Where(b => b.Location?.Province == province.Trim());
+
+        var all = matches.OrderBy(b => b.Name).ToList();
+        var paged = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Task.FromResult(((IReadOnlyList<BusinessEntity>)paged, all.Count));
+    }
 }
