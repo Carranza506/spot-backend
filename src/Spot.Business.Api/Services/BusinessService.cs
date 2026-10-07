@@ -102,21 +102,8 @@ public sealed class BusinessService(IBusinessRepository repository) : IBusinessS
         return true;
     }
 
-    /// <summary>
-    /// The single ownership check behind every /{businessId} write: null if the business doesn't
-    /// exist (404), <see cref="BusinessAccessDeniedException"/> if it isn't the caller's (403).
-    /// </summary>
-    private async Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct)
-    {
-        var business = await repository.GetByIdAsync(businessId, ct);
-        if (business is null)
-            return null;
-
-        if (business.AccountId != callerId)
-            throw new BusinessAccessDeniedException(businessId, callerId);
-
-        return business;
-    }
+    private Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct) =>
+        repository.GetOwnedAsync(businessId, callerId, ct);
 
     /// <summary>
     /// Shared by PATCH /{businessId} and PATCH /me. The slug is deliberately left untouched on a
