@@ -35,6 +35,9 @@ services:
       # See migrate.sh: needed only because AiSearch.Api's Program.cs validates the JWT public
       # key eagerly at startup, and `dotnet ef` runs that same Program.cs to find the DbContext.
       JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # Same root cause as above: AiSearch.Api's Program.cs also validates Gemini:ApiKey eagerly.
+      # The migrator never calls Gemini, so any non-empty placeholder is enough (see migrate.sh).
+      Gemini__ApiKey: not-used-by-migrations
     secrets:
       - jwt_public_key
     # Intentionally NOT unless-stopped/always: this is a one-shot job that must exit (0 on
@@ -149,6 +152,11 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
       JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # AiSearch.Api refuses to start without a non-empty Gemini:ApiKey. Set GEMINI_API_KEY in
+      # your shell or in a git-ignored .env file next to this compose file to use the real
+      # Gemini API; otherwise this placeholder lets the stack boot, and only requests that
+      # actually call Gemini fail.
+      Gemini__ApiKey: ${GEMINI_API_KEY:-not-configured}
       Logging__Console__FormatterName: json
     secrets:
       - jwt_public_key

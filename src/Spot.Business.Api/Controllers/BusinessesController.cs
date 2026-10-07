@@ -4,6 +4,7 @@ using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Repositories;
 using Spot.Business.Api.Services;
 using Spot.Shared.Errors;
+using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Controllers;
 
@@ -131,6 +132,53 @@ public class BusinessesController(IBusinessService businessService) : Controller
         catch (BusinessAccessDeniedException)
         {
             return NotOwner();
+        }
+    }
+
+    /// <summary>GET /business/businesses/{businessId}/categories: public (contract: security: []).</summary>
+    [HttpGet("{businessId:guid}/categories")]
+    [ProducesResponseType(typeof(PaginatedResponse<CategoryDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListBusinessCategories(
+        Guid businessId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
+    {
+        if (page < 1 || pageSize < 1 || pageSize > 100)
+            return BadRequest(new ApiError("BAD_REQUEST", "page debe ser >= 1 y pageSize entre 1 y 100."));
+
+        var result = await businessService.ListCategoriesAsync(businessId, page, pageSize, ct);
+        return result is null ? BusinessNotFound() : Ok(result);
+    }
+
+    /// <summary>
+    /// PUT /business/businesses/{businessId}/categories: requires the BUSINESS account that owns
+    /// it. Fully replaces the business's category set — not a merge.
+    /// </summary>
+    [HttpPut("{businessId:guid}/categories")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(CategoryListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReplaceBusinessCategories(
+        Guid businessId, [FromBody] ReplaceBusinessCategoriesRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var result = await businessService.ReplaceCategoriesAsync(businessId, callerId, request.CategoryIds, ct);
+            return result is null ? BusinessNotFound() : Ok(new CategoryListResponse(result));
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+        catch (CategoryNotFoundException)
+        {
+            return NotFound(new ApiError("NOT_FOUND", "Una o más categorías indicadas no existen."));
         }
     }
 

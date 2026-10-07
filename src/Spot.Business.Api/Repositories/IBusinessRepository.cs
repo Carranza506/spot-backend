@@ -1,3 +1,4 @@
+using Spot.Business.Api.Models;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
 namespace Spot.Business.Api.Repositories;
@@ -35,4 +36,16 @@ public interface IBusinessRepository
     /// (<c>updated_at</c> is set by a Postgres trigger, not application code).
     /// </summary>
     Task SaveChangesAsync(BusinessEntity business, CancellationToken ct = default);
+
+    /// <summary>Categories assigned to a business (business_categories), ordered by name and paged.</summary>
+    Task<(IReadOnlyList<Category> Items, int Total)> ListCategoriesAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the full business_categories set for <paramref name="businessId"/> with
+    /// <paramref name="categoryIds"/> and returns the resulting categories. Callers are expected
+    /// to have already validated every id exists (see <see cref="ICategoryRepository.ExistingIdsAsync"/>).
+    /// </summary>
+    Task<IReadOnlyList<Category>> ReplaceCategoriesAsync(
+        Guid businessId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default);
 }
