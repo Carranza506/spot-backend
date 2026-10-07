@@ -19,7 +19,9 @@ public sealed class ServiceOfferingService(
             BusinessId = businessId,
             Name = request.Name.Trim(),
             Description = BusinessFieldRules.Normalize(request.Description),
-            Price = request.Price!.Value,
+            // services.price is NUMERIC(12,2): round here so the 201 response matches what Postgres stores,
+            // instead of returning more decimals than the column keeps.
+            Price = Math.Round(request.Price!.Value, 2, MidpointRounding.AwayFromZero),
             DurationMinutes = request.DurationMinutes!.Value,
             IsActive = true,
         };

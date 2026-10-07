@@ -60,6 +60,24 @@ public sealed class ServiceOfferingServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_RoundsPriceToTwoDecimals_LikeTheNumeric12_2Column()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+
+        var result = await _service.CreateAsync(business.Id, accountId, new ServiceCreateRequest
+        {
+            Name = "Corte",
+            Price = 10.555m,
+            DurationMinutes = 30,
+        });
+
+        // services.price is NUMERIC(12,2): the response must match what Postgres would store.
+        Assert.Equal(10.56m, result!.Price);
+        Assert.Equal(10.56m, _repository.All.Single().Price);
+    }
+
+    [Fact]
     public async Task CreateAsync_InactiveBusinessOwner_StillCreates()
     {
         var accountId = Guid.NewGuid();

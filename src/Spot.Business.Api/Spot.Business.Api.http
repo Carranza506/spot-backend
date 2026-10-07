@@ -116,3 +116,112 @@ DELETE {{Spot.Business.Api_HostAddress}}/business/categories/00000000-0000-0000-
 Authorization: Bearer {{accessToken}}
 
 ###
+
+# ============================================================
+# BUSINESS - Services (create, #113)
+# Create requires a BUSINESS account that OWNS the business, so the flow below
+# registers a BUSINESS, logs in, creates its business, then creates a service.
+# ============================================================
+
+### Register a BUSINESS account (change the email on re-runs; a repeat -> 409)
+POST {{Spot.Auth.Api_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "servicios.http@spot.test",
+  "password": "Prueba123!",
+  "role": "BUSINESS"
+}
+
+###
+
+### Log in -> capture the BUSINESS access token (nested under tokens)
+# @name svcLogin
+POST {{Spot.Auth.Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "servicios.http@spot.test",
+  "password": "Prueba123!"
+}
+
+###
+@businessToken = {{svcLogin.response.body.tokens.accessToken}}
+
+### Create the business for that account -> capture its id
+# @name svcCreateBiz
+POST {{Spot.Business.Api_HostAddress}}/business/businesses
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Barberia HTTP"
+}
+
+###
+@svcBusinessId = {{svcCreateBiz.response.body.id}}
+
+### Create a service (owner) -> 201
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Corte y peinado",
+  "description": "Corte con lavado y peinado incluido.",
+  "price": 12000.00,
+  "durationMinutes": 45
+}
+
+###
+
+### Create a service - no token -> 401
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Content-Type: application/json
+
+{
+  "name": "Corte",
+  "price": 5000,
+  "durationMinutes": 30
+}
+
+###
+
+### Create a service - nonexistent business -> 404
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/00000000-0000-0000-0000-000000000000/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Corte",
+  "price": 5000,
+  "durationMinutes": 30
+}
+
+###
+
+### Create a service - blank name -> 400
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "   ",
+  "price": 5000,
+  "durationMinutes": 30
+}
+
+###
+
+### Create a service - negative price -> 400
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Corte",
+  "price": -1,
+  "durationMinutes": 30
+}
+
+###
