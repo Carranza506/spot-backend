@@ -82,6 +82,57 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
             .ToListAsync(ct);
     }
 
+    public async Task<(IReadOnlyList<FavoriteBusiness> Items, int Total)> ListFavoritesAsync(
+        Guid userId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var query = db.FavoriteBusinesses.AsNoTracking()
+            .Include(f => f.Business)
+            .Where(f => f.UserId == userId && f.Business.IsActive);
+
+        var total = await query.CountAsync(ct);
+
+        var items = await query
+            .OrderByDescending(f => f.CreatedAt)
+            .ThenBy(f => f.BusinessId)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
+
+    public async Task AddFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default)
+    {
+        if (await db.FavoriteBusinesses.AnyAsync(f => f.UserId == userId && f.BusinessId == businessId, ct))
+            return;
+
+        var favorite = new FavoriteBusiness { UserId = userId, BusinessId = businessId };
+        db.FavoriteBusinesses.Add(favorite);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            // A concurrent PUT inserted the same (user_id, business_id) first: it's already a
+            // favorite, which is the outcome the caller asked for. Matched by SQLSTATE only — the
+            // PK is PK_favorite_businesses in the migration but favorite_businesses_pkey in db/Spot.sql.
+            db.Entry(favorite).State = EntityState.Detached;
+        }
+    }
+
+    public async Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default)
+    {
+        var favorite = await db.FavoriteBusinesses
+            .FirstOrDefaultAsync(f => f.UserId == userId && f.BusinessId == businessId, ct);
+        if (favorite is null)
+            return;
+
+        db.FavoriteBusinesses.Remove(favorite);
+        await db.SaveChangesAsync(ct);
+    }
+
     public async Task<(IReadOnlyList<BusinessHours> Items, int Total)> ListHoursAsync(
         Guid businessId, int page, int pageSize, CancellationToken ct = default)
     {
@@ -135,4 +186,7 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
     private static bool IsUniqueViolation(DbUpdateException ex, string constraintName) =>
         ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg
         && pg.ConstraintName == constraintName;
+
+    private static bool IsUniqueViolation(DbUpdateException ex) =>
+        ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
 }
