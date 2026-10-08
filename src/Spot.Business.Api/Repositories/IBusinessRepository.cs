@@ -68,4 +68,17 @@ public interface IBusinessRepository
 
     /// <summary>Hard-deletes the caller's favorite row, if any. No-op when there is none.</summary>
     Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default);
+
+    /// <summary>The weekly schedule of a business (business_hours), ordered by day of week (0 = Sunday) and paged.</summary>
+    Task<(IReadOnlyList<BusinessHours> Items, int Total)> ListHoursAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the full weekly schedule of <paramref name="businessId"/> with <paramref name="schedule"/>
+    /// in one transaction: days already stored are updated in place, new days are inserted and days
+    /// missing from <paramref name="schedule"/> are deleted. Returns the resulting schedule ordered by
+    /// day. Callers are expected to have already validated it (one entry per day, valid times).
+    /// </summary>
+    Task<IReadOnlyList<BusinessHours>> ReplaceHoursAsync(
+        Guid businessId, IReadOnlyCollection<BusinessHours> schedule, CancellationToken ct = default);
 }
