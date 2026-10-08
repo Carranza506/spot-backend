@@ -182,6 +182,57 @@ public class BusinessesController(IBusinessService businessService) : Controller
         }
     }
 
+    /// <summary>
+    /// GET /business/businesses/{businessId}/hours: public (contract: security: []). Ordered by day
+    /// of week (0 = Sunday). An inactive business is reported as 404, same as GET /{businessId}.
+    /// </summary>
+    [HttpGet("{businessId:guid}/hours")]
+    [ProducesResponseType(typeof(PaginatedResponse<BusinessHourDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListBusinessHours(
+        Guid businessId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
+    {
+        if (page < 1 || pageSize < 1 || pageSize > 100)
+            return BadRequest(new ApiError("BAD_REQUEST", "page debe ser >= 1 y pageSize entre 1 y 100."));
+
+        var result = await businessService.ListHoursAsync(businessId, page, pageSize, ct);
+        return result is null ? BusinessNotFound() : Ok(result);
+    }
+
+    /// <summary>
+    /// PUT /business/businesses/{businessId}/hours: requires the BUSINESS account that owns it, even
+    /// if the business is inactive. Fully replaces the weekly schedule — days not in the body are deleted.
+    /// </summary>
+    [HttpPut("{businessId:guid}/hours")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(BusinessHourListResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> ReplaceBusinessHours(
+        Guid businessId, [FromBody] BusinessHoursUpsertRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var result = await businessService.ReplaceHoursAsync(businessId, callerId, request.Hours, ct);
+            return result is null ? BusinessNotFound() : Ok(new BusinessHourListResponse(result));
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+        catch (InvalidBusinessHoursException ex)
+        {
+            return UnprocessableEntity(new ApiError(ex.Code, ex.Message));
+        }
+    }
+
     private NotFoundObjectResult BusinessNotFound() =>
         NotFound(new ApiError("NOT_FOUND", "El negocio indicado no existe."));
 
