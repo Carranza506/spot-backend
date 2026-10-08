@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Spot.Auth.Api.Data;
+using Spot.Auth.Api.Models;
 
 #nullable disable
 
@@ -21,7 +22,7 @@ namespace Spot.Auth.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "auth_provider", new[] { "google" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "user_role", new[] { "client", "business_owner", "superadmin" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "user_role", new[] { "client", "business", "superadmin" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Spot.Auth.Api.Models.RefreshToken", b =>
@@ -87,7 +88,6 @@ namespace Spot.Auth.Api.Migrations
                         .HasColumnName("email");
 
                     b.Property<string>("FirstName")
-                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("first_name");
@@ -99,7 +99,6 @@ namespace Spot.Auth.Api.Migrations
                         .HasColumnName("is_active");
 
                     b.Property<string>("LastName")
-                        .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("last_name");
@@ -117,11 +116,11 @@ namespace Spot.Auth.Api.Migrations
                         .HasColumnType("text")
                         .HasColumnName("profile_photo_url");
 
-                    b.Property<int>("Role")
+                    b.Property<UserRole>("Role")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("user_role")
-                        .HasDefaultValueSql("'client'::user_role")
-                        .HasColumnName("role");
+                        .HasColumnName("role")
+                        .HasDefaultValueSql("'client'::user_role");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -154,7 +153,7 @@ namespace Spot.Auth.Api.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<int>("Provider")
+                    b.Property<AuthProvider>("Provider")
                         .HasColumnType("auth_provider")
                         .HasColumnName("provider");
 

@@ -21,8 +21,10 @@ public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(
             e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
             e.Property(x => x.Email).HasColumnName("email").HasMaxLength(255).IsRequired();
             e.Property(x => x.PasswordHash).HasColumnName("password_hash");
-            e.Property(x => x.FirstName).HasColumnName("first_name").HasMaxLength(100).IsRequired();
-            e.Property(x => x.LastName).HasColumnName("last_name").HasMaxLength(100).IsRequired();
+            // Nullable: a BUSINESS account has no person name (see ck_users_client_names in the
+            // RenameBusinessRoleAndNullableUserNames migration, which requires both only for CLIENT).
+            e.Property(x => x.FirstName).HasColumnName("first_name").HasMaxLength(100);
+            e.Property(x => x.LastName).HasColumnName("last_name").HasMaxLength(100);
             e.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(30);
             e.Property(x => x.ProfilePhotoUrl).HasColumnName("profile_photo_url");
             // Not HasDefaultValue(UserRole.CLIENT): for a native Postgres enum column, EF/Npgsql
@@ -63,7 +65,10 @@ public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(
             e.Property(x => x.UserId).HasColumnName("user_id");
             e.Property(x => x.TokenHash).HasColumnName("token_hash").IsRequired();
             e.Property(x => x.ExpiresAt).HasColumnName("expires_at");
-            e.Property(x => x.RevokedAt).HasColumnName("revoked_at");
+            // A concurrency token (not just a plain column): RefreshTokenRepository.RevokeAsync
+            // relies on this so its UPDATE's WHERE clause includes the RevokedAt value it
+            // originally read, making the revoke conditional/atomic — see that method's remarks.
+            e.Property(x => x.RevokedAt).HasColumnName("revoked_at").IsConcurrencyToken();
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => x.UserId).HasDatabaseName("idx_refresh_tokens_user");

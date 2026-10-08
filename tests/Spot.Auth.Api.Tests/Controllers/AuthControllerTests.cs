@@ -2,8 +2,11 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Identity;
 using Spot.Auth.Api.DTOs;
+using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Repositories;
+using Spot.Auth.Api.Services;
 
 namespace Spot.Auth.Api.Tests.Controllers;
 
@@ -31,6 +34,90 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("accessToken").GetString()));
         Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("refreshToken").GetString()));
         Assert.Equal("Bearer", body.GetProperty("tokens").GetProperty("tokenType").GetString());
+    }
+
+    [Fact]
+    public async Task Register_WithBusinessRole_Returns201WithNullNames()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "business@example.com",
+            password = "SuperClave#2026",
+            role = "BUSINESS",
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BUSINESS", body.GetProperty("user").GetProperty("role").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("user").GetProperty("firstName").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("user").GetProperty("lastName").ValueKind);
+    }
+
+    [Fact]
+    public async Task Register_ClientRoleWithoutNames_Returns400WithErrorShape()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "no.names@example.com",
+            password = "SuperClave#2026",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task Register_WithOldBusinessOwnerRoleLabel_Returns400WithErrorShape()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "owner@example.com",
+            password = "SuperClave#2026",
+            role = "BUSINESS_OWNER",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task Register_WithSuperadminRole_Returns400WithErrorShape()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "wannabe.admin@example.com",
+            password = "SuperClave#2026",
+            firstName = "María",
+            lastName = "Rodríguez",
+            role = "SUPERADMIN",
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+
+        // The invalid request must never have reached the repository — no account is created.
+        Assert.Null(factory.UserRepository.CreatedUser);
     }
 
     [Fact]
@@ -76,6 +163,219 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
 
         // The invalid request must never have reached the repository.
         Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
+    [Fact]
+    public async Task Login_CorrectCredentials_Returns200WithAuthResponse()
+    {
+        factory.UserRepository.Reset();
+        SeedLoginUser(out var email, out var password);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/login", new { email, password });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(email, body.GetProperty("user").GetProperty("email").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("accessToken").GetString()));
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("tokens").GetProperty("refreshToken").GetString()));
+    }
+
+    [Fact]
+    public async Task Login_WrongPassword_Returns401WithInvalidCredentialsBody()
+    {
+        factory.UserRepository.Reset();
+        SeedLoginUser(out var email, out _);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/login", new { email, password = "OtraClave#0000" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_CREDENTIALS", body.GetProperty("code").GetString());
+    }
+
+    /// <summary>
+    /// The security-critical check for this ticket, at the HTTP level: an unknown email must
+    /// answer with the exact same status code and error code as a wrong password — never a
+    /// different shape that would let a caller distinguish the two.
+    /// </summary>
+    [Fact]
+    public async Task Login_UnknownEmail_Returns401WithTheSameBodyShapeAsWrongPassword()
+    {
+        factory.UserRepository.Reset();
+        SeedLoginUser(out _, out _);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/login", new { email = "nobody@example.com", password = "SomePassword#123" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_CREDENTIALS", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Login_MalformedBody_Returns400WithErrorShape()
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/login", new { email = "not-an-email", password = "" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    private void SeedLoginUser(out string email, out string password)
+    {
+        email = "login.user@example.com";
+        password = "SuperClave#2026";
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = email,
+            FirstName = "Login",
+            LastName = "User",
+            Role = UserRole.CLIENT,
+        };
+        user.PasswordHash = new PasswordHasher<User>().HashPassword(user, password);
+        factory.UserRepository.Seed(user);
+    }
+
+    [Fact]
+    public async Task Refresh_ValidToken_Returns200WithTheNewPair()
+    {
+        factory.RefreshTokenService.Reset();
+        factory.RefreshTokenService.TokensToReturn = new AuthTokensDto("new-access-token", "new-refresh-token", "Bearer", 3600);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/refresh", new { refreshToken = "an-old-refresh-token" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("new-access-token", body.GetProperty("accessToken").GetString());
+        Assert.Equal("new-refresh-token", body.GetProperty("refreshToken").GetString());
+        Assert.Equal("an-old-refresh-token", factory.RefreshTokenService.LastRefreshCalledWithRawToken);
+    }
+
+    [Fact]
+    public async Task Refresh_NoAccessToken_StillReachesTheEndpoint()
+    {
+        // Public per the contract (security: []) — unlike every other Auth endpoint, this one
+        // must NOT require a bearer token, since the refresh token itself is the credential.
+        factory.RefreshTokenService.Reset();
+        factory.RefreshTokenService.TokensToReturn = new AuthTokensDto("new-access-token", "new-refresh-token", "Bearer", 3600);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/refresh", new { refreshToken = "an-old-refresh-token" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Refresh_InvalidOrExpiredToken_Returns401WithErrorShape()
+    {
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/refresh", new { refreshToken = "not-a-real-token" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("UNAUTHORIZED", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Refresh_MissingRefreshToken_Returns400WithErrorBody()
+    {
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/refresh", new { });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task ChangePassword_CorrectCurrentPassword_Returns204_AndRevokesAllSessions()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out var currentPassword);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword, newPassword = "NewPassword#2026" });
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(user.Id, factory.RefreshTokenService.LastRevokeAllForUserId);
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            new PasswordHasher<User>().VerifyHashedPassword(user, user.PasswordHash!, "NewPassword#2026"));
+    }
+
+    [Fact]
+    public async Task ChangePassword_WrongCurrentPassword_Returns422WithInvalidCurrentPasswordBody()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out _);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword = "WrongPassword#0000", newPassword = "NewPassword#2026" });
+
+        Assert.Equal((HttpStatusCode)422, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_CURRENT_PASSWORD", body.GetProperty("code").GetString());
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    [Fact]
+    public async Task ChangePassword_NoAccessToken_Returns401_AndDoesNotCallAnything()
+    {
+        factory.RefreshTokenService.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword = "Whatever#123", newPassword = "NewPassword#2026" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    [Fact]
+    public async Task ChangePassword_NewPasswordTooShort_Returns400WithErrorShape()
+    {
+        factory.RefreshTokenService.Reset();
+        var user = SeedChangePasswordUser(out var currentPassword);
+        var client = CreateAuthenticatedClient(user.Id);
+
+        var response = await client.PostAsJsonAsync(
+            "/auth/change-password", new { currentPassword, newPassword = "short" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.RefreshTokenService.LastRevokeAllForUserId);
+    }
+
+    private User SeedChangePasswordUser(out string password)
+    {
+        password = "OldPassword#2026";
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "change.password.user@example.com",
+            FirstName = "Change",
+            LastName = "Password",
+            Role = UserRole.CLIENT,
+        };
+        user.PasswordHash = new PasswordHasher<User>().HashPassword(user, password);
+        factory.UserRepository.Seed(user);
+        return user;
     }
 
     [Fact]
@@ -162,6 +462,22 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
     }
 
     [Fact]
+    public async Task GetMe_BusinessAccount_ReturnsNullNames()
+    {
+        factory.UserProfileService.Reset();
+        var userId = Guid.NewGuid();
+        factory.UserProfileService.ProfileToReturn = SampleProfile(userId) with { FirstName = null, LastName = null, Role = "BUSINESS" };
+        var client = CreateAuthenticatedClient(userId);
+
+        var response = await client.GetAsync("/auth/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("firstName").ValueKind);
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("lastName").ValueKind);
+    }
+
+    [Fact]
     public async Task GetMe_TokenNamesAUserThatNoLongerExists_Returns401()
     {
         factory.UserProfileService.Reset();
@@ -229,6 +545,43 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
         Assert.Null(factory.UserProfileService.LastUpdateRequest);
+    }
+
+    [Fact]
+    public async Task UpdateMe_EmptyLastName_Returns400WithErrorShape_AndDoesNotCallTheService()
+    {
+        factory.UserProfileService.Reset();
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { lastName = "" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Null(factory.UserProfileService.LastUpdateRequest);
+    }
+
+    /// <summary>
+    /// The role itself is loaded server-side by the real UserProfileService (see
+    /// UserProfileServiceTests for that behavior against a real BUSINESS row) — this only proves
+    /// AuthController correctly maps a thrown ProfileFieldNotAllowedException to a 400 ApiError
+    /// with field-level details, using the fake to simulate what the service would throw.
+    /// </summary>
+    [Fact]
+    public async Task UpdateMe_ServiceRejectsFieldForCallersRole_Returns400WithFieldDetails()
+    {
+        factory.UserProfileService.Reset();
+        factory.UserProfileService.ExceptionToThrow = new ProfileFieldNotAllowedException(
+            "FirstName", "business name is edited through PATCH /business/businesses/me");
+        var client = CreateAuthenticatedClient(Guid.NewGuid());
+
+        var response = await client.PatchAsJsonAsync("/auth/me", new { firstName = "Nombre" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Equal("business name is edited through PATCH /business/businesses/me", body.GetProperty("message").GetString());
+        Assert.Equal("FirstName", body.GetProperty("details").GetProperty("field").GetString());
     }
 
     [Fact]

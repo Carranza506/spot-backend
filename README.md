@@ -131,9 +131,10 @@ dotnet user-secrets set "Jwt:PublicKeyPem" "$(cat ../../jwt-public.pem)"
 `Jwt:Issuer`, `Jwt:Audience`, and `Jwt:ExpiresInMinutes` already have non-secret defaults in
 `appsettings.Development.json`; only the keys need to be supplied this way.
 
-Once a future issue wires `AddSpotJwtAuthentication` into another microservice (Business, Booking,
-etc.), that service's own user-secrets only need `Jwt:PublicKeyPem` (plus `Jwt:Issuer`/`Jwt:Audience`)
-— it must never have access to the private key.
+`Spot.Business.Api` also validates tokens now (#55 — `SUPERADMIN`-gated category management), the
+same way: its own user-secrets only need `Jwt:PublicKeyPem` (plus `Jwt:Issuer`/`Jwt:Audience`) — it
+must never have access to the private key. The same applies once a future issue wires
+`AddSpotJwtAuthentication` into any of the remaining services (Booking, etc.).
 
 **3. Production — environment variables.** ASP.NET Core maps double-underscore env vars to
 config sections, so set (on `Spot.Auth.Api`, and on every validating service for the public key):
@@ -149,6 +150,20 @@ Jwt__ExpiresInMinutes="60"
 No vault decision has been made yet for production key storage — this is intentionally the only
 place that needs to change once one is: `JwtOptions` and the code that consumes it only know about
 `IConfiguration`, never about where a value physically comes from.
+
+## Gemini API key
+
+`Spot.AiSearch.Api` calls the Gemini API to parse free-text search queries into structured
+criteria. `Gemini:Model`, `Gemini:BaseUrl`, and `Gemini:TimeoutSeconds` already have non-secret
+defaults in `appsettings.json`; only the key needs to be supplied, the same way as the JWT keys
+above — never in an `appsettings*.json` file:
+
+```bash
+cd src/Spot.AiSearch.Api
+dotnet user-secrets set "Gemini:ApiKey" "<your-gemini-api-key>"
+```
+
+In production, set the `Gemini__ApiKey` environment variable instead.
 
 ## Running a single microservice
 

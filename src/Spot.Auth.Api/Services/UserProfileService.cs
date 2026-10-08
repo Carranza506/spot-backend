@@ -1,4 +1,5 @@
 using Spot.Auth.Api.DTOs;
+using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Repositories;
 
 namespace Spot.Auth.Api.Services;
@@ -16,6 +17,21 @@ public sealed class UserProfileService(IUserRepository userRepository) : IUserPr
         var user = await userRepository.GetByIdAsync(userId, ct);
         if (user is null)
             return null;
+
+        // The caller's role comes from the loaded user, never from the request: a BUSINESS
+        // account's name is `businesses.name`, edited only via PATCH /business/businesses/me.
+        // This must be what rejects the request — the ck_users_client_names DB CHECK only
+        // guards CLIENT rows and would never fire for a BUSINESS row anyway (its names stay null).
+        if (user.Role == UserRole.BUSINESS)
+        {
+            if (request.FirstName.IsSet)
+                throw new ProfileFieldNotAllowedException(
+                    nameof(UpdateProfileRequest.FirstName), "business name is edited through PATCH /business/businesses/me");
+
+            if (request.LastName.IsSet)
+                throw new ProfileFieldNotAllowedException(
+                    nameof(UpdateProfileRequest.LastName), "business name is edited through PATCH /business/businesses/me");
+        }
 
         if (request.FirstName.IsSet)
             user.FirstName = request.FirstName.Value!.Trim();

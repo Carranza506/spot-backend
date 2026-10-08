@@ -1,6 +1,118 @@
 @Spot.Business.Api_HostAddress = http://localhost:5151
+@Spot.Auth.Api_HostAddress = http://localhost:5228
 
-GET {{Spot.Business.Api_HostAddress}}/weatherforecast/
+### List categories - all (any level, paginated)
+GET {{Spot.Business.Api_HostAddress}}/business/categories?page=1&pageSize=20
 Accept: application/json
+
+###
+
+### List categories - root only
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=null
+Accept: application/json
+
+###
+
+### List categories - subcategories of a specific parent
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=6228d226-c50a-43af-bbae-835a224f0335
+Accept: application/json
+
+###
+
+### List categories - malformed parentCategoryId -> 400 (Error schema)
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=not-a-guid
+Accept: application/json
+
+###
+
+### Issue a dev SUPERADMIN token (Development only, from Spot.Auth.Api) — create/update/delete
+### below all require it. Business.Api itself has no /dev/token endpoint of its own.
+# @name issueDevToken
+POST {{Spot.Auth.Api_HostAddress}}/dev/token?role=SUPERADMIN
+Accept: application/json
+
+###
+@accessToken = {{issueDevToken.response.body.value}}
+
+### Create a root category -> 201
+# @name createRoot
+POST {{Spot.Business.Api_HostAddress}}/business/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Salud",
+  "description": "Servicios relacionados con salud y bienestar"
+}
+
+###
+@rootId = {{createRoot.response.body.id}}
+
+### Create a subcategory under the root above -> 201
+POST {{Spot.Business.Api_HostAddress}}/business/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Farmacia",
+  "parentCategoryId": "{{rootId}}"
+}
+
+###
+
+### Create - duplicate (parentCategoryId, name) -> 409
+POST {{Spot.Business.Api_HostAddress}}/business/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Salud"
+}
+
+###
+
+### Create - nonexistent parent -> 404
+POST {{Spot.Business.Api_HostAddress}}/business/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Huerfana",
+  "parentCategoryId": "00000000-0000-0000-0000-000000000000"
+}
+
+###
+
+### Update - rename -> 200
+PATCH {{Spot.Business.Api_HostAddress}}/business/categories/{{rootId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Salud y Bienestar"
+}
+
+###
+
+### Update - promote a subcategory back to root via explicit null -> 200
+PATCH {{Spot.Business.Api_HostAddress}}/business/categories/{{rootId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "parentCategoryId": null
+}
+
+###
+
+### Delete - category with subcategories -> 409 (never cascades)
+DELETE {{Spot.Business.Api_HostAddress}}/business/categories/{{rootId}}
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Delete - nonexistent category -> 404
+DELETE {{Spot.Business.Api_HostAddress}}/business/categories/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{accessToken}}
 
 ###

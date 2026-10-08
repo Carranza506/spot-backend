@@ -54,6 +54,17 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Jwt__Audience", Audience);
         Environment.SetEnvironmentVariable("Jwt__PrivateKeyPem", _jwtKey.ExportRSAPrivateKeyPem());
         Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", _jwtKey.ExportSubjectPublicKeyInfoPem());
+
+        // Same eager-read problem as the JWT settings above, for a different reason: Program.cs
+        // builds a NpgsqlDataSource (for the Postgres enum runtime mapping) directly from
+        // ConnectionStrings:DefaultConnection at the top level, before ConfigureWebHost's
+        // ConfigureServices below ever runs — a missing/null connection string throws
+        // ArgumentException("Host can't be null") while just constructing the data source,
+        // before IUserRepository ever gets swapped for the fake. The value itself is never
+        // actually connected to: AuthDbContext is registered in DI but every test here goes
+        // through the faked IUserRepository instead, so this only needs to parse successfully.
+        Environment.SetEnvironmentVariable(
+            "ConnectionStrings__DefaultConnection", "Host=localhost;Database=unused;Username=unused;Password=unused");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -110,6 +121,7 @@ public sealed class AuthApiFactory : WebApplicationFactory<Program>
             Environment.SetEnvironmentVariable("Jwt__Audience", null);
             Environment.SetEnvironmentVariable("Jwt__PrivateKeyPem", null);
             Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", null);
+            Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", null);
         }
 
         base.Dispose(disposing);

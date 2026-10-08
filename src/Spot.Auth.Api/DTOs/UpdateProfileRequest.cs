@@ -8,6 +8,10 @@ namespace Spot.Auth.Api.DTOs;
 /// absent from the request body is left untouched, while <c>phone</c>/<c>profilePhotoUrl</c>
 /// sent explicitly as <c>null</c> are cleared. <c>email</c> and <c>role</c> are intentionally
 /// not here at all — the contract forbids changing either through this endpoint.
+/// <see cref="Validate"/> below rejects a null/empty firstName or lastName regardless of role
+/// (the only case the ck_users_client_names DB CHECK could ever hit); whether firstName/lastName
+/// are allowed AT ALL depends on the caller's role and is enforced by
+/// <see cref="Services.UserProfileService"/> instead, since that requires the loaded user.
 /// </summary>
 public sealed class UpdateProfileRequest : IValidatableObject
 {

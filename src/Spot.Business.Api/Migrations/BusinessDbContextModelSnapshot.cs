@@ -31,6 +31,10 @@ namespace Spot.Business.Api.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -89,6 +93,9 @@ namespace Spot.Business.Api.Migrations
                         .HasColumnName("website");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AccountId")
+                        .IsUnique();
 
                     b.HasIndex("Name")
                         .HasDatabaseName("idx_businesses_name");
@@ -282,30 +289,6 @@ namespace Spot.Business.Api.Migrations
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Location"), "GIST");
 
                     b.ToTable("business_locations", (string)null);
-                });
-
-            modelBuilder.Entity("Spot.Business.Api.Models.BusinessOwner", b =>
-                {
-                    b.Property<Guid>("BusinessId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("business_id");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.HasKey("BusinessId", "UserId");
-
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("idx_business_owners_user");
-
-                    b.ToTable("business_owners", (string)null);
                 });
 
             modelBuilder.Entity("Spot.Business.Api.Models.BusinessPhoto", b =>
@@ -696,6 +679,15 @@ namespace Spot.Business.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Spot.Business.Api.Models.Business", b =>
+                {
+                    b.HasOne("Spot.Business.Api.Models.UserReference", null)
+                        .WithOne()
+                        .HasForeignKey("Spot.Business.Api.Models.Business", "AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Spot.Business.Api.Models.BusinessCategory", b =>
                 {
                     b.HasOne("Spot.Business.Api.Models.Business", "Business")
@@ -742,23 +734,6 @@ namespace Spot.Business.Api.Migrations
                     b.HasOne("Spot.Business.Api.Models.Business", "Business")
                         .WithOne("Location")
                         .HasForeignKey("Spot.Business.Api.Models.BusinessLocation", "BusinessId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Business");
-                });
-
-            modelBuilder.Entity("Spot.Business.Api.Models.BusinessOwner", b =>
-                {
-                    b.HasOne("Spot.Business.Api.Models.Business", "Business")
-                        .WithMany()
-                        .HasForeignKey("BusinessId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Spot.Business.Api.Models.UserReference", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

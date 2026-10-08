@@ -19,3 +19,4 @@ contracts/
 !.env.example
 docker-compose*.yml
 Dockerfile*
+**/appsettings.Development.json

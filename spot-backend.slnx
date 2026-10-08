@@ -9,7 +9,9 @@
     <Project Path="src/Spot.Shared/Spot.Shared.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Spot.AiSearch.Api.Tests/Spot.AiSearch.Api.Tests.csproj" />
     <Project Path="tests/Spot.Auth.Api.Tests/Spot.Auth.Api.Tests.csproj" />
+    <Project Path="tests/Spot.Business.Api.Tests/Spot.Business.Api.Tests.csproj" />
     <Project Path="tests/Spot.Notifications.Api.Tests/Spot.Notifications.Api.Tests.csproj" />
     <Project Path="tests/Spot.Shared.Tests/Spot.Shared.Tests.csproj" />
   </Folder>

@@ -2,7 +2,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TYPE user_role AS ENUM ('CLIENT','BUSINESS_OWNER','SUPERADMIN');
+CREATE TYPE user_role AS ENUM ('CLIENT','BUSINESS','SUPERADMIN');
 CREATE TYPE contact_type AS ENUM ('PHONE','WHATSAPP','EMAIL','WEBSITE','FACEBOOK','INSTAGRAM','TIKTOK','OTHER');
 CREATE TYPE booking_status AS ENUM ('PENDING','CONFIRMED','COMPLETED','CANCELLED','NO_SHOW');
 CREATE TYPE ai_request_status AS ENUM ('SUCCESS','ERROR','TIMEOUT');
@@ -15,10 +15,11 @@ BEGIN NEW.updated_at=CURRENT_TIMESTAMP; RETURN NEW; END; $$;
 
 CREATE TABLE users (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), email VARCHAR(255) NOT NULL UNIQUE,
- password_hash TEXT, first_name VARCHAR(100) NOT NULL, last_name VARCHAR(100) NOT NULL,
+ password_hash TEXT, first_name VARCHAR(100), last_name VARCHAR(100),
  phone VARCHAR(30), profile_photo_url TEXT, role user_role NOT NULL DEFAULT 'CLIENT',
  is_active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
- updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ CONSTRAINT ck_users_client_names CHECK (role<>'CLIENT' OR (first_name IS NOT NULL AND last_name IS NOT NULL)));
 CREATE INDEX idx_users_role ON users(role);
 CREATE TRIGGER trg_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
@@ -44,19 +45,13 @@ CREATE INDEX idx_categories_parent ON categories(parent_category_id);
 CREATE TRIGGER trg_categories_updated_at BEFORE UPDATE ON categories FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE businesses (
- id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(150) NOT NULL, slug VARCHAR(180) NOT NULL UNIQUE,
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(), account_id UUID NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+ name VARCHAR(150) NOT NULL, slug VARCHAR(180) NOT NULL UNIQUE,
  description TEXT, legal_name VARCHAR(200), email VARCHAR(255), phone VARCHAR(30), website TEXT, logo_url TEXT,
  is_active BOOLEAN NOT NULL DEFAULT TRUE, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
  updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE INDEX idx_businesses_name ON businesses(name);
 CREATE TRIGGER trg_businesses_updated_at BEFORE UPDATE ON businesses FOR EACH ROW EXECUTE FUNCTION set_updated_at();
-
-CREATE TABLE business_owners (
- business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
- user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
- created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
- PRIMARY KEY(business_id,user_id));
-CREATE INDEX idx_business_owners_user ON business_owners(user_id);
 
 CREATE TABLE business_categories (
  business_id UUID NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,

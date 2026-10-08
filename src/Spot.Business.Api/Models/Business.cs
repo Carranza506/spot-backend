@@ -3,6 +3,13 @@ namespace Spot.Business.Api.Models;
 public class Business
 {
     public Guid Id { get; set; }
+
+    /// <summary>
+    /// The `users` row this business account is (1:1 — a business account IS the business).
+    /// Owned by Spot.Auth.Api; see <see cref="UserReference"/>.
+    /// </summary>
+    public Guid AccountId { get; set; }
+
     public string Name { get; set; } = null!;
     public string Slug { get; set; } = null!;
     public string? Description { get; set; }

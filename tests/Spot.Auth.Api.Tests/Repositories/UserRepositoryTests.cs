@@ -71,6 +71,52 @@ public sealed class UserRepositoryTests : IDisposable
         Assert.Equal("Updated", persisted.FirstName);
     }
 
+    [Fact]
+    public async Task GetByEmailAsync_ExistingUser_ReturnsItWithLinkedProviders()
+    {
+        var user = await SeedUserAsync();
+        _db.UserAuthProviders.Add(new UserAuthProvider
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Provider = AuthProvider.GOOGLE,
+            ProviderUserId = "google-123",
+        });
+        await _db.SaveChangesAsync();
+
+        var found = await _repository.GetByEmailAsync(user.Email);
+
+        Assert.NotNull(found);
+        Assert.Equal(user.Id, found!.Id);
+        Assert.Single(found.AuthProviders);
+    }
+
+    [Fact]
+    public async Task GetByEmailAsync_UnknownEmail_ReturnsNull()
+    {
+        var found = await _repository.GetByEmailAsync("nobody@example.com");
+
+        Assert.Null(found);
+    }
+
+    [Fact]
+    public async Task AddRefreshTokenAsync_PersistsANewRefreshTokenForAnExistingUser()
+    {
+        var user = await SeedUserAsync();
+        var refreshToken = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            TokenHash = "some-hash",
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(30),
+        };
+
+        await _repository.AddRefreshTokenAsync(user, refreshToken);
+
+        await using var freshDb = new AuthDbContext(_options);
+        var persisted = await freshDb.RefreshTokens.SingleAsync(t => t.UserId == user.Id);
+        Assert.Equal("some-hash", persisted.TokenHash);
+    }
+
     private async Task<User> SeedUserAsync()
     {
         var user = new User
