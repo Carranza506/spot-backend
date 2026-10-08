@@ -75,9 +75,17 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
 
         var total = await query.CountAsync(ct);
 
+        // Compute the offset as long so a huge page can't overflow int into a negative OFFSET
+        // (Postgres rejects that with a 500). Past the last row there's nothing to return, and
+        // guarding here also keeps the Skip cast safe: a valid offset is < total, which is an int.
+        var offset = (long)(page - 1) * pageSize;
+        if (offset >= total)
+            return ([], total);
+
         var items = await query
             .OrderBy(b => b.Name)
-            .Skip((page - 1) * pageSize)
+            .ThenBy(b => b.Id)
+            .Skip((int)offset)
             .Take(pageSize)
             .ToListAsync(ct);
 
@@ -85,7 +93,7 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
     }
 
     /// <summary>Escapes LIKE/ILIKE wildcards so a user's search term is matched literally (escape char: backslash).</summary>
-    private static string EscapeLikePattern(string input) =>
+    public static string EscapeLikePattern(string input) =>
         input.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
 
     public async Task<(IReadOnlyList<Category> Items, int Total)> ListCategoriesAsync(

@@ -163,6 +163,46 @@ public sealed class BusinessRepositoryTests : IDisposable
         Assert.Equal(["Activo"], items.Select(b => b.Name));
     }
 
+    [Fact]
+    public async Task SearchAsync_SameName_PaginatesDeterministicallyByIdTieBreak()
+    {
+        // Same name on purpose: without the id tie-break, paging could repeat or skip a row.
+        await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", Slug = "bella-1" });
+        await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", Slug = "bella-2" });
+        await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", Slug = "bella-3" });
+
+        var (page1, total) = await _repository.SearchAsync(null, null, null, null, page: 1, pageSize: 2);
+        var (page2, _) = await _repository.SearchAsync(null, null, null, null, page: 2, pageSize: 2);
+
+        Assert.Equal(3, total);
+        // No row repeated across pages and none skipped: the three ids together are distinct.
+        var ids = page1.Concat(page2).Select(b => b.Id).ToList();
+        Assert.Equal(3, ids.Count);
+        Assert.Equal(3, ids.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task SearchAsync_HugePage_ReturnsEmptyWithoutOverflowing()
+    {
+        await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", Slug = "bella" });
+
+        // (page-1)*pageSize would overflow int into a negative OFFSET and 500 — must not here.
+        var (items, total) = await _repository.SearchAsync(null, null, null, null, page: 107374184, pageSize: 20);
+
+        Assert.Empty(items);
+        Assert.Equal(1, total);
+    }
+
+    [Theory]
+    [InlineData("50%", "50\\%")]
+    [InlineData("a_b", "a\\_b")]
+    [InlineData("back\\slash", "back\\\\slash")]
+    [InlineData("plain", "plain")]
+    public void EscapeLikePattern_EscapesWildcardsAndEscapeChar(string input, string expected)
+    {
+        Assert.Equal(expected, BusinessRepository.EscapeLikePattern(input));
+    }
+
     private async Task SeedLocationAsync(Guid businessId, string? city = null, string? province = null)
     {
         _db.BusinessLocations.Add(new BusinessLocation

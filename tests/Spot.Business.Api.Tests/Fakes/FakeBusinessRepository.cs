@@ -148,8 +148,11 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         if (!string.IsNullOrWhiteSpace(province))
             matches = matches.Where(b => b.Location?.Province == province.Trim());
 
-        var all = matches.OrderBy(b => b.Name).ToList();
-        var paged = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        // Mirror the real repository's deterministic order (name, then id as tie-breaker) and its
+        // overflow-safe offset, so paging behaves the same against the fake.
+        var all = matches.OrderBy(b => b.Name).ThenBy(b => b.Id).ToList();
+        var offset = (long)(page - 1) * pageSize;
+        var paged = offset >= all.Count ? [] : all.Skip((int)offset).Take(pageSize).ToList();
 
         return Task.FromResult(((IReadOnlyList<BusinessEntity>)paged, all.Count));
     }
