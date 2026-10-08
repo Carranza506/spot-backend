@@ -808,13 +808,16 @@ paths:
       operationId: replaceBusinessHours
       summary: Replace a business's full weekly schedule
       description: |-
-        Replaces (upsert by `day_of_week`, unique constraint
-        `(business_id,day_of_week)`) the business's complete weekly schedule in a
-        single operation. Each day must satisfy that, if `isClosed=false`,
-        `openTime` and `closeTime` are required and `openTime < closeTime`
-        (validated by the `business_hours` CHECK).
+        Fully replaces the business's weekly schedule in a single, atomic
+        operation: days already stored are updated, new days are created, and
+        days not included in the request are deleted. Each `dayOfWeek` may
+        appear at most once. If `isClosed=false`, `openTime` and `closeTime` are
+        required and `openTime < closeTime`; if `isClosed=true`, any
+        `openTime`/`closeTime` sent are ignored and stored as `null`. These rules
+        are validated by the API (`422`). The response lists the resulting
+        schedule ordered by `dayOfWeek`.
 
-        Required role: `BUSINESS` who owns the business.
+        Required role: `BUSINESS` who owns the business (also when the business is inactive).
       requestBody:
         required: true
         content:
@@ -845,7 +848,13 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+          description: |-
+            The schedule is well-formed but breaks a rule. `code` is one of:
+            - `DUPLICATE_DAY_OF_WEEK`: the same `dayOfWeek` appears more than once.
+            - `MISSING_OPENING_HOURS`: `isClosed=false` without `openTime` or `closeTime`.
+            - `INVALID_TIME_RANGE`: `isClosed=false` and `openTime >= closeTime`.
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /business/businesses/{businessId}/schedule-exceptions:
@@ -2458,9 +2467,9 @@ components:
       required: [dayOfWeek, isClosed]
       properties:
         dayOfWeek: { type: integer, minimum: 0, maximum: 6 }
-        openTime: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$' }
-        closeTime: { type: string, pattern: '^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$' }
-        isClosed: { type: boolean, default: false }
+        openTime: { type: [string, 'null'], pattern: '^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$' }
+        closeTime: { type: [string, 'null'], pattern: '^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$' }
+        isClosed: { type: boolean }
 
     BusinessHoursUpsertRequest:
       type: object
