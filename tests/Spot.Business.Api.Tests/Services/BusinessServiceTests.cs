@@ -166,6 +166,52 @@ public sealed class BusinessServiceTests
     }
 
     [Fact]
+    public async Task ListFavoritesAsync_MapsTheFavoriteAndItsBusiness()
+    {
+        var userId = Guid.NewGuid();
+        var business = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", Email = "hola@bella.cr" });
+        var createdAt = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        _repository.SeedFavorite(userId, business.Id, createdAt);
+
+        var result = await _service.ListFavoritesAsync(userId, page: 1, pageSize: 20);
+
+        var favorite = Assert.Single(result.Data);
+        Assert.Equal(business.Id, favorite.BusinessId);
+        Assert.Equal(createdAt, favorite.CreatedAt);
+        Assert.Equal("hola@bella.cr", favorite.Business.Email);
+        Assert.Equal(1, result.Pagination.Total);
+    }
+
+    [Fact]
+    public async Task AddFavoriteAsync_ActiveBusiness_ReturnsTrueAndSavesIt()
+    {
+        var userId = Guid.NewGuid();
+        var business = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+
+        Assert.True(await _service.AddFavoriteAsync(userId, business.Id));
+        Assert.Single(_repository.FavoritesOf(userId));
+    }
+
+    [Fact]
+    public async Task AddFavoriteAsync_InactiveBusinessAlreadyAFavorite_ReturnsFalse()
+    {
+        var userId = Guid.NewGuid();
+        var business = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", IsActive = false });
+        _repository.SeedFavorite(userId, business.Id, DateTimeOffset.UtcNow);
+
+        Assert.False(await _service.AddFavoriteAsync(userId, business.Id));
+    }
+
+    [Fact]
+    public async Task AddFavoriteAsync_UnknownBusiness_ReturnsFalseAndSavesNothing()
+    {
+        var userId = Guid.NewGuid();
+
+        Assert.False(await _service.AddFavoriteAsync(userId, Guid.NewGuid()));
+        Assert.Empty(_repository.FavoritesOf(userId));
+    }
+
+    [Fact]
     public async Task ListHoursAsync_InactiveBusiness_ReturnsNull()
     {
         var business = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", IsActive = false });
