@@ -137,6 +137,30 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
         return categories.Select(CategoryDto.FromEntity).ToList();
     }
 
+    public async Task<PaginatedResponse<FavoriteBusinessDto>> ListFavoritesAsync(
+        Guid userId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var (items, total) = await repository.ListFavoritesAsync(userId, page, pageSize, ct);
+        var dtos = items.Select(FavoriteBusinessDto.FromEntity).ToList();
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+
+        return new PaginatedResponse<FavoriteBusinessDto>(dtos, new PaginationMeta(page, pageSize, total, totalPages));
+    }
+
+    public async Task<bool> AddFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default)
+    {
+        // Same visibility as GET /{businessId}: an inactive business can't be favorited, even again.
+        var business = await repository.GetByIdAsync(businessId, ct);
+        if (business is not { IsActive: true })
+            return false;
+
+        await repository.AddFavoriteAsync(userId, businessId, ct);
+        return true;
+    }
+
+    public Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default) =>
+        repository.RemoveFavoriteAsync(userId, businessId, ct);
+
     /// <summary>
     /// The single ownership check behind every /{businessId} write: null if the business doesn't
     /// exist (404), <see cref="BusinessAccessDeniedException"/> if it isn't the caller's (403).

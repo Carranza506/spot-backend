@@ -48,4 +48,24 @@ public interface IBusinessRepository
     /// </summary>
     Task<IReadOnlyList<Category>> ReplaceCategoriesAsync(
         Guid businessId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// The favorite businesses of <paramref name="userId"/> (favorite_businesses), with
+    /// <see cref="FavoriteBusiness.Business"/> loaded. Favorites of an inactive business are
+    /// filtered out before paging, so <c>Total</c> counts only active ones. Newest first, then by
+    /// business id so pages are stable when two favorites share a created_at.
+    /// </summary>
+    Task<(IReadOnlyList<FavoriteBusiness> Items, int Total)> ListFavoritesAsync(
+        Guid userId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Saves <paramref name="businessId"/> as a favorite of <paramref name="userId"/>. Idempotent:
+    /// an existing favorite is left untouched (its created_at is kept), including when a concurrent
+    /// request inserts the same row first (duplicate key, SQLSTATE 23505). Callers are expected to
+    /// have already checked the business exists and is active.
+    /// </summary>
+    Task AddFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default);
+
+    /// <summary>Hard-deletes the caller's favorite row, if any. No-op when there is none.</summary>
+    Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default);
 }

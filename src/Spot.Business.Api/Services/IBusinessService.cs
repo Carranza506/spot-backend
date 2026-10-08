@@ -41,4 +41,24 @@ public interface IBusinessService
     /// <exception cref="CategoryNotFoundException">One of <paramref name="categoryIds"/> doesn't exist.</exception>
     Task<IReadOnlyList<CategoryDto>?> ReplaceCategoriesAsync(
         Guid businessId, Guid callerId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// The favorite businesses of <paramref name="userId"/> (the caller's JWT sub), newest first and
+    /// paged. Favorites of an inactive business are left out and not counted.
+    /// </summary>
+    Task<PaginatedResponse<FavoriteBusinessDto>> ListFavoritesAsync(
+        Guid userId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Idempotently saves a business as a favorite of <paramref name="userId"/>; an existing
+    /// favorite keeps its original created_at.
+    /// </summary>
+    /// <returns>False if no business with <paramref name="businessId"/> exists or it's inactive — even if it's already a favorite.</returns>
+    Task<bool> AddFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Idempotently removes a business from the favorites of <paramref name="userId"/>: succeeds
+    /// whether or not it was a favorite and whether or not the business exists or is active.
+    /// </summary>
+    Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default);
 }

@@ -19,6 +19,7 @@ public sealed class FakeBusinessRepository : IBusinessRepository
     // to resolve a categoryId back into a Category for ReplaceCategoriesAsync's return value.
     private readonly Dictionary<Guid, Category> _knownCategories = [];
     private readonly Dictionary<Guid, List<Category>> _businessCategories = [];
+    private readonly List<FavoriteBusiness> _favorites = [];
 
     /// <summary>
     /// Slugs that SlugExistsAsync reports as free but CreateAsync rejects — simulates losing the
@@ -34,6 +35,7 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         SlugsTakenConcurrently.Clear();
         _knownCategories.Clear();
         _businessCategories.Clear();
+        _favorites.Clear();
     }
 
     /// <summary>Seeds a business directly, bypassing CreateAsync — for test setup.</summary>
@@ -121,5 +123,49 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         _businessCategories[businessId] = categories;
 
         return Task.FromResult((IReadOnlyList<Category>)categories);
+    }
+
+    /// <summary>Seeds a favorite with an explicit created_at (to control ordering) — for test setup. The business must be seeded first.</summary>
+    public FavoriteBusiness SeedFavorite(Guid userId, Guid businessId, DateTimeOffset createdAt)
+    {
+        var favorite = new FavoriteBusiness
+        {
+            UserId = userId,
+            BusinessId = businessId,
+            CreatedAt = createdAt,
+            Business = _businesses[businessId],
+        };
+        _favorites.Add(favorite);
+        return favorite;
+    }
+
+    /// <summary>Every stored favorite row of a user, active business or not — for assertions.</summary>
+    public IReadOnlyList<FavoriteBusiness> FavoritesOf(Guid userId) => _favorites.Where(f => f.UserId == userId).ToList();
+
+    public Task<(IReadOnlyList<FavoriteBusiness> Items, int Total)> ListFavoritesAsync(
+        Guid userId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var all = _favorites
+            .Where(f => f.UserId == userId && _businesses[f.BusinessId].IsActive)
+            .OrderByDescending(f => f.CreatedAt)
+            .ThenBy(f => f.BusinessId)
+            .ToList();
+        var paged = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Task.FromResult(((IReadOnlyList<FavoriteBusiness>)paged, all.Count));
+    }
+
+    public Task AddFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default)
+    {
+        if (!_favorites.Any(f => f.UserId == userId && f.BusinessId == businessId))
+            SeedFavorite(userId, businessId, DateTimeOffset.UtcNow);
+
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default)
+    {
+        _favorites.RemoveAll(f => f.UserId == userId && f.BusinessId == businessId);
+        return Task.CompletedTask;
     }
 }

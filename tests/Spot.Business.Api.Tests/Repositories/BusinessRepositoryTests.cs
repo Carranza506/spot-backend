@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Npgsql;
 using Spot.Business.Api.Data;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
@@ -115,6 +117,112 @@ public sealed class BusinessRepositoryTests : IDisposable
         await using var freshDb = new BusinessDbContext(_options);
         var rows = await freshDb.BusinessCategories.Where(bc => bc.BusinessId == business.Id).ToListAsync();
         Assert.Equal([nueva.Id], rows.Select(bc => bc.CategoryId));
+    }
+
+    // ---------- Favorites ----------
+
+    [Fact]
+    public async Task ListFavoritesAsync_FiltersInactiveBeforePagingAndOrdersNewestFirst()
+    {
+        var userId = Guid.NewGuid();
+        var oldest = await CreateBusinessAsync("oldest");
+        var inactive = await CreateBusinessAsync("inactive", isActive: false);
+        var newest = await CreateBusinessAsync("newest");
+        var someoneElses = await CreateBusinessAsync("someone-elses");
+        var t0 = DateTimeOffset.UtcNow;
+        await SeedFavoriteAsync(userId, oldest.Id, t0);
+        await SeedFavoriteAsync(userId, inactive.Id, t0.AddDays(1));
+        await SeedFavoriteAsync(userId, newest.Id, t0.AddDays(2));
+        await SeedFavoriteAsync(Guid.NewGuid(), someoneElses.Id, t0.AddDays(3));
+
+        var (items, total) = await _repository.ListFavoritesAsync(userId, page: 1, pageSize: 1);
+
+        Assert.Equal(2, total);
+        var favorite = Assert.Single(items);
+        Assert.Equal(newest.Id, favorite.BusinessId);
+        Assert.Equal("newest", favorite.Business.Name);
+    }
+
+    [Fact]
+    public async Task AddFavoriteAsync_AlreadyAFavorite_KeepsOneRowAndTheOriginalCreatedAt()
+    {
+        var userId = Guid.NewGuid();
+        var business = await CreateBusinessAsync("bella");
+        var original = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        await SeedFavoriteAsync(userId, business.Id, original);
+
+        await _repository.AddFavoriteAsync(userId, business.Id);
+
+        await using var freshDb = new BusinessDbContext(_options);
+        var row = await freshDb.FavoriteBusinesses.SingleAsync(f => f.UserId == userId);
+        Assert.Equal(original, row.CreatedAt);
+    }
+
+    [Fact]
+    public async Task AddFavoriteAsync_DuplicateKeyFromAConcurrentInsert_IsTreatedAsSuccess()
+    {
+        await using var racingDb = new BusinessDbContext(new DbContextOptionsBuilder<BusinessDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(new ThrowOnSaveInterceptor(PostgresErrorCodes.UniqueViolation))
+            .Options);
+
+        // The up-front AnyAsync sees no row, then SaveChanges loses the race (23505): no exception.
+        await new BusinessRepository(racingDb).AddFavoriteAsync(Guid.NewGuid(), Guid.NewGuid());
+
+        Assert.Empty(racingDb.ChangeTracker.Entries<FavoriteBusiness>());
+    }
+
+    [Fact]
+    public async Task AddFavoriteAsync_OtherDatabaseError_IsNotSwallowed()
+    {
+        await using var failingDb = new BusinessDbContext(new DbContextOptionsBuilder<BusinessDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .AddInterceptors(new ThrowOnSaveInterceptor(PostgresErrorCodes.ForeignKeyViolation))
+            .Options);
+
+        await Assert.ThrowsAsync<DbUpdateException>(
+            () => new BusinessRepository(failingDb).AddFavoriteAsync(Guid.NewGuid(), Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task RemoveFavoriteAsync_DeletesOnlyTheCallersRow()
+    {
+        var userId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        var business = await CreateBusinessAsync("bella");
+        await SeedFavoriteAsync(userId, business.Id, DateTimeOffset.UtcNow);
+        await SeedFavoriteAsync(otherUserId, business.Id, DateTimeOffset.UtcNow);
+
+        await _repository.RemoveFavoriteAsync(userId, business.Id);
+        await _repository.RemoveFavoriteAsync(userId, Guid.NewGuid());
+
+        await using var freshDb = new BusinessDbContext(_options);
+        var rows = await freshDb.FavoriteBusinesses.ToListAsync();
+        Assert.Equal([otherUserId], rows.Select(f => f.UserId));
+    }
+
+    private async Task<BusinessEntity> CreateBusinessAsync(string slug, bool isActive = true)
+    {
+        var business = new BusinessEntity { AccountId = Guid.NewGuid(), Name = slug, Slug = slug, IsActive = isActive };
+        await _repository.CreateAsync(business);
+        return business;
+    }
+
+    private async Task SeedFavoriteAsync(Guid userId, Guid businessId, DateTimeOffset createdAt)
+    {
+        _db.FavoriteBusinesses.Add(new FavoriteBusiness { UserId = userId, BusinessId = businessId, CreatedAt = createdAt });
+        await _db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// InMemory never raises PostgresException, so this stands in for Postgres rejecting the insert
+    /// with <paramref name="sqlState"/> — e.g. 23505 when a concurrent request inserted the same favorite first.
+    /// </summary>
+    private sealed class ThrowOnSaveInterceptor(string sqlState) : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default) =>
+            throw new DbUpdateException("Simulated database error.", new PostgresException("simulated", "ERROR", "ERROR", sqlState));
     }
 
     private async Task<Category> SeedCategoryAsync(string name)

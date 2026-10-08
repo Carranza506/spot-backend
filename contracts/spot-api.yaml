@@ -1640,6 +1640,10 @@ paths:
       operationId: listFavoriteBusinesses
       summary: List the authenticated client's favorite businesses
       description: |-
+        Returns only the caller's favorites, newest first (`createdAt` descending,
+        then `businessId`). Favorites of an inactive business are left out and are
+        not counted in `pagination.total`.
+
         Required role: `CLIENT`.
       parameters:
         - $ref: '#/components/parameters/PageParam'
@@ -1651,7 +1655,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedFavorites'
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /booking/favorites/{businessId}:
@@ -1664,13 +1670,16 @@ paths:
       description: |-
         Idempotent: adding a business that is already a favorite does not raise
         an error (`favorite_businesses` has a composite primary key
-        `(user_id,business_id)`).
+        `(user_id,business_id)`). It returns `204` again and keeps the original
+        `createdAt`. Returns `404` if the business doesn't exist or is inactive,
+        even when it is already a favorite.
 
         Required role: `CLIENT`.
       responses:
         '204':
-          description: Business added to favorites.
+          description: Business added to favorites (or it already was one).
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalServerError' }
     delete:
@@ -1678,12 +1687,16 @@ paths:
       operationId: removeFavoriteBusiness
       summary: Remove a business from favorites
       description: |-
+        Idempotent: always returns `204`, whether or not the business was a
+        favorite and whether or not the business exists or is active. Only the
+        caller's own favorite is removed.
+
         Required role: `CLIENT`.
       responses:
         '204':
-          description: Business removed from favorites.
+          description: Business removed from favorites (or it wasn't one).
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   # ============================================================
