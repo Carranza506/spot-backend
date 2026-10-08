@@ -49,4 +49,20 @@ public interface IBusinessService
     /// </summary>
     /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
     Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Public: the weekly schedule of a business, ordered by day of week (0 = Sunday) and paged.
+    /// Null if no business with <paramref name="businessId"/> exists or it's inactive (same visibility as <see cref="GetPublicAsync"/>).
+    /// </summary>
+    Task<PaginatedResponse<BusinessHourDto>?> ListHoursAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the full weekly schedule of a business: days not in <paramref name="hours"/> are
+    /// deleted. Works on an inactive business too. Null if no business with <paramref name="businessId"/> exists.
+    /// </summary>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    /// <exception cref="InvalidBusinessHoursException">A schedule rule is broken (duplicate day, open day without times, openTime >= closeTime).</exception>
+    Task<IReadOnlyList<BusinessHourDto>?> ReplaceHoursAsync(
+        Guid businessId, Guid callerId, IReadOnlyList<BusinessHourInput> hours, CancellationToken ct = default);
 }

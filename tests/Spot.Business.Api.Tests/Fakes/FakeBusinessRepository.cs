@@ -19,6 +19,7 @@ public sealed class FakeBusinessRepository : IBusinessRepository
     // to resolve a categoryId back into a Category for ReplaceCategoriesAsync's return value.
     private readonly Dictionary<Guid, Category> _knownCategories = [];
     private readonly Dictionary<Guid, List<Category>> _businessCategories = [];
+    private readonly Dictionary<Guid, List<BusinessHours>> _businessHours = [];
 
     /// <summary>
     /// Slugs that SlugExistsAsync reports as free but CreateAsync rejects — simulates losing the
@@ -34,6 +35,7 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         SlugsTakenConcurrently.Clear();
         _knownCategories.Clear();
         _businessCategories.Clear();
+        _businessHours.Clear();
     }
 
     /// <summary>Seeds a business directly, bypassing CreateAsync — for test setup.</summary>
@@ -121,5 +123,65 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         _businessCategories[businessId] = categories;
 
         return Task.FromResult((IReadOnlyList<Category>)categories);
+    }
+
+    /// <summary>Seeds the weekly schedule currently stored for a business — for test setup.</summary>
+    public void SeedHours(Guid businessId, params BusinessHours[] hours)
+    {
+        foreach (var day in hours)
+        {
+            if (day.Id == Guid.Empty)
+                day.Id = Guid.NewGuid();
+
+            day.BusinessId = businessId;
+            day.CreatedAt = DateTimeOffset.UtcNow;
+            day.UpdatedAt = day.CreatedAt;
+        }
+
+        _businessHours[businessId] = [.. hours];
+    }
+
+    /// <summary>The schedule currently stored for a business, ordered by day — for assertions.</summary>
+    public IReadOnlyList<BusinessHours> HoursOf(Guid businessId) =>
+        _businessHours.GetValueOrDefault(businessId, []).OrderBy(h => h.DayOfWeek).ToList();
+
+    public Task<(IReadOnlyList<BusinessHours> Items, int Total)> ListHoursAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var all = HoursOf(businessId);
+        var paged = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Task.FromResult(((IReadOnlyList<BusinessHours>)paged, all.Count));
+    }
+
+    /// <summary>Same semantics as the real repository: stored days keep their id and created_at, missing days are dropped.</summary>
+    public Task<IReadOnlyList<BusinessHours>> ReplaceHoursAsync(
+        Guid businessId, IReadOnlyCollection<BusinessHours> schedule, CancellationToken ct = default)
+    {
+        var existing = _businessHours.GetValueOrDefault(businessId, []);
+        var now = DateTimeOffset.UtcNow;
+
+        var replaced = schedule.Select(day =>
+        {
+            var current = existing.FirstOrDefault(h => h.DayOfWeek == day.DayOfWeek);
+            if (current is null)
+            {
+                day.Id = Guid.NewGuid();
+                day.BusinessId = businessId;
+                day.CreatedAt = now;
+                day.UpdatedAt = now;
+                return day;
+            }
+
+            current.OpenTime = day.OpenTime;
+            current.CloseTime = day.CloseTime;
+            current.IsClosed = day.IsClosed;
+            current.UpdatedAt = now;
+            return current;
+        }).ToList();
+
+        _businessHours[businessId] = replaced;
+
+        return Task.FromResult(HoursOf(businessId));
     }
 }

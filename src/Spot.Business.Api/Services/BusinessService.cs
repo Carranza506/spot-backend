@@ -1,4 +1,6 @@
+using System.Globalization;
 using Spot.Business.Api.DTOs;
+using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using Spot.Shared.Pagination;
 using BusinessEntity = Spot.Business.Api.Models.Business;
@@ -137,6 +139,33 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
         return categories.Select(CategoryDto.FromEntity).ToList();
     }
 
+    public async Task<PaginatedResponse<BusinessHourDto>?> ListHoursAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var business = await repository.GetByIdAsync(businessId, ct);
+        if (business is not { IsActive: true })
+            return null;
+
+        var (items, total) = await repository.ListHoursAsync(businessId, page, pageSize, ct);
+        var dtos = items.Select(BusinessHourDto.FromEntity).ToList();
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+
+        return new PaginatedResponse<BusinessHourDto>(dtos, new PaginationMeta(page, pageSize, total, totalPages));
+    }
+
+    public async Task<IReadOnlyList<BusinessHourDto>?> ReplaceHoursAsync(
+        Guid businessId, Guid callerId, IReadOnlyList<BusinessHourInput> hours, CancellationToken ct = default)
+    {
+        // No IsActive check: the owner can still manage an inactive business, same as PATCH /{businessId}.
+        var business = await GetOwnedAsync(businessId, callerId, ct);
+        if (business is null)
+            return null;
+
+        var schedule = ToSchedule(businessId, hours);
+        var stored = await repository.ReplaceHoursAsync(businessId, schedule, ct);
+        return stored.Select(BusinessHourDto.FromEntity).ToList();
+    }
+
     /// <summary>
     /// The single ownership check behind every /{businessId} write: null if the business doesn't
     /// exist (404), <see cref="BusinessAccessDeniedException"/> if it isn't the caller's (403).
@@ -151,6 +180,49 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
             throw new BusinessAccessDeniedException(businessId, callerId);
 
         return business;
+    }
+
+    /// <summary>
+    /// The 422 rules of PUT /{businessId}/hours, turning the request into the rows to store. The
+    /// formats (dayOfWeek 0–6, HH:mm:ss) were already checked as 400s by model validation. A closed
+    /// day ignores any times sent and stores them as null.
+    /// </summary>
+    /// <exception cref="InvalidBusinessHoursException">The first broken rule, duplicate days first.</exception>
+    private static List<BusinessHours> ToSchedule(Guid businessId, IReadOnlyList<BusinessHourInput> hours)
+    {
+        if (hours.GroupBy(hour => hour.DayOfWeek).Any(day => day.Count() > 1))
+            throw new InvalidBusinessHoursException(
+                InvalidBusinessHoursException.DuplicateDayOfWeek, "Cada día de la semana puede aparecer una sola vez.");
+
+        var schedule = new List<BusinessHours>();
+        foreach (var hour in hours)
+        {
+            var day = new BusinessHours
+            {
+                BusinessId = businessId,
+                DayOfWeek = (short)hour.DayOfWeek!.Value,
+                IsClosed = hour.IsClosed!.Value,
+            };
+
+            if (!day.IsClosed)
+            {
+                if (string.IsNullOrEmpty(hour.OpenTime) || string.IsNullOrEmpty(hour.CloseTime))
+                    throw new InvalidBusinessHoursException(
+                        InvalidBusinessHoursException.MissingOpeningHours,
+                        "openTime y closeTime son requeridos cuando el día no está cerrado.");
+
+                day.OpenTime = TimeOnly.ParseExact(hour.OpenTime, BusinessHourInput.TimeFormat, CultureInfo.InvariantCulture);
+                day.CloseTime = TimeOnly.ParseExact(hour.CloseTime, BusinessHourInput.TimeFormat, CultureInfo.InvariantCulture);
+
+                if (day.OpenTime >= day.CloseTime)
+                    throw new InvalidBusinessHoursException(
+                        InvalidBusinessHoursException.InvalidTimeRange, "openTime debe ser anterior a closeTime.");
+            }
+
+            schedule.Add(day);
+        }
+
+        return schedule;
     }
 
     /// <summary>
