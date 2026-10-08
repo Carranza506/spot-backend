@@ -190,21 +190,8 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
         return stored.Select(BusinessHourDto.FromEntity).ToList();
     }
 
-    /// <summary>
-    /// The single ownership check behind every /{businessId} write: null if the business doesn't
-    /// exist (404), <see cref="BusinessAccessDeniedException"/> if it isn't the caller's (403).
-    /// </summary>
-    private async Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct)
-    {
-        var business = await repository.GetByIdAsync(businessId, ct);
-        if (business is null)
-            return null;
-
-        if (business.AccountId != callerId)
-            throw new BusinessAccessDeniedException(businessId, callerId);
-
-        return business;
-    }
+    private Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct) =>
+        repository.GetOwnedAsync(businessId, callerId, ct);
 
     /// <summary>
     /// The 422 rules of PUT /{businessId}/hours, turning the request into the rows to store. The
