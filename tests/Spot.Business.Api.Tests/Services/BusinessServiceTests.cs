@@ -237,4 +237,72 @@ public sealed class BusinessServiceTests
         Assert.Equal(3, result.Pagination.Total);
         Assert.Equal(2, result.Pagination.TotalPages);
     }
+
+    [Fact]
+    public async Task ListHoursAsync_InactiveBusiness_ReturnsNull()
+    {
+        var business = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", IsActive = false });
+        _repository.SeedHours(business.Id, new BusinessHours { DayOfWeek = 1, IsClosed = true });
+
+        var result = await _service.ListHoursAsync(business.Id, page: 1, pageSize: 20);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task ReplaceHoursAsync_Owner_UpdatesStoredDaysInPlaceAndDropsMissingOnes()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _repository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        _repository.SeedHours(business.Id,
+            new BusinessHours { DayOfWeek = 1, IsClosed = true },
+            new BusinessHours { DayOfWeek = 2, IsClosed = true });
+        var mondayId = _repository.HoursOf(business.Id)[0].Id;
+
+        var result = await _service.ReplaceHoursAsync(business.Id, accountId,
+            [new BusinessHourInput { DayOfWeek = 1, IsClosed = false, OpenTime = "09:00:00", CloseTime = "18:00:00" }]);
+
+        var monday = Assert.Single(result!);
+        Assert.Equal(mondayId, monday.Id);
+        Assert.Equal("09:00:00", monday.OpenTime);
+        Assert.False(monday.IsClosed);
+        Assert.Equal([1], _repository.HoursOf(business.Id).Select(h => (int)h.DayOfWeek));
+    }
+
+    [Fact]
+    public async Task ReplaceHoursAsync_NonOwner_ThrowsAndKeepsTheSchedule()
+    {
+        var business = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        _repository.SeedHours(business.Id, new BusinessHours { DayOfWeek = 3, IsClosed = true });
+
+        await Assert.ThrowsAsync<BusinessAccessDeniedException>(() => _service.ReplaceHoursAsync(
+            business.Id, Guid.NewGuid(), [new BusinessHourInput { DayOfWeek = 1, IsClosed = true }]));
+
+        Assert.Equal(3, _repository.HoursOf(business.Id).Single().DayOfWeek);
+    }
+
+    [Fact]
+    public async Task ReplaceHoursAsync_UnknownBusiness_ReturnsNull()
+    {
+        var result = await _service.ReplaceHoursAsync(
+            Guid.NewGuid(), Guid.NewGuid(), [new BusinessHourInput { DayOfWeek = 1, IsClosed = true }]);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task ReplaceHoursAsync_DuplicateDayAndInvalidRange_ReportsTheDuplicateFirst()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _repository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+
+        var ex = await Assert.ThrowsAsync<InvalidBusinessHoursException>(() => _service.ReplaceHoursAsync(business.Id, accountId,
+        [
+            new BusinessHourInput { DayOfWeek = 1, IsClosed = false, OpenTime = "18:00:00", CloseTime = "09:00:00" },
+            new BusinessHourInput { DayOfWeek = 1, IsClosed = true },
+        ]));
+
+        Assert.Equal(InvalidBusinessHoursException.DuplicateDayOfWeek, ex.Code);
+        Assert.Empty(_repository.HoursOf(business.Id));
+    }
 }

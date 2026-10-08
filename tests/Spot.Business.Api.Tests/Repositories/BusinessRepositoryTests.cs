@@ -219,6 +219,67 @@ public sealed class BusinessRepositoryTests : IDisposable
         await _db.SaveChangesAsync();
     }
 
+    // ---------- ListHoursAsync / ReplaceHoursAsync ----------
+
+    [Fact]
+    public async Task ListHoursAsync_OrdersByDayOfWeekAndPagesWithinTheBusiness()
+    {
+        var business = await CreateBusinessAsync("bella");
+        var other = await CreateBusinessAsync("otra");
+        await SeedHoursAsync(business.Id, 4, 0, 2);
+        await SeedHoursAsync(other.Id, 1);
+
+        var (items, total) = await _repository.ListHoursAsync(business.Id, page: 1, pageSize: 2);
+
+        Assert.Equal(3, total);
+        Assert.Equal([0, 2], items.Select(h => (int)h.DayOfWeek));
+    }
+
+    [Fact]
+    public async Task ReplaceHoursAsync_UpdatesInPlaceInsertsNewDaysAndDeletesMissingOnes()
+    {
+        var business = await CreateBusinessAsync("bella");
+        var other = await CreateBusinessAsync("otra");
+        await SeedHoursAsync(business.Id, 1, 2);
+        await SeedHoursAsync(other.Id, 2);
+        var mondayId = (await _db.BusinessHours.SingleAsync(h => h.BusinessId == business.Id && h.DayOfWeek == 1)).Id;
+
+        var result = await _repository.ReplaceHoursAsync(business.Id,
+        [
+            new BusinessHours { DayOfWeek = 5, IsClosed = true },
+            new BusinessHours { DayOfWeek = 1, OpenTime = new TimeOnly(8, 0), CloseTime = new TimeOnly(12, 0) },
+        ]);
+
+        Assert.Equal([1, 5], result.Select(h => (int)h.DayOfWeek));
+        await using var freshDb = new BusinessDbContext(_options);
+        var rows = await freshDb.BusinessHours.Where(h => h.BusinessId == business.Id).OrderBy(h => h.DayOfWeek).ToListAsync();
+        Assert.Equal([1, 5], rows.Select(h => (int)h.DayOfWeek));
+        Assert.Equal(mondayId, rows[0].Id);
+        Assert.Equal(new TimeOnly(8, 0), rows[0].OpenTime);
+        Assert.Equal(1, await freshDb.BusinessHours.CountAsync(h => h.BusinessId == other.Id));
+    }
+
+    private async Task<BusinessEntity> CreateBusinessAsync(string slug)
+    {
+        var business = new BusinessEntity { AccountId = Guid.NewGuid(), Name = slug, Slug = slug };
+        await _repository.CreateAsync(business);
+        return business;
+    }
+
+    private async Task SeedHoursAsync(Guid businessId, params int[] days)
+    {
+        _db.BusinessHours.AddRange(days.Select(day => new BusinessHours
+        {
+            Id = Guid.NewGuid(),
+            BusinessId = businessId,
+            DayOfWeek = (short)day,
+            IsClosed = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        }));
+        await _db.SaveChangesAsync();
+    }
+
     private async Task<Category> SeedCategoryAsync(string name)
     {
         var category = new Category { Id = Guid.NewGuid(), Name = name, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
