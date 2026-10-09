@@ -5,13 +5,15 @@ using ServiceEntity = Spot.Business.Api.Models.Service;
 namespace Spot.Business.Api.Services;
 
 public sealed class ServiceOfferingService(
-    IServiceOfferingRepository repository, IBusinessService businessService) : IServiceOfferingService
+    IServiceOfferingRepository repository, IBusinessRepository businessRepository) : IServiceOfferingService
 {
     public async Task<ServiceDto?> CreateAsync(
         Guid businessId, Guid callerId, ServiceCreateRequest request, CancellationToken ct = default)
     {
+        // Reuses the shared BusinessOwnership check (#122) on the repository: null if the business
+        // doesn't exist (404), throws BusinessAccessDeniedException if it isn't the caller's (403).
         // An inactive business still counts — its owner can keep managing it, same as PATCH /{businessId}.
-        if (await businessService.GetOwnedAsync(businessId, callerId, ct) is null)
+        if (await businessRepository.GetOwnedAsync(businessId, callerId, ct) is null)
             return null;
 
         var service = new ServiceEntity

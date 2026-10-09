@@ -11,8 +11,7 @@ public sealed class ServiceOfferingServiceTests
     private readonly FakeBusinessRepository _businessRepository = new();
     private readonly ServiceOfferingService _service;
 
-    public ServiceOfferingServiceTests() => _service = new ServiceOfferingService(
-        _repository, new BusinessService(_businessRepository, new FakeCategoryRepository()));
+    public ServiceOfferingServiceTests() => _service = new ServiceOfferingService(_repository, _businessRepository);
 
     // ---------- CreateAsync ----------
 

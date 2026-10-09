@@ -1,4 +1,3 @@
-using System.Globalization;
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
@@ -139,6 +138,30 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
         return categories.Select(CategoryDto.FromEntity).ToList();
     }
 
+    public async Task<PaginatedResponse<FavoriteBusinessDto>> ListFavoritesAsync(
+        Guid userId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var (items, total) = await repository.ListFavoritesAsync(userId, page, pageSize, ct);
+        var dtos = items.Select(FavoriteBusinessDto.FromEntity).ToList();
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+
+        return new PaginatedResponse<FavoriteBusinessDto>(dtos, new PaginationMeta(page, pageSize, total, totalPages));
+    }
+
+    public async Task<bool> AddFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default)
+    {
+        // Same visibility as GET /{businessId}: an inactive business can't be favorited, even again.
+        var business = await repository.GetByIdAsync(businessId, ct);
+        if (business is not { IsActive: true })
+            return false;
+
+        await repository.AddFavoriteAsync(userId, businessId, ct);
+        return true;
+    }
+
+    public Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default) =>
+        repository.RemoveFavoriteAsync(userId, businessId, ct);
+
     public async Task<PaginatedResponse<BusinessHourDto>?> ListHoursAsync(
         Guid businessId, int page, int pageSize, CancellationToken ct = default)
     {
@@ -166,21 +189,8 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
         return stored.Select(BusinessHourDto.FromEntity).ToList();
     }
 
-    /// <summary>
-    /// The single ownership check behind every /{businessId} write: null if the business doesn't
-    /// exist (404), <see cref="BusinessAccessDeniedException"/> if it isn't the caller's (403).
-    /// </summary>
-    public async Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct = default)
-    {
-        var business = await repository.GetByIdAsync(businessId, ct);
-        if (business is null)
-            return null;
-
-        if (business.AccountId != callerId)
-            throw new BusinessAccessDeniedException(businessId, callerId);
-
-        return business;
-    }
+    private Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct) =>
+        repository.GetOwnedAsync(businessId, callerId, ct);
 
     /// <summary>
     /// The 422 rules of PUT /{businessId}/hours, turning the request into the rows to store. The
@@ -197,29 +207,17 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
         var schedule = new List<BusinessHours>();
         foreach (var hour in hours)
         {
-            var day = new BusinessHours
+            var isClosed = hour.IsClosed!.Value;
+            var (openTime, closeTime) = OpeningHours.Parse(isClosed, hour.OpenTime, hour.CloseTime);
+
+            schedule.Add(new BusinessHours
             {
                 BusinessId = businessId,
                 DayOfWeek = (short)hour.DayOfWeek!.Value,
-                IsClosed = hour.IsClosed!.Value,
-            };
-
-            if (!day.IsClosed)
-            {
-                if (string.IsNullOrEmpty(hour.OpenTime) || string.IsNullOrEmpty(hour.CloseTime))
-                    throw new InvalidBusinessHoursException(
-                        InvalidBusinessHoursException.MissingOpeningHours,
-                        "openTime y closeTime son requeridos cuando el día no está cerrado.");
-
-                day.OpenTime = TimeOnly.ParseExact(hour.OpenTime, BusinessHourInput.TimeFormat, CultureInfo.InvariantCulture);
-                day.CloseTime = TimeOnly.ParseExact(hour.CloseTime, BusinessHourInput.TimeFormat, CultureInfo.InvariantCulture);
-
-                if (day.OpenTime >= day.CloseTime)
-                    throw new InvalidBusinessHoursException(
-                        InvalidBusinessHoursException.InvalidTimeRange, "openTime debe ser anterior a closeTime.");
-            }
-
-            schedule.Add(day);
+                IsClosed = isClosed,
+                OpenTime = openTime,
+                CloseTime = closeTime,
+            });
         }
 
         return schedule;

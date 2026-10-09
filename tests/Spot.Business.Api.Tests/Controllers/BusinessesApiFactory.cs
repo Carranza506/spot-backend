@@ -29,6 +29,12 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
     public FakeCategoryRepository CategoryRepository { get; } = new();
     public FakeServiceOfferingRepository ServiceRepository { get; } = new();
 
+    /// <summary>Contacts (#59) live under a business, so their tests share this factory's businesses.</summary>
+    public FakeBusinessContactRepository ContactRepository { get; } = new();
+
+    /// <summary>Schedule exceptions (#61) also live under a business.</summary>
+    public FakeBusinessScheduleExceptionRepository ScheduleExceptionRepository { get; } = new();
+
     private readonly RSA _jwtKey = RSA.Create(2048);
 
     public BusinessesApiFactory()
@@ -39,6 +45,11 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Jwt__Issuer", Issuer);
         Environment.SetEnvironmentVariable("Jwt__Audience", Audience);
         Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", _jwtKey.ExportSubjectPublicKeyInfoPem());
+
+        // Placeholder connection string for Program.cs's eagerly-built NpgsqlDataSource — see
+        // CategoriesApiFactory. Only parsed, never connected to: both repositories are faked.
+        Environment.SetEnvironmentVariable(
+            "ConnectionStrings__DefaultConnection", "Host=localhost;Database=unused;Username=unused;Password=unused");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -51,6 +62,10 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ICategoryRepository>(CategoryRepository);
             services.RemoveAll<IServiceOfferingRepository>();
             services.AddSingleton<IServiceOfferingRepository>(ServiceRepository);
+            services.RemoveAll<IBusinessContactRepository>();
+            services.AddSingleton<IBusinessContactRepository>(ContactRepository);
+            services.RemoveAll<IBusinessScheduleExceptionRepository>();
+            services.AddSingleton<IBusinessScheduleExceptionRepository>(ScheduleExceptionRepository);
         });
     }
 
@@ -85,6 +100,7 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
             Environment.SetEnvironmentVariable("Jwt__Issuer", null);
             Environment.SetEnvironmentVariable("Jwt__Audience", null);
             Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", null);
+            Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", null);
         }
 
         base.Dispose(disposing);
