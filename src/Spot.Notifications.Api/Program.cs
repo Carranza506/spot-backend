@@ -20,9 +20,13 @@ builder.Services.AddHealthChecks();
 // how to read/write it. Without registering it here via NpgsqlDataSourceBuilder, any INSERT/
 // UPDATE/SELECT that touches the `platform` column throws "Reading and writing unmapped enums
 // requires an explicit opt-in" the moment Npgsql tries to read the value back from Postgres — the
-// exact 500 a previous PR hit by skipping this step.
+// exact 500 a previous PR hit by skipping this step. The snake-case translator is a single shared
+// instance, same as Spot.Business.Api's Program.cs: the AddDbContext lambda below runs per request,
+// and a new translator there each time makes EF Core build a new internal service provider per
+// request — past twenty it throws ManyServiceProvidersCreatedWarning and every request is a 500.
+var nameTranslator = new NpgsqlSnakeCaseNameTranslator();
 var npgsqlDataSource = new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("DefaultConnection"))
-    .MapEnum<DevicePlatform>(nameTranslator: new NpgsqlSnakeCaseNameTranslator())
+    .MapEnum<DevicePlatform>(nameTranslator: nameTranslator)
     .Build();
 
 builder.Services.AddDbContext<NotificationsDbContext>(options =>
@@ -34,7 +38,7 @@ builder.Services.AddDbContext<NotificationsDbContext>(options =>
             // to read RETURNING values after INSERT/UPDATE) need it registered here too, on the
             // EF-specific options builder, or they still read the column as a plain int and blow
             // up with the same "unmapped enums" error.
-            .MapEnum<DevicePlatform>(nameTranslator: new NpgsqlSnakeCaseNameTranslator())));
+            .MapEnum<DevicePlatform>(nameTranslator: nameTranslator)));
 
 builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();

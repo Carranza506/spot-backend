@@ -98,3 +98,14 @@ public sealed class NotificationsApiFactory : WebApplicationFactory<Program>
         base.Dispose(disposing);
     }
 }
+
+/// <summary>
+/// Serializes the test classes that spin up a NotificationsApiFactory: each factory publishes its
+/// own JWT public key through process-wide environment variables, so running two in parallel
+/// would let one factory's app validate against the other's key.
+/// </summary>
+[CollectionDefinition(Name)]
+public sealed class NotificationsApiCollection
+{
+    public const string Name = "Notifications.Api pipeline";
+}

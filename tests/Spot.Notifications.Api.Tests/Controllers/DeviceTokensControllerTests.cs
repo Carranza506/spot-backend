@@ -6,6 +6,7 @@ using Spot.Notifications.Api.Models;
 
 namespace Spot.Notifications.Api.Tests.Controllers;
 
+[Collection(NotificationsApiCollection.Name)]
 public class DeviceTokensControllerTests(NotificationsApiFactory factory) : IClassFixture<NotificationsApiFactory>
 {
     [Fact]
