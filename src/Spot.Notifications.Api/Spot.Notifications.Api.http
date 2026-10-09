@@ -1,6 +1,65 @@
 @Spot.Notifications.Api_HostAddress = http://localhost:5102
 
-GET {{Spot.Notifications.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Register a device token - success -> 201
+POST {{Spot.Notifications.Api_HostAddress}}/notifications/device-tokens
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "token": "fcm-token-abc123",
+  "platform": "ANDROID"
+}
+
+###
+
+### Register the same token again - reactivates instead of duplicating -> 201
+POST {{Spot.Notifications.Api_HostAddress}}/notifications/device-tokens
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "token": "fcm-token-abc123",
+  "platform": "ANDROID"
+}
+
+###
+
+### Register - no access token -> 401
+POST {{Spot.Notifications.Api_HostAddress}}/notifications/device-tokens
+Content-Type: application/json
+
+{
+  "token": "fcm-token-abc123",
+  "platform": "ANDROID"
+}
+
+###
+
+### Register - invalid platform -> 400 (Error schema)
+POST {{Spot.Notifications.Api_HostAddress}}/notifications/device-tokens
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "token": "fcm-token-abc123",
+  "platform": "BLACKBERRY"
+}
+
+###
+
+### Remove a device token -> 204
+DELETE {{Spot.Notifications.Api_HostAddress}}/notifications/device-tokens/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Remove - unknown id -> 404
+DELETE {{Spot.Notifications.Api_HostAddress}}/notifications/device-tokens/11111111-1111-1111-1111-111111111111
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Remove - no access token -> 401
+DELETE {{Spot.Notifications.Api_HostAddress}}/notifications/device-tokens/00000000-0000-0000-0000-000000000000
 
 ###
