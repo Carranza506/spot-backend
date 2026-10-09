@@ -1,4 +1,5 @@
 using Spot.Business.Api.DTOs;
+using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Services;
 
@@ -27,7 +28,6 @@ public interface IBusinessService
     /// </summary>
     /// <returns>False if no business with <paramref name="businessId"/> exists.</returns>
     /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
-    Task<bool> DeactivateAsync(Guid businessId, Guid callerId, CancellationToken ct = default);
 
     /// <summary>
     /// Public: the location of a business. Null if no business with <paramref name="businessId"/>
@@ -44,4 +44,53 @@ public interface IBusinessService
     /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
     Task<BusinessLocationDto?> UpsertLocationAsync(
         Guid businessId, Guid callerId, BusinessLocationUpsertRequest request, CancellationToken ct = default);
+    Task<bool> DeactivateAsync(Guid businessId, Guid callerId, CancellationToken ct = default);
+
+    /// <summary>Public: the categories assigned to a business, paged. Null if no business with <paramref name="businessId"/> exists.</summary>
+    Task<PaginatedResponse<CategoryDto>?> ListCategoriesAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the full category set of a business. Null if no business with <paramref name="businessId"/> exists.
+    /// </summary>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    /// <exception cref="CategoryNotFoundException">One of <paramref name="categoryIds"/> doesn't exist.</exception>
+    Task<IReadOnlyList<CategoryDto>?> ReplaceCategoriesAsync(
+        Guid businessId, Guid callerId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default);
+
+    /// <summary>
+    /// The favorite businesses of <paramref name="userId"/> (the caller's JWT sub), newest first and
+    /// paged. Favorites of an inactive business are left out and not counted.
+    /// </summary>
+    Task<PaginatedResponse<FavoriteBusinessDto>> ListFavoritesAsync(
+        Guid userId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Idempotently saves a business as a favorite of <paramref name="userId"/>; an existing
+    /// favorite keeps its original created_at.
+    /// </summary>
+    /// <returns>False if no business with <paramref name="businessId"/> exists or it's inactive — even if it's already a favorite.</returns>
+    Task<bool> AddFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Idempotently removes a business from the favorites of <paramref name="userId"/>: succeeds
+    /// whether or not it was a favorite and whether or not the business exists or is active.
+    /// </summary>
+    Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Public: the weekly schedule of a business, ordered by day of week (0 = Sunday) and paged.
+    /// Null if no business with <paramref name="businessId"/> exists or it's inactive (same visibility as <see cref="GetPublicAsync"/>).
+    /// </summary>
+    Task<PaginatedResponse<BusinessHourDto>?> ListHoursAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// Replaces the full weekly schedule of a business: days not in <paramref name="hours"/> are
+    /// deleted. Works on an inactive business too. Null if no business with <paramref name="businessId"/> exists.
+    /// </summary>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    /// <exception cref="InvalidBusinessHoursException">A schedule rule is broken (duplicate day, open day without times, openTime >= closeTime).</exception>
+    Task<IReadOnlyList<BusinessHourDto>?> ReplaceHoursAsync(
+        Guid businessId, Guid callerId, IReadOnlyList<BusinessHourInput> hours, CancellationToken ct = default);
 }

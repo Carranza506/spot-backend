@@ -14,6 +14,14 @@ public sealed class FakeBusinessRepository : IBusinessRepository
 {
     private readonly Dictionary<Guid, BusinessEntity> _businesses = [];
 
+    // Stands in for the real repository's shared BusinessDbContext (which reaches Categories
+    // through the same table business_categories joins against) — the fake needs its own registry
+    // to resolve a categoryId back into a Category for ReplaceCategoriesAsync's return value.
+    private readonly Dictionary<Guid, Category> _knownCategories = [];
+    private readonly Dictionary<Guid, List<Category>> _businessCategories = [];
+    private readonly List<FavoriteBusiness> _favorites = [];
+    private readonly Dictionary<Guid, List<BusinessHours>> _businessHours = [];
+
     /// <summary>Keyed by business id — simulates the unique business_locations.business_id.</summary>
     private readonly Dictionary<Guid, BusinessLocation> _locations = [];
 
@@ -30,6 +38,10 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         _businesses.Clear();
         SlugsTakenConcurrently.Clear();
         _locations.Clear();
+        _knownCategories.Clear();
+        _businessCategories.Clear();
+        _favorites.Clear();
+        _businessHours.Clear();
     }
 
     /// <summary>Seeds a business directly, bypassing CreateAsync — for test setup.</summary>
@@ -80,6 +92,147 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         business.UpdatedAt = DateTimeOffset.UtcNow;
         _businesses[business.Id] = business;
         return Task.CompletedTask;
+    }
+
+    /// <summary>Registers a category so ReplaceCategoriesAsync can resolve it by id — for test setup.</summary>
+    public Category SeedCategory(Category category)
+    {
+        if (category.Id == Guid.Empty)
+            category.Id = Guid.NewGuid();
+
+        _knownCategories[category.Id] = category;
+        return category;
+    }
+
+    /// <summary>Seeds the categories currently assigned to a business — for GET-list test setup.</summary>
+    public void SeedBusinessCategories(Guid businessId, params Category[] categories)
+    {
+        foreach (var category in categories)
+            SeedCategory(category);
+
+        _businessCategories[businessId] = [.. categories];
+    }
+
+    public Task<(IReadOnlyList<Category> Items, int Total)> ListCategoriesAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var all = _businessCategories.GetValueOrDefault(businessId, []).OrderBy(c => c.Name).ToList();
+        var paged = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Task.FromResult(((IReadOnlyList<Category>)paged, all.Count));
+    }
+
+    public Task<IReadOnlyList<Category>> ReplaceCategoriesAsync(
+        Guid businessId, IReadOnlyCollection<Guid> categoryIds, CancellationToken ct = default)
+    {
+        var categories = categoryIds.Select(id => _knownCategories[id]).OrderBy(c => c.Name).ToList();
+        _businessCategories[businessId] = categories;
+
+        return Task.FromResult((IReadOnlyList<Category>)categories);
+    }
+
+    /// <summary>Seeds a favorite with an explicit created_at (to control ordering) — for test setup. The business must be seeded first.</summary>
+    public FavoriteBusiness SeedFavorite(Guid userId, Guid businessId, DateTimeOffset createdAt)
+    {
+        var favorite = new FavoriteBusiness
+        {
+            UserId = userId,
+            BusinessId = businessId,
+            CreatedAt = createdAt,
+            Business = _businesses[businessId],
+        };
+        _favorites.Add(favorite);
+        return favorite;
+    }
+
+    /// <summary>Every stored favorite row of a user, active business or not — for assertions.</summary>
+    public IReadOnlyList<FavoriteBusiness> FavoritesOf(Guid userId) => _favorites.Where(f => f.UserId == userId).ToList();
+
+    public Task<(IReadOnlyList<FavoriteBusiness> Items, int Total)> ListFavoritesAsync(
+        Guid userId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var all = _favorites
+            .Where(f => f.UserId == userId && _businesses[f.BusinessId].IsActive)
+            .OrderByDescending(f => f.CreatedAt)
+            .ThenBy(f => f.BusinessId)
+            .ToList();
+        var paged = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Task.FromResult(((IReadOnlyList<FavoriteBusiness>)paged, all.Count));
+    }
+
+    public Task AddFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default)
+    {
+        if (!_favorites.Any(f => f.UserId == userId && f.BusinessId == businessId))
+            SeedFavorite(userId, businessId, DateTimeOffset.UtcNow);
+
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveFavoriteAsync(Guid userId, Guid businessId, CancellationToken ct = default)
+    {
+        _favorites.RemoveAll(f => f.UserId == userId && f.BusinessId == businessId);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Seeds the weekly schedule currently stored for a business — for test setup.</summary>
+    public void SeedHours(Guid businessId, params BusinessHours[] hours)
+    {
+        foreach (var day in hours)
+        {
+            if (day.Id == Guid.Empty)
+                day.Id = Guid.NewGuid();
+
+            day.BusinessId = businessId;
+            day.CreatedAt = DateTimeOffset.UtcNow;
+            day.UpdatedAt = day.CreatedAt;
+        }
+
+        _businessHours[businessId] = [.. hours];
+    }
+
+    /// <summary>The schedule currently stored for a business, ordered by day — for assertions.</summary>
+    public IReadOnlyList<BusinessHours> HoursOf(Guid businessId) =>
+        _businessHours.GetValueOrDefault(businessId, []).OrderBy(h => h.DayOfWeek).ToList();
+
+    public Task<(IReadOnlyList<BusinessHours> Items, int Total)> ListHoursAsync(
+        Guid businessId, int page, int pageSize, CancellationToken ct = default)
+    {
+        var all = HoursOf(businessId);
+        var paged = all.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+
+        return Task.FromResult(((IReadOnlyList<BusinessHours>)paged, all.Count));
+    }
+
+    /// <summary>Same semantics as the real repository: stored days keep their id and created_at, missing days are dropped.</summary>
+    public Task<IReadOnlyList<BusinessHours>> ReplaceHoursAsync(
+        Guid businessId, IReadOnlyCollection<BusinessHours> schedule, CancellationToken ct = default)
+    {
+        var existing = _businessHours.GetValueOrDefault(businessId, []);
+        var now = DateTimeOffset.UtcNow;
+
+        var replaced = schedule.Select(day =>
+        {
+            var current = existing.FirstOrDefault(h => h.DayOfWeek == day.DayOfWeek);
+            if (current is null)
+            {
+                day.Id = Guid.NewGuid();
+                day.BusinessId = businessId;
+                day.CreatedAt = now;
+                day.UpdatedAt = now;
+                return day;
+            }
+
+            current.OpenTime = day.OpenTime;
+            current.CloseTime = day.CloseTime;
+            current.IsClosed = day.IsClosed;
+            current.UpdatedAt = now;
+            return current;
+        }).ToList();
+
+        _businessHours[businessId] = replaced;
+
+        return Task.FromResult(HoursOf(businessId));
     }
 
     public Task<BusinessLocation?> GetLocationAsync(Guid businessId, CancellationToken ct = default) =>

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Spot.Business.Api.Models;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
 namespace Spot.Business.Api.Tests.Controllers;
@@ -394,6 +395,153 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         var client = CreateClient(accountId, "BUSINESS");
 
         var response = await client.PatchAsJsonAsync("/business/businesses/me", new { email = "nope" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // ---------- GET /business/businesses/{businessId}/categories ----------
+
+    [Fact]
+    public async Task ListBusinessCategories_BusinessWithCategories_Returns200WithoutToken()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var belleza = factory.CategoryRepository.Seed(new Category { Name = "Belleza" });
+        var salud = factory.CategoryRepository.Seed(new Category { Name = "Salud" });
+        factory.BusinessRepository.SeedBusinessCategories(business.Id, belleza, salud);
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{business.Id}/categories");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, body.GetProperty("pagination").GetProperty("total").GetInt32());
+        Assert.Equal(
+            ["Belleza", "Salud"],
+            body.GetProperty("data").EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+    }
+
+    [Fact]
+    public async Task ListBusinessCategories_BusinessWithoutCategories_Returns200WithEmptyData()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{business.Id}/categories");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Empty(body.GetProperty("data").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task ListBusinessCategories_UnknownBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{Guid.NewGuid()}/categories");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // ---------- PUT /business/businesses/{businessId}/categories ----------
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_Owner_Returns200WithTheNewSet()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var nueva = factory.CategoryRepository.Seed(new Category { Name = "Nueva" });
+        factory.BusinessRepository.SeedCategory(nueva);
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = new[] { nueva.Id } });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(
+            ["Nueva"], body.GetProperty("data").EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+        Assert.False(body.TryGetProperty("pagination", out _));
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_NonOwnerBusinessAccount_Returns403()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var category = factory.CategoryRepository.Seed(new Category { Name = "Belleza" });
+        factory.BusinessRepository.SeedCategory(category);
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = new[] { category.Id } });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_NoToken_Returns401()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = new[] { Guid.NewGuid() } });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_UnknownBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var category = factory.CategoryRepository.Seed(new Category { Name = "Belleza" });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{Guid.NewGuid()}/categories", new { categoryIds = new[] { category.Id } });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_UnknownCategoryId_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = new[] { Guid.NewGuid() } });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_EmptyCategoryIds_Returns400()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = Array.Empty<Guid>() });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

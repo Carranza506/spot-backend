@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using Npgsql.NameTranslation;
 using Spot.Business.Api.Data;
+using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using Spot.Business.Api.Services;
 using Spot.Shared.Auth;
@@ -32,18 +35,34 @@ builder.Services.AddControllers()
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
+// Same setup as Spot.Auth.Api's Program.cs (see the full explanation there): HasPostgresEnum<T>()
+// in BusinessDbContext only teaches migrations about the native "contact_type" enum, so without
+// these MapEnum<T>() registrations any read/write of business_contacts.type fails with
+// "Reading and writing unmapped enums requires an explicit opt-in". The snake-case translator
+// matches the lowercase labels the migration actually created ("whatsapp", not "WHATSAPP"), and
+// is a single shared instance so EF Core doesn't build a new internal service provider per request.
+var nameTranslator = new NpgsqlSnakeCaseNameTranslator();
+var npgsqlDataSource = new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("DefaultConnection"))
+    .MapEnum<ContactType>(nameTranslator: nameTranslator)
+    .UseNetTopologySuite()
+    .Build();
+
 builder.Services.AddDbContext<BusinessDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
+    options.UseNpgsql(npgsqlDataSource,
         npgsql => npgsql
             .MigrationsHistoryTable("__EFMigrationsHistory_business")
+            .MapEnum<ContactType>(nameTranslator: nameTranslator)
             // Maps business_locations.location (geography(Point,4326)) to NetTopologySuite's
-            // Point. Without it Npgsql can't read or write PostGIS types (#58).
+            // Point (#58). Registered here and on the data source above: EF Core needs it for the
+            // model, Npgsql for reading/writing the values on the connection.
             .UseNetTopologySuite()));
 
 builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
 builder.Services.AddScoped<IBusinessRepository, BusinessRepository>();
 builder.Services.AddScoped<IBusinessService, BusinessService>();
+builder.Services.AddScoped<IBusinessContactRepository, BusinessContactRepository>();
+builder.Services.AddScoped<IBusinessContactService, BusinessContactService>();
 
 // Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the "Jwt"
 // section — the same setup every microservice uses. See Spot.Shared.Auth. Needed here even

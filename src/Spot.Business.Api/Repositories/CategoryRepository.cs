@@ -103,6 +103,16 @@ public sealed class CategoryRepository(BusinessDbContext db) : ICategoryReposito
         return true;
     }
 
+    public async Task<IReadOnlyList<Guid>> ExistingIdsAsync(IEnumerable<Guid> categoryIds, CancellationToken ct = default)
+    {
+        var ids = categoryIds as ICollection<Guid> ?? categoryIds.ToList();
+
+        return await db.Categories.AsNoTracking()
+            .Where(c => ids.Contains(c.Id))
+            .Select(c => c.Id)
+            .ToListAsync(ct);
+    }
+
     private static bool IsUniqueNameViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException
         {
