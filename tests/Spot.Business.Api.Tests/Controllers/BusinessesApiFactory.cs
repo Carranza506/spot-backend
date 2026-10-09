@@ -29,6 +29,9 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
     /// <summary>Contacts (#59) live under a business, so their tests share this factory's businesses.</summary>
     public FakeBusinessContactRepository ContactRepository { get; } = new();
 
+    /// <summary>Schedule exceptions (#61) also live under a business.</summary>
+    public FakeBusinessScheduleExceptionRepository ScheduleExceptionRepository { get; } = new();
+
     private readonly RSA _jwtKey = RSA.Create(2048);
 
     public BusinessesApiFactory()
@@ -56,6 +59,8 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ICategoryRepository>(CategoryRepository);
             services.RemoveAll<IBusinessContactRepository>();
             services.AddSingleton<IBusinessContactRepository>(ContactRepository);
+            services.RemoveAll<IBusinessScheduleExceptionRepository>();
+            services.AddSingleton<IBusinessScheduleExceptionRepository>(ScheduleExceptionRepository);
         });
     }
 
