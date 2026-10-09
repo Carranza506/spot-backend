@@ -38,6 +38,12 @@ public sealed class CategoriesApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Jwt__Issuer", Issuer);
         Environment.SetEnvironmentVariable("Jwt__Audience", Audience);
         Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", _jwtKey.ExportSubjectPublicKeyInfoPem());
+
+        // Program.cs builds a NpgsqlDataSource (for the contact_type enum mapping) straight from
+        // ConnectionStrings:DefaultConnection, before ConfigureWebHost runs — same eager-read
+        // problem and fix as Spot.Auth.Api.Tests' AuthApiFactory. Only parsed, never connected to.
+        Environment.SetEnvironmentVariable(
+            "ConnectionStrings__DefaultConnection", "Host=localhost;Database=unused;Username=unused;Password=unused");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -80,6 +86,7 @@ public sealed class CategoriesApiFactory : WebApplicationFactory<Program>
             Environment.SetEnvironmentVariable("Jwt__Issuer", null);
             Environment.SetEnvironmentVariable("Jwt__Audience", null);
             Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", null);
+            Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", null);
         }
 
         base.Dispose(disposing);
