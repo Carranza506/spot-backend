@@ -546,6 +546,189 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    // ---------- GET /business/businesses/{businessId}/location ----------
+
+    [Fact]
+    public async Task GetBusinessLocation_WithLocation_Returns200WithoutToken()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        await CreateClient(accountId, "BUSINESS").PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+
+        var response = await factory.CreateClient().GetAsync(LocationUrl(business.Id));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(business.Id, body.GetProperty("businessId").GetGuid());
+        Assert.Equal("200 metros norte de la iglesia católica", body.GetProperty("address").GetString());
+        Assert.Equal(9.9325, body.GetProperty("location").GetProperty("latitude").GetDouble());
+        Assert.Equal(-84.0795, body.GetProperty("location").GetProperty("longitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task GetBusinessLocation_BusinessWithoutLocation_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+
+        var response = await factory.CreateClient().GetAsync(LocationUrl(business.Id));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("NOT_FOUND", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task GetBusinessLocation_UnknownBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+
+        var response = await factory.CreateClient().GetAsync(LocationUrl(Guid.NewGuid()));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetBusinessLocation_InactiveBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        await CreateClient(accountId, "BUSINESS").PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+        business.IsActive = false;
+
+        var response = await factory.CreateClient().GetAsync(LocationUrl(business.Id));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // ---------- PUT /business/businesses/{businessId}/location ----------
+
+    [Fact]
+    public async Task UpsertBusinessLocation_Owner_CreatesThenReplacesKeepingTheSameId()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var created = await client.PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+        var replaced = await client.PutAsJsonAsync(LocationUrl(business.Id),
+            new { address = "Nuevo local", location = new { latitude = 9.9981, longitude = -84.1165 } });
+
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, replaced.StatusCode);
+        var createdBody = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var replacedBody = await replaced.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(createdBody.GetProperty("id").GetGuid(), replacedBody.GetProperty("id").GetGuid());
+        Assert.Equal("Nuevo local", replacedBody.GetProperty("address").GetString());
+        Assert.Equal("Costa Rica", replacedBody.GetProperty("country").GetString());
+        Assert.Equal(9.9981, replacedBody.GetProperty("location").GetProperty("latitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task UpsertBusinessLocation_NoToken_Returns401()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+
+        var response = await factory.CreateClient().PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("CLIENT")]
+    [InlineData("SUPERADMIN")]
+    public async Task UpsertBusinessLocation_NonBusinessRole_Returns403(string role)
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+
+        var response = await CreateClient(accountId, role).PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Null(await factory.BusinessRepository.GetLocationAsync(business.Id));
+    }
+
+    [Fact]
+    public async Task UpsertBusinessLocation_NonOwnerBusinessAccount_Returns403()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+
+        var response = await CreateClient(Guid.NewGuid(), "BUSINESS").PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("FORBIDDEN", body.GetProperty("code").GetString());
+        Assert.Null(await factory.BusinessRepository.GetLocationAsync(business.Id));
+    }
+
+    [Fact]
+    public async Task UpsertBusinessLocation_UnknownBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+
+        var response = await CreateClient(Guid.NewGuid(), "BUSINESS").PutAsJsonAsync(LocationUrl(Guid.NewGuid()), ValidLocationBody());
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("{\"address\":\"Ok\"}", "Location")]
+    [InlineData("{\"location\":{\"latitude\":0,\"longitude\":0}}", "Address")]
+    [InlineData("{\"address\":\"   \",\"location\":{\"latitude\":0,\"longitude\":0}}", "Address")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":90.0001,\"longitude\":0}}", "Location.Latitude")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":-90.0001,\"longitude\":0}}", "Location.Latitude")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":0,\"longitude\":180.0001}}", "Location.Longitude")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":0,\"longitude\":-180.0001}}", "Location.Longitude")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":0}}", "Location.Longitude")]
+    [InlineData("{\"address\":\"Ok\",\"postalCode\":\"123456789012345678901\",\"location\":{\"latitude\":0,\"longitude\":0}}", "PostalCode")]
+    public async Task UpsertBusinessLocation_InvalidBody_Returns400WithTheField(string json, string field)
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+
+        var response = await CreateClient(accountId, "BUSINESS").PutAsync(LocationUrl(business.Id),
+            new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Equal(field, body.GetProperty("details").GetProperty("field").GetString());
+        Assert.Null(await factory.BusinessRepository.GetLocationAsync(business.Id));
+    }
+
+    [Theory]
+    [InlineData(90, 180)]
+    [InlineData(-90, -180)]
+    public async Task UpsertBusinessLocation_CoordinatesOnTheBoundaries_Returns200(double latitude, double longitude)
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+
+        var response = await CreateClient(accountId, "BUSINESS").PutAsJsonAsync(LocationUrl(business.Id),
+            new { address = "Ok", location = new { latitude, longitude } });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private static string LocationUrl(Guid businessId) => $"/business/businesses/{businessId}/location";
+
+    private static object ValidLocationBody() => new
+    {
+        address = "200 metros norte de la iglesia católica",
+        city = "San José",
+        province = "San José",
+        postalCode = "10101",
+        location = new { latitude = 9.9325, longitude = -84.0795 },
+    };
+
     private HttpClient CreateClient(Guid userId, string role)
     {
         var client = factory.CreateClient();

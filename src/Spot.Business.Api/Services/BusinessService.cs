@@ -193,6 +193,40 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
     private Task<BusinessEntity?> GetOwnedAsync(Guid businessId, Guid callerId, CancellationToken ct) =>
         repository.GetOwnedAsync(businessId, callerId, ct);
 
+    public async Task<BusinessLocationDto?> GetPublicLocationAsync(Guid businessId, CancellationToken ct = default)
+    {
+        var business = await repository.GetByIdAsync(businessId, ct);
+        if (business is not { IsActive: true })
+            return null;
+
+        var location = await repository.GetLocationAsync(businessId, ct)
+            ?? throw new BusinessLocationNotSetException(businessId);
+
+        return BusinessLocationDto.FromEntity(location);
+    }
+
+    public async Task<BusinessLocationDto?> UpsertLocationAsync(
+        Guid businessId, Guid callerId, BusinessLocationUpsertRequest request, CancellationToken ct = default)
+    {
+        var business = await GetOwnedAsync(businessId, callerId, ct);
+        if (business is null)
+            return null;
+
+        var location = new BusinessLocation
+        {
+            BusinessId = businessId,
+            Address = request.Address.Trim(),
+            City = BusinessFieldRules.Normalize(request.City),
+            Province = BusinessFieldRules.Normalize(request.Province),
+            Country = BusinessFieldRules.Normalize(request.Country) ?? BusinessLocationUpsertRequest.DefaultCountry,
+            PostalCode = BusinessFieldRules.Normalize(request.PostalCode),
+            Location = request.Location.ToPoint(),
+        };
+
+        var stored = await repository.UpsertLocationAsync(location, ct);
+        return BusinessLocationDto.FromEntity(stored);
+    }
+
     /// <summary>
     /// The 422 rules of PUT /{businessId}/hours, turning the request into the rows to store. The
     /// formats (dayOfWeek 0–6, HH:mm:ss) were already checked as 400s by model validation. A closed

@@ -1,3 +1,5 @@
+using NetTopologySuite.Geometries;
+
 namespace Spot.Business.Api.Models;
 
 public class BusinessLocation
@@ -9,8 +11,13 @@ public class BusinessLocation
     public string? Province { get; set; }
     public string Country { get; set; } = "Costa Rica";
     public string? PostalCode { get; set; }
-    // geography(Point,4326) — use NetTopologySuite for spatial queries
-    public string Location { get; set; } = null!;
+
+    /// <summary>
+    /// geography(Point,4326). NetTopologySuite uses (X, Y) = (longitude, latitude) — the reverse
+    /// of the contract's GeoPoint field order — and the point must carry SRID 4326.
+    /// </summary>
+    public Point Location { get; set; } = null!;
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
