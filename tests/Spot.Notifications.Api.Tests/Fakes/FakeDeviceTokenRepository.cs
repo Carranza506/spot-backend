@@ -12,6 +12,9 @@ public sealed class FakeDeviceTokenRepository : IDeviceTokenRepository
 {
     private readonly Dictionary<Guid, DeviceToken> _tokens = [];
 
+    /// <summary>Every stored device token, active or not — for assertions.</summary>
+    public IReadOnlyCollection<DeviceToken> All => _tokens.Values;
+
     public void Reset() => _tokens.Clear();
 
     /// <summary>Seeds a device token directly, bypassing UpsertAsync — for test setup.</summary>

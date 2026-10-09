@@ -67,6 +67,46 @@ public class DeviceTokensControllerTests(NotificationsApiFactory factory) : ICla
         Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
     }
 
+    [Theory]
+    [InlineData("99")]
+    [InlineData("-1")]
+    [InlineData("1")]
+    [InlineData("ANDROID,IOS")]
+    public async Task RegisterDeviceToken_NumericOrCombinedPlatform_Returns400AndCreatesNothing(string platform)
+    {
+        factory.DeviceTokenRepository.Reset();
+        var client = CreateAuthenticatedClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/notifications/device-tokens", new { token = "fcm-token-abc123", platform });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.True(body.TryGetProperty("message", out _));
+        Assert.True(body.TryGetProperty("timestamp", out _));
+        Assert.Empty(factory.DeviceTokenRepository.All);
+    }
+
+    [Theory]
+    [InlineData("ANDROID", "ANDROID")]
+    [InlineData("IOS", "IOS")]
+    [InlineData("WEB", "WEB")]
+    [InlineData("ios", "IOS")]
+    [InlineData(" web ", "WEB")]
+    public async Task RegisterDeviceToken_ContractPlatformName_Returns201(string platform, string expected)
+    {
+        factory.DeviceTokenRepository.Reset();
+        var client = CreateAuthenticatedClient();
+
+        var response = await client.PostAsJsonAsync(
+            "/notifications/device-tokens", new { token = "fcm-token-abc123", platform });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expected, body.GetProperty("platform").GetString());
+    }
+
     [Fact]
     public async Task RegisterDeviceToken_AlreadyRegisteredBySameUser_ReactivatesInsteadOfDuplicating()
     {

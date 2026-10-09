@@ -31,11 +31,17 @@ public class DeviceTokensController(IDeviceTokenService deviceTokenService) : Co
         if (!TryGetUserId(out var userId))
             return Unauthorized(new ApiError("UNAUTHORIZED", "Token de acceso inválido o ausente."));
 
-        if (!Enum.TryParse<DevicePlatform>(request.Platform, ignoreCase: true, out var platform))
+        // Match against the member names only: Enum.TryParse also accepts numeric strings (even
+        // undefined ones like "99", which Npgsql can't write) and comma-separated lists.
+        var platformName = Enum.GetNames<DevicePlatform>()
+            .FirstOrDefault(name => string.Equals(name, request.Platform?.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (platformName is null)
         {
             return BadRequest(new ApiError(
                 "BAD_REQUEST", $"platform debe ser uno de: {string.Join(", ", Enum.GetNames<DevicePlatform>())}."));
         }
+
+        var platform = Enum.Parse<DevicePlatform>(platformName);
 
         var result = await deviceTokenService.RegisterAsync(userId, request.Token.Trim(), platform, ct);
         return StatusCode(StatusCodes.Status201Created, result);
