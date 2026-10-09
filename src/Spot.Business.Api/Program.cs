@@ -58,6 +58,8 @@ builder.Services.AddScoped<IBusinessRepository, BusinessRepository>();
 builder.Services.AddScoped<IBusinessService, BusinessService>();
 builder.Services.AddScoped<IBusinessContactRepository, BusinessContactRepository>();
 builder.Services.AddScoped<IBusinessContactService, BusinessContactService>();
+builder.Services.AddScoped<IBusinessScheduleExceptionRepository, BusinessScheduleExceptionRepository>();
+builder.Services.AddScoped<IBusinessScheduleExceptionService, BusinessScheduleExceptionService>();
 
 // Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the "Jwt"
 // section — the same setup every microservice uses. See Spot.Shared.Auth. Needed here even
