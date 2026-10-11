@@ -45,6 +45,57 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
         await db.Entry(business).ReloadAsync(ct);
     }
 
+    public async Task<(IReadOnlyList<BusinessEntity> Items, int Total)> SearchAsync(
+        string? q, Guid? categoryId, string? city, string? province,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        // Only active businesses are publicly searchable — same visibility rule as GetPublicAsync.
+        var query = db.Businesses.AsNoTracking().Where(b => b.IsActive);
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            // ILIKE is case-insensitive (decision: no accent handling). The term is a literal, so
+            // escape LIKE's wildcards (% _) and the escape char itself, then wrap in %...%.
+            var pattern = $"%{EscapeLikePattern(q.Trim())}%";
+            query = query.Where(b =>
+                EF.Functions.ILike(b.Name, pattern, "\\")
+                || (b.Description != null && EF.Functions.ILike(b.Description, pattern, "\\")));
+        }
+
+        if (categoryId is { } catId)
+            query = query.Where(b => db.BusinessCategories.Any(bc => bc.BusinessId == b.Id && bc.CategoryId == catId));
+
+        // city/province live on business_locations. The join only narrows when a value is given,
+        // so a business without a location still shows up unless one of these is filtered on.
+        if (!string.IsNullOrWhiteSpace(city))
+            query = query.Where(b => b.Location != null && b.Location.City == city.Trim());
+
+        if (!string.IsNullOrWhiteSpace(province))
+            query = query.Where(b => b.Location != null && b.Location.Province == province.Trim());
+
+        var total = await query.CountAsync(ct);
+
+        // Compute the offset as long so a huge page can't overflow int into a negative OFFSET
+        // (Postgres rejects that with a 500). Past the last row there's nothing to return, and
+        // guarding here also keeps the Skip cast safe: a valid offset is < total, which is an int.
+        var offset = (long)(page - 1) * pageSize;
+        if (offset >= total)
+            return ([], total);
+
+        var items = await query
+            .OrderBy(b => b.Name)
+            .ThenBy(b => b.Id)
+            .Skip((int)offset)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
+
+    /// <summary>Escapes LIKE/ILIKE wildcards so a user's search term is matched literally (escape char: backslash).</summary>
+    public static string EscapeLikePattern(string input) =>
+        input.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+
     public async Task<(IReadOnlyList<Category> Items, int Total)> ListCategoriesAsync(
         Guid businessId, int page, int pageSize, CancellationToken ct = default)
     {

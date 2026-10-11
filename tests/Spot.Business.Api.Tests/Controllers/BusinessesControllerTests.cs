@@ -546,6 +546,69 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    // ---------- GET /business/businesses (search, public) ----------
+
+    [Fact]
+    public async Task SearchBusinesses_NoToken_Returns200()
+    {
+        factory.BusinessRepository.Reset();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/business/businesses");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, body.GetProperty("pagination").GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task SearchBusinesses_FiltersByQ_Returns200WithMatches()
+    {
+        factory.BusinessRepository.Reset();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Salón Bella" });
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Ferretería" });
+        var client = factory.CreateClient();
+
+        // q=BELLA matches "Salón Bella" case-insensitively (no accent in the term, by design).
+        var response = await client.GetAsync("/business/businesses?q=BELLA");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(
+            ["Salón Bella"], body.GetProperty("data").EnumerateArray().Select(b => b.GetProperty("name").GetString()));
+    }
+
+    [Fact]
+    public async Task SearchBusinesses_ProximityParams_AreIgnoredNot400()
+    {
+        factory.BusinessRepository.Reset();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/business/businesses?lat=9.9&lng=-84.1&radiusKm=5");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, body.GetProperty("pagination").GetProperty("total").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("?page=0")]
+    [InlineData("?pageSize=0")]
+    [InlineData("?pageSize=101")]
+    public async Task SearchBusinesses_InvalidPagination_Returns400(string queryString)
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses{queryString}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
     private HttpClient CreateClient(Guid userId, string role)
     {
         var client = factory.CreateClient();
