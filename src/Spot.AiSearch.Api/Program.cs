@@ -44,12 +44,17 @@ builder.Services.AddHealthChecks();
 // ai_requests.status / request_type are native Postgres enums (db/Spot.sql:8-9). Without MapEnum,
 // EF sends AiRequestStatus/AiRequestType as integers, which Postgres rejects for an enum column.
 // NpgsqlNullNameTranslator keeps the C# names as-is: they already match the UPPERCASE labels.
+// The translator is a single shared instance, same as Spot.Notifications.Api's Program.cs: the
+// AddDbContext lambda below runs per request, and a new translator there each time makes EF Core
+// build a new internal service provider per request — past twenty it throws
+// ManyServiceProvidersCreatedWarning and every request is a 500.
+var keepLabelsTranslator = new NpgsqlNullNameTranslator();
 builder.Services.AddDbContext<AiSearchDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
         npgsql => npgsql
             .MigrationsHistoryTable("__EFMigrationsHistory_aisearch")
-            .MapEnum<AiRequestStatus>("ai_request_status", nameTranslator: new NpgsqlNullNameTranslator())
-            .MapEnum<AiRequestType>("ai_request_type", nameTranslator: new NpgsqlNullNameTranslator())));
+            .MapEnum<AiRequestStatus>("ai_request_status", nameTranslator: keepLabelsTranslator)
+            .MapEnum<AiRequestType>("ai_request_type", nameTranslator: keepLabelsTranslator)));
 
 builder.Services.AddScoped<IAiRequestRepository, AiRequestRepository>();
 builder.Services.AddScoped<IAiRequestService, AiRequestService>();
