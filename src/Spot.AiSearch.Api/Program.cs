@@ -1,7 +1,9 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Npgsql.NameTranslation;
 using Spot.AiSearch.Api.Data;
+using Spot.AiSearch.Api.Models;
 using Spot.AiSearch.Api.Options;
 using Spot.AiSearch.Api.Repositories;
 using Spot.AiSearch.Api.Services;
@@ -39,9 +41,15 @@ builder.Services.AddControllers()
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
+// ai_requests.status / request_type are native Postgres enums (db/Spot.sql:8-9). Without MapEnum,
+// EF sends AiRequestStatus/AiRequestType as integers, which Postgres rejects for an enum column.
+// NpgsqlNullNameTranslator keeps the C# names as-is: they already match the UPPERCASE labels.
 builder.Services.AddDbContext<AiSearchDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
-        npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory_aisearch")));
+        npgsql => npgsql
+            .MigrationsHistoryTable("__EFMigrationsHistory_aisearch")
+            .MapEnum<AiRequestStatus>("ai_request_status", nameTranslator: new NpgsqlNullNameTranslator())
+            .MapEnum<AiRequestType>("ai_request_type", nameTranslator: new NpgsqlNullNameTranslator())));
 
 builder.Services.AddScoped<IAiRequestRepository, AiRequestRepository>();
 builder.Services.AddScoped<IAiRequestService, AiRequestService>();
