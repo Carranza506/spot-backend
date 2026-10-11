@@ -25,6 +25,9 @@ public sealed class NotificationsApiFactory : WebApplicationFactory<Program>
 
     public FakeDeviceTokenRepository DeviceTokenRepository { get; } = new();
 
+    /// <summary>INotificationRepository is swapped too, so NotificationsControllerTests run the real NotificationService.</summary>
+    public FakeNotificationRepository NotificationRepository { get; } = new();
+
     // Notifications.Api only ever validates tokens (AddSpotJwtAuthentication), never signs them,
     // but this fixture still needs the private half to mint test tokens the app will accept.
     private readonly RSA _jwtKey = RSA.Create(2048);
@@ -58,6 +61,8 @@ public sealed class NotificationsApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IDeviceTokenRepository>();
             services.AddSingleton<IDeviceTokenRepository>(DeviceTokenRepository);
+            services.RemoveAll<INotificationRepository>();
+            services.AddSingleton<INotificationRepository>(NotificationRepository);
         });
     }
 
