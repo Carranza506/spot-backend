@@ -160,7 +160,9 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
 
         modelBuilder.Entity<BusinessPhoto>(e =>
         {
-            e.ToTable("business_photos");
+            // db/Spot.sql's unnamed CHECK, under the name Postgres generates for it, so both
+            // schemas match (the earlier migrations never created it).
+            e.ToTable("business_photos", t => t.HasCheckConstraint("business_photos_display_order_check", "display_order >= 0"));
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
             e.Property(x => x.BusinessId).HasColumnName("business_id");
@@ -170,6 +172,10 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.Property(x => x.DisplayOrder).HasColumnName("display_order").HasDefaultValue(0);
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasIndex(x => x.BusinessId).HasDatabaseName("idx_business_photos_business");
+            // At most one primary photo per business (#65). The app unsets the previous primary in
+            // the same transaction; this partial index makes two concurrent uploads unable to
+            // leave two primaries behind.
+            e.HasIndex(x => x.BusinessId, "ux_business_photos_one_primary").IsUnique().HasFilter("is_primary");
             e.HasOne(x => x.Business).WithMany(b => b.Photos).HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -226,7 +232,8 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
 
         modelBuilder.Entity<ServicePhoto>(e =>
         {
-            e.ToTable("service_photos");
+            // Same as business_photos: db/Spot.sql's CHECK, under Postgres' generated name.
+            e.ToTable("service_photos", t => t.HasCheckConstraint("service_photos_display_order_check", "display_order >= 0"));
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
             e.Property(x => x.ServiceId).HasColumnName("service_id");

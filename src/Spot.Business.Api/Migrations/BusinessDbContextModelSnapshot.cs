@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Spot.Business.Api.Data;
+using Spot.Business.Api.Models;
 
 #nullable disable
 
@@ -154,7 +155,7 @@ namespace Spot.Business.Api.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_primary");
 
-                    b.Property<int>("Type")
+                    b.Property<ContactType>("Type")
                         .HasColumnType("contact_type")
                         .HasColumnName("type");
 
@@ -335,7 +336,14 @@ namespace Spot.Business.Api.Migrations
                     b.HasIndex("BusinessId")
                         .HasDatabaseName("idx_business_photos_business");
 
-                    b.ToTable("business_photos", (string)null);
+                    b.HasIndex(new[] { "BusinessId" }, "ux_business_photos_one_primary")
+                        .IsUnique()
+                        .HasFilter("is_primary");
+
+                    b.ToTable("business_photos", null, t =>
+                        {
+                            t.HasCheckConstraint("business_photos_display_order_check", "display_order >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Spot.Business.Api.Models.BusinessScheduleException", b =>
@@ -662,7 +670,10 @@ namespace Spot.Business.Api.Migrations
                     b.HasIndex("ServiceId")
                         .HasDatabaseName("idx_service_photos_service");
 
-                    b.ToTable("service_photos", (string)null);
+                    b.ToTable("service_photos", null, t =>
+                        {
+                            t.HasCheckConstraint("service_photos_display_order_check", "display_order >= 0");
+                        });
                 });
 
             modelBuilder.Entity("Spot.Business.Api.Models.UserReference", b =>
