@@ -1,19 +1,24 @@
 # Build context is the repo root (see docker-compose.yml), so Spot.Shared is reachable.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# Set by BuildKit to the image's target architecture (amd64, arm64). Every dotnet step below is
+# scoped to it (`-a` maps amd64 to x64), so the publish output only carries the native libraries
+# for that platform. Without it, SkiaSharp (#65) ships its native binaries for every OS and CPU
+# (~470 MB), none of which but one would ever load.
+ARG TARGETARCH
 WORKDIR /src
 
 # Restore first, using only the .csproj files, so this layer is cached across source changes.
 COPY src/Spot.Shared/Spot.Shared.csproj src/Spot.Shared/
 COPY src/Spot.Business.Api/Spot.Business.Api.csproj src/Spot.Business.Api/
-RUN dotnet restore src/Spot.Business.Api/Spot.Business.Api.csproj
+RUN dotnet restore src/Spot.Business.Api/Spot.Business.Api.csproj -a "$TARGETARCH"
 
 # Now bring in the actual source and build. Any compile error fails here, during
 # `docker compose build`, not at container runtime.
 COPY src/Spot.Shared/ src/Spot.Shared/
 COPY src/Spot.Business.Api/ src/Spot.Business.Api/
-RUN dotnet build src/Spot.Business.Api/Spot.Business.Api.csproj -c Release --no-restore
+RUN dotnet build src/Spot.Business.Api/Spot.Business.Api.csproj -c Release --no-restore -a "$TARGETARCH" --self-contained false
 
-RUN dotnet publish src/Spot.Business.Api/Spot.Business.Api.csproj -c Release --no-build -o /app/publish
+RUN dotnet publish src/Spot.Business.Api/Spot.Business.Api.csproj -c Release --no-build -a "$TARGETARCH" --self-contained false -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
