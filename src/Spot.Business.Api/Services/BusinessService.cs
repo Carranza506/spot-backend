@@ -1,4 +1,3 @@
-using System.Globalization;
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
@@ -67,6 +66,17 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
     {
         var business = await repository.GetByAccountIdAsync(accountId, ct);
         return business is null ? null : BusinessDto.FromEntity(business);
+    }
+
+    public async Task<PaginatedResponse<BusinessDto>> SearchAsync(BusinessSearchQuery query, CancellationToken ct = default)
+    {
+        var (items, total) = await repository.SearchAsync(
+            query.Q, query.CategoryId, query.City, query.Province, query.Page, query.PageSize, ct);
+
+        var dtos = items.Select(BusinessDto.FromEntity).ToList();
+        var totalPages = (int)Math.Ceiling(total / (double)query.PageSize);
+
+        return new PaginatedResponse<BusinessDto>(dtos, new PaginationMeta(query.Page, query.PageSize, total, totalPages));
     }
 
     public async Task<BusinessDto?> UpdateAsync(
@@ -242,29 +252,17 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
         var schedule = new List<BusinessHours>();
         foreach (var hour in hours)
         {
-            var day = new BusinessHours
+            var isClosed = hour.IsClosed!.Value;
+            var (openTime, closeTime) = OpeningHours.Parse(isClosed, hour.OpenTime, hour.CloseTime);
+
+            schedule.Add(new BusinessHours
             {
                 BusinessId = businessId,
                 DayOfWeek = (short)hour.DayOfWeek!.Value,
-                IsClosed = hour.IsClosed!.Value,
-            };
-
-            if (!day.IsClosed)
-            {
-                if (string.IsNullOrEmpty(hour.OpenTime) || string.IsNullOrEmpty(hour.CloseTime))
-                    throw new InvalidBusinessHoursException(
-                        InvalidBusinessHoursException.MissingOpeningHours,
-                        "openTime y closeTime son requeridos cuando el día no está cerrado.");
-
-                day.OpenTime = TimeOnly.ParseExact(hour.OpenTime, BusinessHourInput.TimeFormat, CultureInfo.InvariantCulture);
-                day.CloseTime = TimeOnly.ParseExact(hour.CloseTime, BusinessHourInput.TimeFormat, CultureInfo.InvariantCulture);
-
-                if (day.OpenTime >= day.CloseTime)
-                    throw new InvalidBusinessHoursException(
-                        InvalidBusinessHoursException.InvalidTimeRange, "openTime debe ser anterior a closeTime.");
-            }
-
-            schedule.Add(day);
+                IsClosed = isClosed,
+                OpenTime = openTime,
+                CloseTime = closeTime,
+            });
         }
 
         return schedule;

@@ -12,6 +12,12 @@ public interface IBusinessService
     /// <summary>Public detail view: null if no business with <paramref name="businessId"/> exists or it's inactive.</summary>
     Task<BusinessDto?> GetPublicAsync(Guid businessId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Public search of active businesses, paged. Every filter in <paramref name="query"/> is
+    /// optional and combines with AND. Callers validate page/pageSize before calling.
+    /// </summary>
+    Task<PaginatedResponse<BusinessDto>> SearchAsync(BusinessSearchQuery query, CancellationToken ct = default);
+
     /// <summary>The business of <paramref name="accountId"/>, active or not; null if the account has none.</summary>
     Task<BusinessDto?> GetOwnAsync(Guid accountId, CancellationToken ct = default);
 
