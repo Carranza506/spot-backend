@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using Spot.Business.Api.Repositories;
+using Spot.Business.Api.Storage;
 using Spot.Business.Api.Tests.Fakes;
 
 namespace Spot.Business.Api.Tests.Controllers;
@@ -34,6 +35,13 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
 
     /// <summary>Schedule exceptions (#61) also live under a business.</summary>
     public FakeBusinessScheduleExceptionRepository ScheduleExceptionRepository { get; } = new();
+
+    /// <summary>
+    /// Photos (#65): rows and files are faked (no database, nothing written to disk), but the real
+    /// PhotoService and the real SkiaSharp image processing run, so uploads are decoded for real.
+    /// </summary>
+    public FakePhotoRepository PhotoRepository { get; } = new();
+    public FakePhotoStorage PhotoStorage { get; } = new();
 
     private readonly RSA _jwtKey = RSA.Create(2048);
 
@@ -66,6 +74,10 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IBusinessContactRepository>(ContactRepository);
             services.RemoveAll<IBusinessScheduleExceptionRepository>();
             services.AddSingleton<IBusinessScheduleExceptionRepository>(ScheduleExceptionRepository);
+            services.RemoveAll<IPhotoRepository>();
+            services.AddSingleton<IPhotoRepository>(PhotoRepository);
+            services.RemoveAll<IPhotoStorage>();
+            services.AddSingleton<IPhotoStorage>(PhotoStorage);
         });
     }
 
