@@ -1,3 +1,4 @@
+using NetTopologySuite.Geometries;
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
@@ -196,7 +197,7 @@ public sealed class BusinessServiceTests
         _repository.Seed(new BusinessEntity
         {
             AccountId = Guid.NewGuid(), Name = "Con ubicación",
-            Location = new BusinessLocation { Address = "x", City = "San José", Location = "POINT(0 0)" },
+            Location = new BusinessLocation { Address = "x", City = "San José", Location = new Point(0, 0) { SRID = 4326 } },
         });
         _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Sin ubicación" });
 
@@ -211,13 +212,13 @@ public sealed class BusinessServiceTests
         var match = _repository.Seed(new BusinessEntity
         {
             AccountId = Guid.NewGuid(), Name = "Peluquería Centro",
-            Location = new BusinessLocation { Address = "x", City = "Heredia", Location = "POINT(0 0)" },
+            Location = new BusinessLocation { Address = "x", City = "Heredia", Location = new Point(0, 0) { SRID = 4326 } },
         });
         // Same name match, wrong city — must be excluded by the AND.
         _repository.Seed(new BusinessEntity
         {
             AccountId = Guid.NewGuid(), Name = "Peluquería Sur",
-            Location = new BusinessLocation { Address = "x", City = "Cartago", Location = "POINT(0 0)" },
+            Location = new BusinessLocation { Address = "x", City = "Cartago", Location = new Point(0, 0) { SRID = 4326 } },
         });
 
         var result = await _service.SearchAsync(new BusinessSearchQuery { Q = "peluquería", City = "Heredia" });

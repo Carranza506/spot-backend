@@ -216,7 +216,7 @@ public sealed class BusinessRepositoryTests : IDisposable
             Address = "Calle 1",
             City = city,
             Province = province,
-            Location = "POINT(0 0)",
+            Location = new Point(0, 0) { SRID = 4326 },
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         });
