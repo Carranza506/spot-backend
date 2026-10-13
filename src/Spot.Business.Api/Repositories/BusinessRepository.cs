@@ -198,10 +198,12 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex, "IX_business_locations_business_id"))
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
             // Lost the race against a concurrent first PUT for the same business: its row is
             // there now, so this one becomes a replace of it (last write wins, as for any PUT).
+            // Matched on SQLSTATE only: business_id is the table's only unique key besides the
+            // id, and db/Spot.sql names that constraint differently from the migrations.
             db.Entry(location).State = EntityState.Detached;
             existing = await db.BusinessLocations.FirstAsync(l => l.BusinessId == location.BusinessId, ct);
             return await ReplaceLocationAsync(existing, location, ct);

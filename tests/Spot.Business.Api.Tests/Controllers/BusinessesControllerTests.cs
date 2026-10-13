@@ -577,6 +577,8 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("NOT_FOUND", body.GetProperty("code").GetString());
+        // Not the unknown-business message: the client can tell "no location yet" apart.
+        Assert.Equal("El negocio todavía no tiene una ubicación registrada.", body.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -587,6 +589,9 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         var response = await factory.CreateClient().GetAsync(LocationUrl(Guid.NewGuid()));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("NOT_FOUND", body.GetProperty("code").GetString());
+        Assert.Equal("El negocio indicado no existe.", body.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -601,12 +606,14 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         var response = await factory.CreateClient().GetAsync(LocationUrl(business.Id));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("El negocio indicado no existe.", body.GetProperty("message").GetString());
     }
 
     // ---------- PUT /business/businesses/{businessId}/location ----------
 
     [Fact]
-    public async Task UpsertBusinessLocation_Owner_CreatesThenReplacesKeepingTheSameId()
+    public async Task UpsertBusinessLocation_Owner_CreatesThenReplacesKeepingTheSameIdAndCreatedAt()
     {
         factory.BusinessRepository.Reset();
         var accountId = Guid.NewGuid();
@@ -622,6 +629,7 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         var createdBody = await created.Content.ReadFromJsonAsync<JsonElement>();
         var replacedBody = await replaced.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(createdBody.GetProperty("id").GetGuid(), replacedBody.GetProperty("id").GetGuid());
+        Assert.Equal(createdBody.GetProperty("createdAt").GetDateTimeOffset(), replacedBody.GetProperty("createdAt").GetDateTimeOffset());
         Assert.Equal("Nuevo local", replacedBody.GetProperty("address").GetString());
         Assert.Equal("Costa Rica", replacedBody.GetProperty("country").GetString());
         Assert.Equal(9.9981, replacedBody.GetProperty("location").GetProperty("latitude").GetDouble());

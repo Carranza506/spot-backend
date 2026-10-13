@@ -326,7 +326,7 @@ public sealed class BusinessServiceTests
     }
 
     [Fact]
-    public async Task UpsertLocationAsync_SecondCall_ReplacesKeepingTheSameId()
+    public async Task UpsertLocationAsync_SecondCall_ReplacesKeepingTheSameIdAndCreatedAt()
     {
         var accountId = Guid.NewGuid();
         var business = _repository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
@@ -336,6 +336,7 @@ public sealed class BusinessServiceTests
             address: "Nuevo local", country: "Panamá", latitude: 8.9824, longitude: -79.5199));
 
         Assert.Equal(first!.Id, second!.Id);
+        Assert.Equal(first.CreatedAt, second.CreatedAt);
         var stored = await _service.GetPublicLocationAsync(business.Id);
         Assert.Equal("Nuevo local", stored!.Address);
         Assert.Equal("Panamá", stored.Country);

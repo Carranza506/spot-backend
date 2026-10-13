@@ -23,13 +23,6 @@ public interface IBusinessService
     Task<BusinessDto?> UpdateOwnAsync(Guid accountId, BusinessUpdateRequest request, CancellationToken ct = default);
 
     /// <summary>
-    /// Soft delete (is_active = false) — never a physical delete. Idempotent: deactivating an
-    /// already inactive business still succeeds.
-    /// </summary>
-    /// <returns>False if no business with <paramref name="businessId"/> exists.</returns>
-    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
-
-    /// <summary>
     /// Public: the location of a business. Null if no business with <paramref name="businessId"/>
     /// exists or it's inactive — same visibility rule as <see cref="GetPublicAsync"/>.
     /// </summary>
@@ -44,6 +37,13 @@ public interface IBusinessService
     /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
     Task<BusinessLocationDto?> UpsertLocationAsync(
         Guid businessId, Guid callerId, BusinessLocationUpsertRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Soft delete (is_active = false) — never a physical delete. Idempotent: deactivating an
+    /// already inactive business still succeeds.
+    /// </summary>
+    /// <returns>False if no business with <paramref name="businessId"/> exists.</returns>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
     Task<bool> DeactivateAsync(Guid businessId, Guid callerId, CancellationToken ct = default);
 
     /// <summary>Public: the categories assigned to a business, paged. Null if no business with <paramref name="businessId"/> exists.</summary>

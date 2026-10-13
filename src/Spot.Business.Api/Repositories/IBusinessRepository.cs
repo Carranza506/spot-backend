@@ -30,12 +30,6 @@ public interface IBusinessRepository
     /// </exception>
     Task CreateAsync(BusinessEntity business, CancellationToken ct = default);
 
-    /// <summary>
-    /// Persists changes made to a tracked business (from <see cref="GetByIdAsync"/> or
-    /// <see cref="GetByAccountIdAsync"/>) and refreshes it from the database afterwards
-    /// (<c>updated_at</c> is set by a Postgres trigger, not application code).
-    /// </summary>
-
     /// <summary>The business's location (business_locations), or null if it hasn't set one yet. Not tracked.</summary>
     Task<BusinessLocation?> GetLocationAsync(Guid businessId, CancellationToken ct = default);
 
@@ -48,9 +42,16 @@ public interface IBusinessRepository
     /// </summary>
     /// <remarks>
     /// Race-safe: if a concurrent first PUT inserts the row between the lookup and the insert
-    /// (IX_business_locations_business_id), the insert is retried once as an update of that row.
+    /// (unique business_id, SQLSTATE 23505), the insert is retried once as an update of that row.
+    /// Any other database error is rethrown.
     /// </remarks>
     Task<BusinessLocation> UpsertLocationAsync(BusinessLocation location, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists changes made to a tracked business (from <see cref="GetByIdAsync"/> or
+    /// <see cref="GetByAccountIdAsync"/>) and refreshes it from the database afterwards
+    /// (<c>updated_at</c> is set by a Postgres trigger, not application code).
+    /// </summary>
     Task SaveChangesAsync(BusinessEntity business, CancellationToken ct = default);
 
     /// <summary>Categories assigned to a business (business_categories), ordered by name and paged.</summary>
