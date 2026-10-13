@@ -493,3 +493,6 @@ $RECYCLE.BIN/
 
 # Local dev settings (contain credentials)
 **/appsettings.Development.json
+
+# Local sample image used by Spot.Business.Api.http's photo upload requests.
+src/Spot.Business.Api/sample-photo.*
