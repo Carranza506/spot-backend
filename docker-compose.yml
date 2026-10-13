@@ -98,8 +98,14 @@ services:
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
       JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
       Logging__Console__FormatterName: json
+      # Photo URLs as clients see them: through the Gateway's published port (see gateway below).
+      PhotoStorage__PublicBaseUrl: http://localhost:5195/api/v1/business/media/photos
     secrets:
       - jwt_public_key
+    volumes:
+      # Uploaded photos (#65). Named volume, so they survive `docker compose down` and image
+      # rebuilds (`down -v` deletes them). The path matches PhotoStorage__RootPath in the Dockerfile.
+      - business_photos:/var/lib/spot/photos
     ports:
       - "5151:8080"
     healthcheck:
@@ -248,6 +254,7 @@ services:
 
 volumes:
   postgres_data:
+  business_photos:
 
 networks:
   spot-network:

@@ -6,6 +6,7 @@ using Spot.Business.Api.Data;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using Spot.Business.Api.Services;
+using Spot.Business.Api.Storage;
 using Spot.Shared.Auth;
 using Spot.Shared.Errors;
 
@@ -62,6 +63,10 @@ builder.Services.AddScoped<IBusinessContactRepository, BusinessContactRepository
 builder.Services.AddScoped<IBusinessContactService, BusinessContactService>();
 builder.Services.AddScoped<IBusinessScheduleExceptionRepository, BusinessScheduleExceptionRepository>();
 builder.Services.AddScoped<IBusinessScheduleExceptionService, BusinessScheduleExceptionService>();
+
+// Business and service photo files (#65): a local directory (a named volume in Docker), behind
+// IPhotoStorage so it can move to an object store later. Options are validated at startup.
+builder.Services.AddLocalPhotoStorage(builder.Configuration);
 
 // Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the "Jwt"
 // section — the same setup every microservice uses. See Spot.Shared.Auth. Needed here even

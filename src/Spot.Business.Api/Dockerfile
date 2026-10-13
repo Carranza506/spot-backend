@@ -31,6 +31,14 @@ RUN chmod +x /entrypoint-jwt.sh
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 
+# Photo files (#65, PhotoStorage:RootPath). Created and handed to the non-root app user while
+# still root, owner-only (0700): docker-compose.yml mounts a named volume here, and a new named
+# volume copies this directory's ownership and mode, so the app can write to it without root.
+ENV PhotoStorage__RootPath=/var/lib/spot/photos
+RUN mkdir -p /var/lib/spot/photos \
+    && chown "$APP_UID:$APP_UID" /var/lib/spot/photos \
+    && chmod 700 /var/lib/spot/photos
+
 # Run as the non-root "app" user baked into the base image instead of root (default).
 USER $APP_UID
 
