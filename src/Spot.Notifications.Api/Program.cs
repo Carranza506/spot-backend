@@ -25,8 +25,13 @@ builder.Services.AddHealthChecks();
 // and a new translator there each time makes EF Core build a new internal service provider per
 // request — past twenty it throws ManyServiceProvidersCreatedWarning and every request is a 500.
 var nameTranslator = new NpgsqlSnakeCaseNameTranslator();
+// notification_type's labels are UPPERCASE (db/Spot.sql), matching the C# member names as-is, so
+// it gets a translator that leaves them untouched — the snake-case one would write "general".
+// Shared instance for the same service-provider-cache reason as above.
+var keepLabelsTranslator = new NpgsqlNullNameTranslator();
 var npgsqlDataSource = new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("DefaultConnection"))
     .MapEnum<DevicePlatform>(nameTranslator: nameTranslator)
+    .MapEnum<NotificationType>("notification_type", keepLabelsTranslator)
     .Build();
 
 builder.Services.AddDbContext<NotificationsDbContext>(options =>
@@ -38,10 +43,13 @@ builder.Services.AddDbContext<NotificationsDbContext>(options =>
             // to read RETURNING values after INSERT/UPDATE) need it registered here too, on the
             // EF-specific options builder, or they still read the column as a plain int and blow
             // up with the same "unmapped enums" error.
-            .MapEnum<DevicePlatform>(nameTranslator: nameTranslator)));
+            .MapEnum<DevicePlatform>(nameTranslator: nameTranslator)
+            .MapEnum<NotificationType>("notification_type", nameTranslator: keepLabelsTranslator)));
 
 builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
+builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // Validates incoming access tokens (public key only) for [Authorize] endpoints — every action
 // under /notifications/device-tokens requires one. Same shared setup every other microservice

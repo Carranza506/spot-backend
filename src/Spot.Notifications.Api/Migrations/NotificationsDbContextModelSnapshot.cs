@@ -23,6 +23,7 @@ namespace Spot.Notifications.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "device_platform", new[] { "android", "ios", "web" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "notification_type", new[] { "BOOKING_STATUS_CHANGED", "GENERAL" });
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Spot.Notifications.Api.Models.AuditLog", b =>
@@ -139,6 +140,62 @@ namespace Spot.Notifications.Api.Migrations
                     b.ToTable("device_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("Spot.Notifications.Api.Models.Notification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<bool>("IsRead")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_read");
+
+                    b.Property<Guid?>("RelatedEntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("related_entity_id");
+
+                    b.Property<string>("RelatedEntityType")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("related_entity_type");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.Property<NotificationType>("Type")
+                        .HasColumnType("notification_type")
+                        .HasColumnName("type");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("idx_notifications_user_created");
+
+                    b.ToTable("notifications", (string)null);
+                });
+
             modelBuilder.Entity("Spot.Notifications.Api.Models.UserReference", b =>
                 {
                     b.Property<Guid>("Id")
@@ -163,6 +220,15 @@ namespace Spot.Notifications.Api.Migrations
                 });
 
             modelBuilder.Entity("Spot.Notifications.Api.Models.DeviceToken", b =>
+                {
+                    b.HasOne("Spot.Notifications.Api.Models.UserReference", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Spot.Notifications.Api.Models.Notification", b =>
                 {
                     b.HasOne("Spot.Notifications.Api.Models.UserReference", null)
                         .WithMany()
