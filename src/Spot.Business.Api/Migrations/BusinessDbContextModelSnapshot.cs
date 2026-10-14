@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using NetTopologySuite.Geometries;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Spot.Business.Api.Data;
 using Spot.Business.Api.Models;
@@ -22,6 +23,7 @@ namespace Spot.Business.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "contact_type", new[] { "phone", "whatsapp", "email", "website", "facebook", "instagram", "tiktok", "other" });
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("Spot.Business.Api.Models.Business", b =>
@@ -258,7 +260,7 @@ namespace Spot.Business.Api.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<string>("Location")
+                    b.Property<Point>("Location")
                         .IsRequired()
                         .HasColumnType("geography(Point,4326)")
                         .HasColumnName("location");
