@@ -30,6 +30,23 @@ public interface IBusinessRepository
     /// </exception>
     Task CreateAsync(BusinessEntity business, CancellationToken ct = default);
 
+    /// <summary>The business's location (business_locations), or null if it hasn't set one yet. Not tracked.</summary>
+    Task<BusinessLocation?> GetLocationAsync(Guid businessId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates or replaces the single business_locations row of <c>location.BusinessId</c>
+    /// (business_id is unique): inserts <paramref name="location"/> if the business has no row
+    /// yet, otherwise copies its fields onto the existing row, keeping that row's id and
+    /// created_at. Returns the stored row refreshed from the database (id, created_at and
+    /// updated_at come from Postgres defaults/triggers, not application code).
+    /// </summary>
+    /// <remarks>
+    /// Race-safe: if a concurrent first PUT inserts the row between the lookup and the insert
+    /// (unique business_id, SQLSTATE 23505), the insert is retried once as an update of that row.
+    /// Any other database error is rethrown.
+    /// </remarks>
+    Task<BusinessLocation> UpsertLocationAsync(BusinessLocation location, CancellationToken ct = default);
+
     /// <summary>
     /// Persists changes made to a tracked business (from <see cref="GetByIdAsync"/> or
     /// <see cref="GetByAccountIdAsync"/>) and refreshes it from the database afterwards

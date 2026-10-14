@@ -44,13 +44,18 @@ builder.Services.AddHealthChecks();
 var nameTranslator = new NpgsqlSnakeCaseNameTranslator();
 var npgsqlDataSource = new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("DefaultConnection"))
     .MapEnum<ContactType>(nameTranslator: nameTranslator)
+    .UseNetTopologySuite()
     .Build();
 
 builder.Services.AddDbContext<BusinessDbContext>(options =>
     options.UseNpgsql(npgsqlDataSource,
         npgsql => npgsql
             .MigrationsHistoryTable("__EFMigrationsHistory_business")
-            .MapEnum<ContactType>(nameTranslator: nameTranslator)));
+            .MapEnum<ContactType>(nameTranslator: nameTranslator)
+            // Maps business_locations.location (geography(Point,4326)) to NetTopologySuite's
+            // Point (#58). Registered here and on the data source above: EF Core needs it for the
+            // model, Npgsql for reading/writing the values on the connection.
+            .UseNetTopologySuite()));
 
 builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 builder.Services.AddScoped<ICategoryService, CategoryService>();
