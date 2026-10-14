@@ -37,4 +37,10 @@ public class AiRequestRepository(AiSearchDbContext db) : IAiRequestRepository
 
         return (items, total);
     }
+
+    public async Task AddAsync(AiRequest entity, CancellationToken ct = default)
+    {
+        db.AiRequests.Add(entity);
+        await db.SaveChangesAsync(ct);
+    }
 }
