@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql.NameTranslation;
 using Spot.Notifications.Api.Models;
 
 namespace Spot.Notifications.Api.Data;
@@ -7,10 +8,14 @@ public class NotificationsDbContext(DbContextOptions<NotificationsDbContext> opt
 {
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresEnum<DevicePlatform>();
+        // UPPERCASE labels as-is (db/Spot.sql), same translator as Program.cs's MapEnum for it.
+        modelBuilder.HasPostgresEnum<NotificationType>(
+            name: "notification_type", nameTranslator: new NpgsqlNullNameTranslator());
 
         // Owned and migrated by Spot.Auth.Api; mapped here only so EF Core can express the
         // user_id foreign key below. See Models/UserReference.cs.
@@ -38,6 +43,26 @@ public class NotificationsDbContext(DbContextOptions<NotificationsDbContext> opt
             // A device push token identifies one app installation, so it can only ever belong to one user at a time.
             e.HasIndex(x => x.Token).IsUnique();
             e.HasIndex(x => x.UserId).HasDatabaseName("idx_device_tokens_user");
+            e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Notification>(e =>
+        {
+            e.ToTable("notifications");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.Type).HasColumnName("type").HasColumnType("notification_type");
+            e.Property(x => x.Title).HasColumnName("title").IsRequired();
+            e.Property(x => x.Body).HasColumnName("body").IsRequired();
+            e.Property(x => x.RelatedEntityType).HasColumnName("related_entity_type").HasMaxLength(50);
+            e.Property(x => x.RelatedEntityId).HasColumnName("related_entity_id");
+            e.Property(x => x.IsRead).HasColumnName("is_read").HasDefaultValue(false);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            // GET /notifications lists one user's notifications newest first.
+            e.HasIndex(x => new { x.UserId, x.CreatedAt })
+                .IsDescending(false, true)
+                .HasDatabaseName("idx_notifications_user_created");
             e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -19,7 +19,9 @@
          dependency. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.7" />
     <!-- Repository tests: a real DbContext/SaveChanges round-trip against an ephemeral database,
-         not a hand-rolled fake — see DeviceTokenRepositoryTests.cs for why InMemory here. -->
+         not a hand-rolled fake. NotificationsDbContext itself can't run on InMemory (AuditLog's
+         JsonDocument columns), so NotificationRepositoryTests uses a test-only subclass that
+         ignores AuditLog — see InMemoryNotificationsDbContext there. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.7" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />

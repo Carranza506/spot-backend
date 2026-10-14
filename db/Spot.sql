@@ -184,6 +184,15 @@ CREATE TABLE device_tokens (
 CREATE UNIQUE INDEX "IX_device_tokens_token" ON device_tokens(token);
 CREATE INDEX idx_device_tokens_user ON device_tokens(user_id);
 
+CREATE TYPE notification_type AS ENUM ('BOOKING_STATUS_CHANGED','GENERAL');
+
+CREATE TABLE notifications (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ type notification_type NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
+ related_entity_type VARCHAR(50), related_entity_id UUID, is_read BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX idx_notifications_user_created ON notifications(user_id,created_at DESC);
+
 ALTER TABLE bookings ADD CONSTRAINT excl_active_booking_overlap
 EXCLUDE USING GIST (business_id WITH =, tstzrange(start_at,end_at,'[)') WITH &&)
 WHERE(status IN ('PENDING','CONFIRMED'));
