@@ -65,6 +65,14 @@ internal static class PhotoUploadForm
             // Malformed multipart, or too many/too long fields ([RequestFormLimits]).
             return (null, BadRequest("El formulario de la foto no es válido.", FileField));
         }
+        catch (IOException)
+        {
+            // A body that ends mid-stream (garbage after the boundary, an unterminated part, truncated
+            // part headers): the multipart reader throws "Unexpected end of Stream". Also covers any
+            // other BadHttpRequestException (it derives from IOException), since the 413 one is
+            // caught above.
+            return (null, BadRequest("El formulario de la foto no es válido.", FileField));
+        }
 
         if (form.Files.Count == 0)
             return (null, BadRequest("La foto es requerida.", FileField));

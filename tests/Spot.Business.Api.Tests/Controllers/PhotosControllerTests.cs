@@ -197,6 +197,47 @@ public class PhotosControllerTests(BusinessesApiFactory factory) : IClassFixture
         Assert.Empty(factory.PhotoStorage.Files);
     }
 
+    /// <summary>Raw multipart bodies that end mid-stream: ReadFormAsync throws IOException ("Unexpected end of Stream").</summary>
+    public static TheoryData<string, string> MalformedMultipartBodies => new()
+    {
+        { "garbage after a valid boundary", "this is not multipart at all" },
+        {
+            "unterminated stream",
+            "--SpotBoundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\nContent-Type: image/png\r\n\r\n\u0089PNG partial bytes"
+        },
+        { "truncated part headers", "--SpotBoundary\r\nContent-Disposition: form-da" },
+    };
+
+    [Theory]
+    [MemberData(nameof(MalformedMultipartBodies))]
+    public async Task UploadBusinessPhoto_MalformedMultipart_Returns400(string name, string body)
+    {
+        _ = name;
+        var (business, ownerId) = Reset();
+        var content = new ByteArrayContent(Encoding.Latin1.GetBytes(body));
+        content.Headers.ContentType = MediaTypeHeaderValue.Parse("multipart/form-data; boundary=SpotBoundary");
+
+        var response = await CreateClient(ownerId, "BUSINESS").PostAsync($"/business/businesses/{business.Id}/photos", content);
+
+        await AssertError(response, HttpStatusCode.BadRequest, "BAD_REQUEST", "El formulario de la foto no es válido.");
+        Assert.Empty(factory.PhotoStorage.Files);
+    }
+
+    [Theory]
+    [MemberData(nameof(MalformedMultipartBodies))]
+    public async Task UploadServicePhoto_MalformedMultipart_Returns400(string name, string body)
+    {
+        _ = name;
+        var (business, ownerId) = Reset();
+        var service = SeedService(business);
+        var content = new ByteArrayContent(Encoding.Latin1.GetBytes(body));
+        content.Headers.ContentType = MediaTypeHeaderValue.Parse("multipart/form-data; boundary=SpotBoundary");
+
+        var response = await CreateClient(ownerId, "BUSINESS").PostAsync($"/business/services/{service.Id}/photos", content);
+
+        await AssertError(response, HttpStatusCode.BadRequest, "BAD_REQUEST", "El formulario de la foto no es válido.");
+    }
+
     [Fact]
     public async Task UploadBusinessPhoto_JsonBody_Returns400()
     {

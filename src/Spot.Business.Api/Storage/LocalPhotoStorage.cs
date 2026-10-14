@@ -37,6 +37,10 @@ public sealed class LocalPhotoStorage : IPhotoStorage
         var key = PhotoStorageKey.Create(format);
         var finalPath = ResolvePath(key);
         var directory = Path.GetDirectoryName(finalPath)!;
+        // The root first: Directory.CreateDirectory only applies the mode to the last directory, so
+        // creating the shard alone would leave an app-created root at the default 755 (local runs;
+        // in Docker the root already exists as 700).
+        CreateDirectory(_root);
         CreateDirectory(directory);
 
         // Starts with "." and isn't a valid key, so it can never be served or deleted by key.

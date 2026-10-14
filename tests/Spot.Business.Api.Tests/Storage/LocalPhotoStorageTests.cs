@@ -136,18 +136,19 @@ public sealed class LocalPhotoStorageTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_OnUnix_CreatesOwnerOnlyFiles()
+    public async Task SaveAsync_OnUnix_CreatesOwnerOnlyFilesAndDirectories_IncludingTheRoot()
     {
         if (OperatingSystem.IsWindows())
             return; // Unix permissions don't apply; CI runs on Linux, where this test is meaningful.
+        Assert.False(Directory.Exists(_root)); // the storage creates the root itself here
 
         var key = await _storage.SaveAsync(new MemoryStream(RandomBytes(10)), PhotoFormat.Jpeg);
 
+        const UnixFileMode ownerOnlyDirectory = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
         var path = Path.Combine(_root, key[..2], key);
         Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(path));
-        Assert.Equal(
-            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute,
-            File.GetUnixFileMode(Path.GetDirectoryName(path)!));
+        Assert.Equal(ownerOnlyDirectory, File.GetUnixFileMode(Path.GetDirectoryName(path)!));
+        Assert.Equal(ownerOnlyDirectory, File.GetUnixFileMode(_root));
     }
 
     private static byte[] RandomBytes(int length)
