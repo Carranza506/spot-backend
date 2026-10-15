@@ -36,6 +36,9 @@ public sealed class FakeAiRequestRepository : IAiRequestRepository
         return Task.CompletedTask;
     }
 
+    public Task<AiRequest?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(_rows.FirstOrDefault(x => x.Id == id));
+
     public Task<(IReadOnlyList<AiRequest> Items, int Total)> ListAsync(
         AiSearchFilterQuery filter, CancellationToken ct = default)
     {

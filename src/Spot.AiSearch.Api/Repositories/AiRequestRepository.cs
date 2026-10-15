@@ -38,6 +38,9 @@ public class AiRequestRepository(AiSearchDbContext db) : IAiRequestRepository
         return (items, total);
     }
 
+    public Task<AiRequest?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        db.AiRequests.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
+
     public async Task AddAsync(AiRequest entity, CancellationToken ct = default)
     {
         db.AiRequests.Add(entity);
