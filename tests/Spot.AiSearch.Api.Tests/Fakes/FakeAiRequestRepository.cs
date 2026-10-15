@@ -36,8 +36,13 @@ public sealed class FakeAiRequestRepository : IAiRequestRepository
         return Task.CompletedTask;
     }
 
+    /// <summary>When set, GetByIdAsync throws it, like a database that is down.</summary>
+    public Exception? FailGetByIdWith { get; set; }
+
     public Task<AiRequest?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
-        Task.FromResult(_rows.FirstOrDefault(x => x.Id == id));
+        FailGetByIdWith is not null
+            ? Task.FromException<AiRequest?>(FailGetByIdWith)
+            : Task.FromResult(_rows.FirstOrDefault(x => x.Id == id));
 
     public Task<(IReadOnlyList<AiRequest> Items, int Total)> ListAsync(
         AiSearchFilterQuery filter, CancellationToken ct = default)

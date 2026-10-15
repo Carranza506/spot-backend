@@ -77,6 +77,28 @@ public class AiRequestsControllerTests(AiSearchApiFactory factory) : IClassFixtu
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    [Fact]
+    public async Task GetAiRequest_DatabaseFailure_Returns500WithGenericErrorBody()
+    {
+        factory.Repository.FailGetByIdWith = new InvalidOperationException("connection to 10.0.0.5 refused");
+        try
+        {
+            var response = await CreateClient("SUPERADMIN").GetAsync($"/ai-search/requests/{Guid.NewGuid()}");
+
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            var raw = await response.Content.ReadAsStringAsync();
+            var body = JsonDocument.Parse(raw).RootElement;
+            Assert.Equal("INTERNAL_ERROR", body.GetProperty("code").GetString());
+            // The exception's details must not reach the client.
+            Assert.DoesNotContain("10.0.0.5", raw);
+            Assert.DoesNotContain("InvalidOperationException", raw);
+        }
+        finally
+        {
+            factory.Repository.FailGetByIdWith = null;
+        }
+    }
+
     // ---------- GET /ai-search/requests ----------
 
     [Fact]
