@@ -74,35 +74,43 @@ public class AiRequestService(
     {
         var (items, total) = await repository.ListAsync(filter, ct);
 
-        var dtos = items.Select(x => new AiRequestLogDto(
-            Id: x.Id,
-            UserId: x.UserId,
-            Provider: x.Provider,
-            Model: x.Model,
-            RequestType: x.RequestType.ToString(),
-            Prompt: x.Prompt,
-            Response: x.Response,
-            ExtractedParameters: x.ExtractedParameters is not null
-                ? x.ExtractedParameters.RootElement.Clone()
-                : null,
-            ToolCalls: x.ToolCalls is not null
-                ? x.ToolCalls.RootElement.Clone()
-                : null,
-            Status: x.Status.ToString(),
-            InputTokens: x.InputTokens,
-            OutputTokens: x.OutputTokens,
-            TotalTokens: x.TotalTokens,
-            LatencyMs: x.LatencyMs,
-            ErrorCode: x.ErrorCode,
-            ErrorMessage: x.ErrorMessage,
-            IpAddress: x.IpAddress?.ToString(),
-            UserAgent: x.UserAgent,
-            CreatedAt: x.CreatedAt
-        )).ToList();
+        var dtos = items.Select(ToLogDto).ToList();
 
         var totalPages = (int)Math.Ceiling(total / (double)filter.PageSize);
         var pagination = new PaginationMeta(filter.Page, filter.PageSize, total, totalPages);
 
         return new PaginatedResponse<AiRequestLogDto>(dtos, pagination);
     }
+
+    public async Task<AiRequestLogDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
+    {
+        var entity = await repository.GetByIdAsync(id, ct);
+        return entity is null ? null : ToLogDto(entity);
+    }
+
+    private static AiRequestLogDto ToLogDto(AiRequest x) => new(
+        Id: x.Id,
+        UserId: x.UserId,
+        Provider: x.Provider,
+        Model: x.Model,
+        RequestType: x.RequestType.ToString(),
+        Prompt: x.Prompt,
+        Response: x.Response,
+        ExtractedParameters: x.ExtractedParameters is not null
+            ? x.ExtractedParameters.RootElement.Clone()
+            : null,
+        ToolCalls: x.ToolCalls is not null
+            ? x.ToolCalls.RootElement.Clone()
+            : null,
+        Status: x.Status.ToString(),
+        InputTokens: x.InputTokens,
+        OutputTokens: x.OutputTokens,
+        TotalTokens: x.TotalTokens,
+        LatencyMs: x.LatencyMs,
+        ErrorCode: x.ErrorCode,
+        ErrorMessage: x.ErrorMessage,
+        IpAddress: x.IpAddress?.ToString(),
+        UserAgent: x.UserAgent,
+        CreatedAt: x.CreatedAt
+    );
 }

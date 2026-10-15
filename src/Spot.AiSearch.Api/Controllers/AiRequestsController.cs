@@ -27,4 +27,19 @@ public class AiRequestsController(IAiRequestService service) : ControllerBase
         var result = await service.ListAsync(filter, ct);
         return Ok(result);
     }
+
+    // The :guid constraint answers a malformed id with 404 (no matching route): the contract
+    // documents no 400 for this endpoint.
+    [HttpGet("{aiRequestId:guid}")]
+    [ProducesResponseType(typeof(AiRequestLogDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetAiRequest(Guid aiRequestId, CancellationToken ct)
+    {
+        var result = await service.GetByIdAsync(aiRequestId, ct);
+        return result is null
+            ? NotFound(new ApiError("NOT_FOUND", "La interacción de IA indicada no existe."))
+            : Ok(result);
+    }
 }
