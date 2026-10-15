@@ -56,7 +56,9 @@ public sealed class FakeAiRequestRepository : IAiRequestRepository
             query = query.Where(x => x.CreatedAt <= filter.To.Value);
 
         var all = query.OrderByDescending(x => x.CreatedAt).ToList();
-        var page = all.Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize).ToList();
+        // Same long offset as AiRequestRepository: an int one overflows for a huge page.
+        var offset = (long)(filter.Page - 1) * filter.PageSize;
+        var page = offset >= all.Count ? [] : all.Skip((int)offset).Take(filter.PageSize).ToList();
 
         return Task.FromResult(((IReadOnlyList<AiRequest>)page, all.Count));
     }

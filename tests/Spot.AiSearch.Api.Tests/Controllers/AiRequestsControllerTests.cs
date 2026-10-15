@@ -77,6 +77,22 @@ public class AiRequestsControllerTests(AiSearchApiFactory factory) : IClassFixtu
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
+    // ---------- GET /ai-search/requests ----------
+
+    [Fact]
+    public async Task ListAiRequests_PageWhoseOffsetOverflowsInt_ReturnsAnEmptyPage()
+    {
+        await SeedAsync();
+
+        // (30,000,000 - 1) * 100 overflows int; it used to become a negative OFFSET and a 500.
+        var response = await CreateClient("SUPERADMIN").GetAsync("/ai-search/requests?page=30000000&pageSize=100");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, body.GetProperty("data").GetArrayLength());
+        Assert.True(body.GetProperty("pagination").GetProperty("total").GetInt32() >= 1);
+    }
+
     private HttpClient CreateClient(string role)
     {
         var client = factory.CreateClient();
