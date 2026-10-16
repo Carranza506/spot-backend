@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Services;
 using Spot.Shared.Errors;
+using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Controllers;
 
@@ -46,8 +47,43 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
         }
     }
 
+    /// <summary>
+    /// GET /business/businesses/{businessId}/services: public (contract: security: []). Paginated,
+    /// active-only by default (isActive filters). 404 if the business doesn't exist or is inactive.
+    /// </summary>
+    [HttpGet("businesses/{businessId:guid}/services")]
+    [ProducesResponseType(typeof(PaginatedResponse<ServiceDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListBusinessServices(
+        Guid businessId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] bool? isActive = null, CancellationToken ct = default)
+    {
+        if (page < 1 || pageSize < 1 || pageSize > 100)
+            return BadRequest(new ApiError("BAD_REQUEST", "page debe ser >= 1 y pageSize entre 1 y 100."));
+
+        var result = await serviceOfferingService.ListAsync(businessId, page, pageSize, isActive, ct);
+        return result is null ? BusinessNotFound() : Ok(result);
+    }
+
+    /// <summary>
+    /// GET /business/services/{serviceId}: public (contract: security: []). 404 if the service
+    /// doesn't exist, is inactive, or its business is inactive.
+    /// </summary>
+    [HttpGet("services/{serviceId:guid}")]
+    [ProducesResponseType(typeof(ServiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetService(Guid serviceId, CancellationToken ct)
+    {
+        var result = await serviceOfferingService.GetAsync(serviceId, ct);
+        return result is null ? ServiceNotFound() : Ok(result);
+    }
+
     private NotFoundObjectResult BusinessNotFound() =>
         NotFound(new ApiError("NOT_FOUND", "El negocio indicado no existe."));
+
+    private NotFoundObjectResult ServiceNotFound() =>
+        NotFound(new ApiError("NOT_FOUND", "El servicio indicado no existe."));
 
     private ObjectResult NotOwner() =>
         StatusCode(StatusCodes.Status403Forbidden, new ApiError("FORBIDDEN", "No tienes permiso para realizar esta acción."));

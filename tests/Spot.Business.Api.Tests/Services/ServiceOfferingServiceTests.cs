@@ -2,6 +2,7 @@ using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Services;
 using Spot.Business.Api.Tests.Fakes;
 using BusinessEntity = Spot.Business.Api.Models.Business;
+using ServiceEntity = Spot.Business.Api.Models.Service;
 
 namespace Spot.Business.Api.Tests.Services;
 
@@ -105,6 +106,91 @@ public sealed class ServiceOfferingServiceTests
 
         Assert.Null(result);
         Assert.Empty(_repository.All);
+    }
+
+    // ---------- ListAsync ----------
+
+    [Fact]
+    public async Task ListAsync_HidesInactiveServicesByDefaultAndOrdersByName()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Barba", IsActive = true });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: null);
+
+        Assert.NotNull(result);
+        Assert.Equal(2, result!.Pagination.Total);
+        Assert.Equal(["Barba", "Corte"], result.Data.Select(s => s.Name));
+    }
+
+    [Fact]
+    public async Task ListAsync_IsActiveFalse_ReturnsOnlyInactive()
+    {
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: false);
+
+        Assert.Equal(["Viejo"], result!.Data.Select(s => s.Name));
+    }
+
+    [Fact]
+    public async Task ListAsync_UnknownBusiness_ReturnsNull()
+    {
+        var result = await _service.ListAsync(Guid.NewGuid(), page: 1, pageSize: 20, isActive: null);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task ListAsync_InactiveBusiness_ReturnsNull()
+    {
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", IsActive = false });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: null);
+
+        Assert.Null(result);
+    }
+
+    // ---------- GetAsync ----------
+
+    [Fact]
+    public async Task GetAsync_ActiveServiceOfActiveBusiness_ReturnsIt()
+    {
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+
+        var result = await _service.GetAsync(service.Id);
+
+        Assert.NotNull(result);
+        Assert.Equal(service.Id, result!.Id);
+    }
+
+    [Fact]
+    public async Task GetAsync_UnknownService_ReturnsNull() =>
+        Assert.Null(await _service.GetAsync(Guid.NewGuid()));
+
+    [Fact]
+    public async Task GetAsync_InactiveService_ReturnsNull()
+    {
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+
+        Assert.Null(await _service.GetAsync(service.Id));
+    }
+
+    [Fact]
+    public async Task GetAsync_ServiceOfInactiveBusiness_ReturnsNull()
+    {
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", IsActive = false });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+
+        Assert.Null(await _service.GetAsync(service.Id));
     }
 
     private static ServiceCreateRequest ValidRequest() =>

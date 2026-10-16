@@ -1,5 +1,6 @@
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Repositories;
+using Spot.Shared.Pagination;
 using ServiceEntity = Spot.Business.Api.Models.Service;
 
 namespace Spot.Business.Api.Services;
@@ -29,6 +30,37 @@ public sealed class ServiceOfferingService(
         };
 
         await repository.CreateAsync(service, ct);
+        return ServiceDto.FromEntity(service);
+    }
+
+    public async Task<PaginatedResponse<ServiceDto>?> ListAsync(
+        Guid businessId, int page, int pageSize, bool? isActive, CancellationToken ct = default)
+    {
+        // Public visibility: the business must exist and be active, else 404 — same rule as
+        // IBusinessService.GetPublicAsync. Services of an inactive business aren't listed.
+        var business = await businessRepository.GetByIdAsync(businessId, ct);
+        if (business is not { IsActive: true })
+            return null;
+
+        // Inactive services are hidden by default; isActive filters explicitly.
+        var (items, total) = await repository.ListAsync(businessId, page, pageSize, isActive ?? true, ct);
+        var dtos = items.Select(ServiceDto.FromEntity).ToList();
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+
+        return new PaginatedResponse<ServiceDto>(dtos, new PaginationMeta(page, pageSize, total, totalPages));
+    }
+
+    public async Task<ServiceDto?> GetAsync(Guid serviceId, CancellationToken ct = default)
+    {
+        var service = await repository.GetByIdAsync(serviceId, ct);
+        if (service is not { IsActive: true })
+            return null;
+
+        // A service of an inactive business isn't publicly visible either.
+        var business = await businessRepository.GetByIdAsync(service.BusinessId, ct);
+        if (business is not { IsActive: true })
+            return null;
+
         return ServiceDto.FromEntity(service);
     }
 }
