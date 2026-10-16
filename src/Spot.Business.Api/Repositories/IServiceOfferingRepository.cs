@@ -15,4 +15,16 @@ public interface IServiceOfferingRepository
     /// checked the parent business exists and belongs to the caller.
     /// </summary>
     Task CreateAsync(ServiceEntity service, CancellationToken ct = default);
+
+    /// <summary>
+    /// Loads a service by id as a <b>tracked</b> entity (unlike the read-only lookups), so a caller
+    /// can mutate it and persist with <see cref="SaveChangesAsync"/>. Null if none exists.
+    /// </summary>
+    Task<ServiceEntity?> GetTrackedByIdAsync(Guid serviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists changes made to a tracked service (from <see cref="GetTrackedByIdAsync"/>) and
+    /// refreshes it from the database afterwards (<c>updated_at</c> is set by a Postgres trigger).
+    /// </summary>
+    Task SaveChangesAsync(ServiceEntity service, CancellationToken ct = default);
 }

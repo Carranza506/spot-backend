@@ -46,8 +46,40 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
         }
     }
 
+    /// <summary>
+    /// PATCH /business/services/{serviceId}: requires the BUSINESS account that owns the service's
+    /// business. The route has no businessId, so ownership is resolved through the service itself.
+    /// 404 if the service doesn't exist, 403 if the caller isn't its owner.
+    /// </summary>
+    [HttpPatch("services/{serviceId:guid}")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(ServiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateService(
+        Guid serviceId, [FromBody] ServiceUpdateRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var result = await serviceOfferingService.UpdateAsync(serviceId, callerId, request, ct);
+            return result is null ? ServiceNotFound() : Ok(result);
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+    }
+
     private NotFoundObjectResult BusinessNotFound() =>
         NotFound(new ApiError("NOT_FOUND", "El negocio indicado no existe."));
+
+    private NotFoundObjectResult ServiceNotFound() =>
+        NotFound(new ApiError("NOT_FOUND", "El servicio indicado no existe."));
 
     private ObjectResult NotOwner() =>
         StatusCode(StatusCodes.Status403Forbidden, new ApiError("FORBIDDEN", "No tienes permiso para realizar esta acción."));

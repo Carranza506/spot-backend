@@ -2,6 +2,7 @@ using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Services;
 using Spot.Business.Api.Tests.Fakes;
 using BusinessEntity = Spot.Business.Api.Models.Business;
+using ServiceEntity = Spot.Business.Api.Models.Service;
 
 namespace Spot.Business.Api.Tests.Services;
 
@@ -105,6 +106,95 @@ public sealed class ServiceOfferingServiceTests
 
         Assert.Null(result);
         Assert.Empty(_repository.All);
+    }
+
+    // ---------- UpdateAsync ----------
+
+    [Fact]
+    public async Task UpdateAsync_Owner_AppliesOnlyTheProvidedFields()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity
+        {
+            BusinessId = business.Id, Name = "Corte", Description = "vieja", Price = 5000m, DurationMinutes = 30, IsActive = true,
+        });
+
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Name = "  Corte Premium  ", Price = 9000m });
+
+        Assert.NotNull(result);
+        Assert.Equal("Corte Premium", result!.Name);   // trimmed
+        Assert.Equal(9000m, result.Price);
+        Assert.Equal("vieja", result.Description);      // untouched (omitted)
+        Assert.Equal(30, result.DurationMinutes);       // untouched
+    }
+
+    [Fact]
+    public async Task UpdateAsync_ExplicitNullDescription_ClearsIt()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Description = "tenia", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Description = Optional<string?>.Of(null) });
+
+        Assert.Null(result!.Description);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_IsActiveTrue_ReactivatesTheService()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = false });
+
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { IsActive = true });
+
+        Assert.True(result!.IsActive);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_RoundsPriceToTwoDecimals()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Price = 10.555m });
+
+        Assert.Equal(10.56m, result!.Price);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_OwnerOfInactiveBusiness_StillUpdates()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella", IsActive = false });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Name = "Nuevo" });
+
+        Assert.Equal("Nuevo", result!.Name);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_NonOwner_ThrowsAndDoesNotChange()
+    {
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        await Assert.ThrowsAsync<BusinessAccessDeniedException>(
+            () => _service.UpdateAsync(service.Id, Guid.NewGuid(), new ServiceUpdateRequest { Name = "Hackeado" }));
+
+        Assert.Equal("Corte", _repository.All.Single().Name);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_UnknownService_ReturnsNull()
+    {
+        var result = await _service.UpdateAsync(Guid.NewGuid(), Guid.NewGuid(), new ServiceUpdateRequest { Name = "X" });
+
+        Assert.Null(result);
     }
 
     private static ServiceCreateRequest ValidRequest() =>

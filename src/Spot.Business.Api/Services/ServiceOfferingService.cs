@@ -31,4 +31,37 @@ public sealed class ServiceOfferingService(
         await repository.CreateAsync(service, ct);
         return ServiceDto.FromEntity(service);
     }
+
+    public async Task<ServiceDto?> UpdateAsync(
+        Guid serviceId, Guid callerId, ServiceUpdateRequest request, CancellationToken ct = default)
+    {
+        var service = await repository.GetTrackedByIdAsync(serviceId, ct);
+        if (service is null)
+            return null;
+
+        // Ownership is resolved through the service's business (the route has no businessId). Reuses
+        // the shared BusinessOwnership check (#122): throws BusinessAccessDeniedException (403) if the
+        // caller isn't the owner. The owner can edit even an inactive business, same as CreateAsync.
+        _ = await businessRepository.GetOwnedAsync(service.BusinessId, callerId, ct);
+
+        // Partial update: only the fields actually sent are applied.
+        if (request.Name is not null)
+            service.Name = request.Name.Trim();
+
+        if (request.Description.IsSet)
+            service.Description = BusinessFieldRules.Normalize(request.Description.Value);
+
+        if (request.Price is { } price)
+            // services.price is NUMERIC(12,2): round so the response matches what Postgres stores.
+            service.Price = Math.Round(price, 2, MidpointRounding.AwayFromZero);
+
+        if (request.DurationMinutes is { } duration)
+            service.DurationMinutes = duration;
+
+        if (request.IsActive is { } isActive)
+            service.IsActive = isActive;
+
+        await repository.SaveChangesAsync(service, ct);
+        return ServiceDto.FromEntity(service);
+    }
 }

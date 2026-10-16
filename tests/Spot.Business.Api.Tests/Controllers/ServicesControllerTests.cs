@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using BusinessEntity = Spot.Business.Api.Models.Business;
+using ServiceEntity = Spot.Business.Api.Models.Service;
 
 namespace Spot.Business.Api.Tests.Controllers;
 
@@ -154,6 +155,90 @@ public class ServicesControllerTests(BusinessesApiFactory factory) : IClassFixtu
     }
 
     private static object ValidBody() => new { name = "Corte", price = 5000, durationMinutes = 30 };
+
+    // ---------- PATCH /business/services/{serviceId} ----------
+
+    [Fact]
+    public async Task UpdateService_Owner_Returns200WithTheUpdatedService()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity
+        {
+            BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true,
+        });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "Corte Premium", price = 9000 });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Corte Premium", body.GetProperty("name").GetString());
+        Assert.Equal(9000m, body.GetProperty("price").GetDecimal());
+    }
+
+    [Fact]
+    public async Task UpdateService_NonOwnerBusinessAccount_Returns403()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "Hackeado" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateService_NoToken_Returns401()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        var response = await factory.CreateClient().PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateService_UnknownService_Returns404()
+    {
+        Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{Guid.NewGuid()}", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    public static TheoryData<string> InvalidUpdateBodies => new()
+    {
+        """{ "name": "   " }""",
+        $$"""{ "name": "{{new string('a', 151)}}" }""",
+        """{ "price": -1 }""",
+        """{ "durationMinutes": 0 }""",
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidUpdateBodies))]
+    public async Task UpdateService_InvalidBody_Returns400(string json)
+    {
+        var accountId = Guid.NewGuid();
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsync(
+            $"/business/services/{service.Id}", new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
 
     private void Reset()
     {
