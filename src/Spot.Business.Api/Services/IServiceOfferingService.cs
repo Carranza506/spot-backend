@@ -19,4 +19,13 @@ public interface IServiceOfferingService
     /// </summary>
     /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the service's business.</exception>
     Task<ServiceDto?> UpdateAsync(Guid serviceId, Guid callerId, ServiceUpdateRequest request, CancellationToken ct = default);
+
+    /// <summary>
+    /// Soft delete (<c>is_active = false</c>) — never a physical delete, to keep booking history
+    /// intact. Idempotent: deactivating an already inactive service still succeeds. The owner can
+    /// deactivate even if the business is inactive.
+    /// </summary>
+    /// <returns>False if no service with <paramref name="serviceId"/> exists (404); true if deactivated.</returns>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the service's business.</exception>
+    Task<bool> DeactivateAsync(Guid serviceId, Guid callerId, CancellationToken ct = default);
 }

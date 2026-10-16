@@ -75,6 +75,33 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
         }
     }
 
+    /// <summary>
+    /// DELETE /business/services/{serviceId}: requires the BUSINESS account that owns the service's
+    /// business. Soft delete (is_active = false) — never a physical delete, to keep booking history.
+    /// Idempotent: deactivating an already inactive service still returns 204. 404 if it doesn't exist.
+    /// </summary>
+    [HttpDelete("services/{serviceId:guid}")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeactivateService(Guid serviceId, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var deactivated = await serviceOfferingService.DeactivateAsync(serviceId, callerId, ct);
+            return deactivated ? NoContent() : ServiceNotFound();
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+    }
+
     private NotFoundObjectResult BusinessNotFound() =>
         NotFound(new ApiError("NOT_FOUND", "El negocio indicado no existe."));
 

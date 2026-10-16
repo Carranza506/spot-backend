@@ -197,6 +197,51 @@ public sealed class ServiceOfferingServiceTests
         Assert.Null(result);
     }
 
+    // ---------- DeactivateAsync ----------
+
+    [Fact]
+    public async Task DeactivateAsync_Owner_SoftDeletesTheService()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        var result = await _service.DeactivateAsync(service.Id, accountId);
+
+        Assert.True(result);
+        Assert.False(_repository.All.Single().IsActive);  // flipped, not removed
+        Assert.Single(_repository.All);                   // the row still exists
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_AlreadyInactive_IsIdempotent()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", Price = 5000m, DurationMinutes = 30, IsActive = false });
+
+        var result = await _service.DeactivateAsync(service.Id, accountId);
+
+        Assert.True(result);
+        Assert.False(_repository.All.Single().IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_NonOwner_ThrowsAndKeepsItActive()
+    {
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        await Assert.ThrowsAsync<BusinessAccessDeniedException>(
+            () => _service.DeactivateAsync(service.Id, Guid.NewGuid()));
+
+        Assert.True(_repository.All.Single().IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateAsync_UnknownService_ReturnsFalse() =>
+        Assert.False(await _service.DeactivateAsync(Guid.NewGuid(), Guid.NewGuid()));
+
     private static ServiceCreateRequest ValidRequest() =>
         new() { Name = "Corte", Price = 5000m, DurationMinutes = 30 };
 }

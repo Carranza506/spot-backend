@@ -64,4 +64,24 @@ public sealed class ServiceOfferingService(
         await repository.SaveChangesAsync(service, ct);
         return ServiceDto.FromEntity(service);
     }
+
+    public async Task<bool> DeactivateAsync(Guid serviceId, Guid callerId, CancellationToken ct = default)
+    {
+        var service = await repository.GetTrackedByIdAsync(serviceId, ct);
+        if (service is null)
+            return false;
+
+        // Ownership via the service's business, reusing the shared GetOwnedAsync (403 if not owner).
+        _ = await businessRepository.GetOwnedAsync(service.BusinessId, callerId, ct);
+
+        // Soft delete: flip the flag, never remove the row (bookings reference service_id).
+        // Idempotent — if it's already inactive there's nothing to persist.
+        if (service.IsActive)
+        {
+            service.IsActive = false;
+            await repository.SaveChangesAsync(service, ct);
+        }
+
+        return true;
+    }
 }

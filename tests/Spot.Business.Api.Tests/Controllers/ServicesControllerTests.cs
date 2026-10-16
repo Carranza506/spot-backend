@@ -240,6 +240,75 @@ public class ServicesControllerTests(BusinessesApiFactory factory) : IClassFixtu
         Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
     }
 
+    // ---------- DELETE /business/services/{serviceId} (soft delete) ----------
+
+    [Fact]
+    public async Task DeactivateService_Owner_Returns204AndSoftDeletes()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var stored = factory.ServiceRepository.All.Single();
+        Assert.False(stored.IsActive);   // soft-deleted, still present
+    }
+
+    [Fact]
+    public async Task DeactivateService_AlreadyInactive_Returns204()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", Price = 5000m, DurationMinutes = 30, IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeactivateService_NonOwnerBusinessAccount_Returns403AndKeepsItActive()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(factory.ServiceRepository.All.Single().IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateService_NoToken_Returns401()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        var response = await factory.CreateClient().DeleteAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeactivateService_UnknownService_Returns404()
+    {
+        Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/services/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private void Reset()
     {
         factory.BusinessRepository.Reset();
