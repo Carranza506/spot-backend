@@ -39,12 +39,12 @@ public sealed class FakeServiceOfferingRepository : IServiceOfferingRepository
     }
 
     public Task<(IReadOnlyList<ServiceEntity> Items, int Total)> ListAsync(
-        Guid businessId, int page, int pageSize, bool active, CancellationToken ct = default)
+        Guid businessId, int page, int pageSize, bool? active, CancellationToken ct = default)
     {
-        // Mirrors ServiceOfferingRepository.ListAsync: business + active filter, ordered by name
-        // then id, with the same overflow-safe offset.
+        // Mirrors ServiceOfferingRepository.ListAsync: business filter + optional active filter
+        // (null = both), ordered by name then id, with the same overflow-safe offset.
         var all = _services.Values
-            .Where(s => s.BusinessId == businessId && s.IsActive == active)
+            .Where(s => s.BusinessId == businessId && (active is not bool a || s.IsActive == a))
             .OrderBy(s => s.Name).ThenBy(s => s.Id)
             .ToList();
         var offset = (long)(page - 1) * pageSize;

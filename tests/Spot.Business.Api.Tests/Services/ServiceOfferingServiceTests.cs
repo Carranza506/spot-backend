@@ -108,89 +108,156 @@ public sealed class ServiceOfferingServiceTests
         Assert.Empty(_repository.All);
     }
 
-    // ---------- ListAsync ----------
+    // ---------- ListAsync (owner-aware) ----------
 
     [Fact]
-    public async Task ListAsync_HidesInactiveServicesByDefaultAndOrdersByName()
+    public async Task ListAsync_Public_HidesInactiveServicesAndOrdersByName()
     {
-        var accountId = Guid.NewGuid();
-        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
         _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
         _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Barba", IsActive = true });
         _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
 
-        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: null);
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: null, callerId: null);
 
-        Assert.NotNull(result);
         Assert.Equal(2, result!.Pagination.Total);
         Assert.Equal(["Barba", "Corte"], result.Data.Select(s => s.Name));
     }
 
     [Fact]
-    public async Task ListAsync_IsActiveFalse_ReturnsOnlyInactive()
+    public async Task ListAsync_Public_IsActiveFalse_StillOnlyActive()
     {
         var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
         _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
         _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
 
-        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: false);
+        // Public can never see inactive services, even asking for them explicitly.
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: false, callerId: null);
+
+        Assert.Equal(["Corte"], result!.Data.Select(s => s.Name));
+    }
+
+    [Fact]
+    public async Task ListAsync_Owner_SeesAllServicesByDefault()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: null, callerId: accountId);
+
+        Assert.Equal(["Corte", "Viejo"], result!.Data.Select(s => s.Name));
+    }
+
+    [Fact]
+    public async Task ListAsync_Owner_IsActiveFalse_ReturnsOnlyInactive()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: false, callerId: accountId);
 
         Assert.Equal(["Viejo"], result!.Data.Select(s => s.Name));
     }
 
     [Fact]
-    public async Task ListAsync_UnknownBusiness_ReturnsNull()
+    public async Task ListAsync_NonOwnerToken_TreatedAsPublic()
     {
-        var result = await _service.ListAsync(Guid.NewGuid(), page: 1, pageSize: 20, isActive: null);
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
 
-        Assert.Null(result);
+        // A token that isn't the owner's gets the public view.
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: false, callerId: Guid.NewGuid());
+
+        Assert.Equal(["Corte"], result!.Data.Select(s => s.Name));
     }
 
     [Fact]
-    public async Task ListAsync_InactiveBusiness_ReturnsNull()
+    public async Task ListAsync_UnknownBusiness_ReturnsNull() =>
+        Assert.Null(await _service.ListAsync(Guid.NewGuid(), page: 1, pageSize: 20, isActive: null, callerId: null));
+
+    [Fact]
+    public async Task ListAsync_Public_InactiveBusiness_ReturnsNull()
     {
         var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", IsActive = false });
         _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
 
-        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: null);
-
-        Assert.Null(result);
+        Assert.Null(await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: null, callerId: null));
     }
 
-    // ---------- GetAsync ----------
+    [Fact]
+    public async Task ListAsync_Owner_InactiveBusiness_CanList()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella", IsActive = false });
+        _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+
+        var result = await _service.ListAsync(business.Id, page: 1, pageSize: 20, isActive: null, callerId: accountId);
+
+        Assert.Equal(["Corte"], result!.Data.Select(s => s.Name));
+    }
+
+    // ---------- GetAsync (owner-aware) ----------
 
     [Fact]
-    public async Task GetAsync_ActiveServiceOfActiveBusiness_ReturnsIt()
+    public async Task GetAsync_Public_ActiveServiceOfActiveBusiness_ReturnsIt()
     {
         var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
         var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
 
-        var result = await _service.GetAsync(service.Id);
+        var result = await _service.GetAsync(service.Id, callerId: null);
 
-        Assert.NotNull(result);
         Assert.Equal(service.Id, result!.Id);
     }
 
     [Fact]
     public async Task GetAsync_UnknownService_ReturnsNull() =>
-        Assert.Null(await _service.GetAsync(Guid.NewGuid()));
+        Assert.Null(await _service.GetAsync(Guid.NewGuid(), callerId: null));
 
     [Fact]
-    public async Task GetAsync_InactiveService_ReturnsNull()
+    public async Task GetAsync_Public_InactiveService_ReturnsNull()
     {
         var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
         var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
 
-        Assert.Null(await _service.GetAsync(service.Id));
+        Assert.Null(await _service.GetAsync(service.Id, callerId: null));
     }
 
     [Fact]
-    public async Task GetAsync_ServiceOfInactiveBusiness_ReturnsNull()
+    public async Task GetAsync_Owner_InactiveService_ReturnsIt()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+
+        var result = await _service.GetAsync(service.Id, callerId: accountId);
+
+        Assert.Equal(service.Id, result!.Id);
+    }
+
+    [Fact]
+    public async Task GetAsync_Public_ServiceOfInactiveBusiness_ReturnsNull()
     {
         var business = _businessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", IsActive = false });
         var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
 
-        Assert.Null(await _service.GetAsync(service.Id));
+        Assert.Null(await _service.GetAsync(service.Id, callerId: null));
+    }
+
+    [Fact]
+    public async Task GetAsync_Owner_ServiceOfInactiveBusiness_ReturnsIt()
+    {
+        var accountId = Guid.NewGuid();
+        var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella", IsActive = false });
+        var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+
+        var result = await _service.GetAsync(service.Id, callerId: accountId);
+
+        Assert.Equal(service.Id, result!.Id);
     }
 
     private static ServiceCreateRequest ValidRequest() =>

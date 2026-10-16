@@ -176,18 +176,62 @@ public class ServicesControllerTests(BusinessesApiFactory factory) : IClassFixtu
     }
 
     [Fact]
-    public async Task ListBusinessServices_IsActiveFalse_ReturnsInactive()
+    public async Task ListBusinessServices_Owner_SeesInactiveAndIsActiveFilterWorks()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var all = await (await client.GetAsync($"/business/businesses/{business.Id}/services")).Content.ReadFromJsonAsync<JsonElement>();
+        var inactive = await (await client.GetAsync($"/business/businesses/{business.Id}/services?isActive=false")).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(["Corte", "Viejo"], all.GetProperty("data").EnumerateArray().Select(s => s.GetProperty("name").GetString()));
+        Assert.Equal(["Viejo"], inactive.GetProperty("data").EnumerateArray().Select(s => s.GetProperty("name").GetString()));
+    }
+
+    [Fact]
+    public async Task ListBusinessServices_PublicIsActiveFalse_StillOnlyActive()
     {
         Reset();
         var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
         factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
         factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
-        var client = factory.CreateClient();
 
-        var response = await client.GetAsync($"/business/businesses/{business.Id}/services?isActive=false");
+        var response = await factory.CreateClient().GetAsync($"/business/businesses/{business.Id}/services?isActive=false");
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(["Viejo"], body.GetProperty("data").EnumerateArray().Select(s => s.GetProperty("name").GetString()));
+        Assert.Equal(["Corte"], body.GetProperty("data").EnumerateArray().Select(s => s.GetProperty("name").GetString()));
+    }
+
+    [Fact]
+    public async Task ListBusinessServices_NonOwnerToken_TreatedAsPublic()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var body = await (await client.GetAsync($"/business/businesses/{business.Id}/services")).Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(["Corte"], body.GetProperty("data").EnumerateArray().Select(s => s.GetProperty("name").GetString()));
+    }
+
+    [Fact]
+    public async Task ListBusinessServices_Owner_InactiveBusiness_Returns200()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella", IsActive = false });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.GetAsync($"/business/businesses/{business.Id}/services");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -289,6 +333,20 @@ public class ServicesControllerTests(BusinessesApiFactory factory) : IClassFixtu
         var response = await factory.CreateClient().GetAsync($"/business/services/{service.Id}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetService_Owner_InactiveService_Returns200()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.GetAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     private void Reset()

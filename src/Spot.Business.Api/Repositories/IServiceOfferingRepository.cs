@@ -19,10 +19,11 @@ public interface IServiceOfferingRepository
     /// <summary>
     /// A page of <paramref name="businessId"/>'s services, ordered by name then id (a stable
     /// tie-breaker, since names aren't unique). <paramref name="active"/> filters by
-    /// <c>is_active</c>. Callers check the parent business exists/visible first.
+    /// <c>is_active</c>; <c>null</c> returns both (used for the owner's full view). Callers check
+    /// the parent business exists/visible first.
     /// </summary>
     Task<(IReadOnlyList<ServiceEntity> Items, int Total)> ListAsync(
-        Guid businessId, int page, int pageSize, bool active, CancellationToken ct = default);
+        Guid businessId, int page, int pageSize, bool? active, CancellationToken ct = default);
 
     /// <summary>Loads a service by id regardless of its active state, or null if none exists.</summary>
     Task<ServiceEntity?> GetByIdAsync(Guid serviceId, CancellationToken ct = default);

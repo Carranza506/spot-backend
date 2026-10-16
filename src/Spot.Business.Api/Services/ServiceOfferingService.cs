@@ -34,31 +34,44 @@ public sealed class ServiceOfferingService(
     }
 
     public async Task<PaginatedResponse<ServiceDto>?> ListAsync(
-        Guid businessId, int page, int pageSize, bool? isActive, CancellationToken ct = default)
+        Guid businessId, int page, int pageSize, bool? isActive, Guid? callerId, CancellationToken ct = default)
     {
-        // Public visibility: the business must exist and be active, else 404 — same rule as
-        // IBusinessService.GetPublicAsync. Services of an inactive business aren't listed.
         var business = await businessRepository.GetByIdAsync(businessId, ct);
-        if (business is not { IsActive: true })
+        if (business is null)
             return null;
 
-        // Inactive services are hidden by default; isActive filters explicitly.
-        var (items, total) = await repository.ListAsync(businessId, page, pageSize, isActive ?? true, ct);
+        // Soft ownership check: just "is the caller the owner?", NOT the throwing GetOwnedAsync used
+        // by writes — a non-owner here isn't forbidden, only restricted to the public view.
+        var isOwner = callerId is { } caller && business.AccountId == caller;
+
+        // Public/non-owner can't see an inactive business at all.
+        if (!isOwner && !business.IsActive)
+            return null;
+
+        // Owner: isActive filters freely (null = all). Everyone else: only active, always.
+        bool? activeFilter = isOwner ? isActive : true;
+
+        var (items, total) = await repository.ListAsync(businessId, page, pageSize, activeFilter, ct);
         var dtos = items.Select(ServiceDto.FromEntity).ToList();
         var totalPages = (int)Math.Ceiling(total / (double)pageSize);
 
         return new PaginatedResponse<ServiceDto>(dtos, new PaginationMeta(page, pageSize, total, totalPages));
     }
 
-    public async Task<ServiceDto?> GetAsync(Guid serviceId, CancellationToken ct = default)
+    public async Task<ServiceDto?> GetAsync(Guid serviceId, Guid? callerId, CancellationToken ct = default)
     {
         var service = await repository.GetByIdAsync(serviceId, ct);
-        if (service is not { IsActive: true })
+        if (service is null)
             return null;
 
-        // A service of an inactive business isn't publicly visible either.
         var business = await businessRepository.GetByIdAsync(service.BusinessId, ct);
-        if (business is not { IsActive: true })
+        if (business is null)
+            return null;
+
+        // Same soft ownership check as the list. The owner sees their own service regardless of its
+        // (or the business's) active state; everyone else only sees an active service of an active business.
+        var isOwner = callerId is { } caller && business.AccountId == caller;
+        if (!isOwner && (!service.IsActive || !business.IsActive))
             return null;
 
         return ServiceDto.FromEntity(service);

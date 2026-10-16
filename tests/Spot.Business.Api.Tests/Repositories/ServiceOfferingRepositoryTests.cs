@@ -74,6 +74,19 @@ public sealed class ServiceOfferingRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ListAsync_NullActive_ReturnsBothActiveAndInactive()
+    {
+        var business = await SeedBusinessAsync("bella");
+        await SeedServiceAsync(business.Id, "Corte", active: true);
+        await SeedServiceAsync(business.Id, "Viejo", active: false);
+
+        var (items, total) = await _repository.ListAsync(business.Id, page: 1, pageSize: 20, active: null);
+
+        Assert.Equal(2, total);
+        Assert.Equal(["Corte", "Viejo"], items.Select(s => s.Name));
+    }
+
+    [Fact]
     public async Task ListAsync_HugePage_ReturnsEmptyWithoutOverflowing()
     {
         var business = await SeedBusinessAsync("bella");

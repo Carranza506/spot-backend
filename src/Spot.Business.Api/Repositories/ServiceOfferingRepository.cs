@@ -13,9 +13,11 @@ public sealed class ServiceOfferingRepository(BusinessDbContext db) : IServiceOf
     }
 
     public async Task<(IReadOnlyList<ServiceEntity> Items, int Total)> ListAsync(
-        Guid businessId, int page, int pageSize, bool active, CancellationToken ct = default)
+        Guid businessId, int page, int pageSize, bool? active, CancellationToken ct = default)
     {
-        var query = db.Services.AsNoTracking().Where(s => s.BusinessId == businessId && s.IsActive == active);
+        var query = db.Services.AsNoTracking().Where(s => s.BusinessId == businessId);
+        if (active is { } a)
+            query = query.Where(s => s.IsActive == a);
 
         var total = await query.CountAsync(ct);
 
