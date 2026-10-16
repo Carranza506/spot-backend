@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Spot.AiSearch.Api.Data;
+using Spot.AiSearch.Api.Tests.Controllers;
 
 namespace Spot.AiSearch.Api.Tests.Data;
 
@@ -14,6 +15,7 @@ namespace Spot.AiSearch.Api.Tests.Data;
 /// as Spot.Notifications.Api.Tests' NotificationsDbContextRegistrationTests. Nothing here connects
 /// to Postgres: building the model is enough to go through EF's service provider cache.
 /// </summary>
+[Collection(AiSearchApiCollection.Name)]
 public sealed class AiSearchDbContextRegistrationTests : IDisposable
 {
     private readonly RSA _jwtKey = RSA.Create(2048);

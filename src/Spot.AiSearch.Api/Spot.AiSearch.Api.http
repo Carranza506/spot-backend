@@ -38,3 +38,17 @@ Accept: application/json
 Authorization: Bearer REPLACE_WITH_RS256_CLIENT_ROLE_JWT
 
 ###
+
+### 6. Detail - full log of one interaction (copy an id from the list above)
+GET {{host}}/ai-search/requests/REPLACE_WITH_AI_REQUEST_ID
+Accept: application/json
+Authorization: Bearer {{token}}
+
+###
+
+### 7. Detail - unknown id must return 404 (body: { code: "NOT_FOUND", ... })
+GET {{host}}/ai-search/requests/00000000-0000-0000-0000-000000000000
+Accept: application/json
+Authorization: Bearer {{token}}
+
+###

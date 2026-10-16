@@ -9,6 +9,9 @@ public interface IAiRequestService
 {
     Task<PaginatedResponse<AiRequestLogDto>> ListAsync(AiSearchFilterQuery filter, CancellationToken ct = default);
 
+    /// <summary>The full audit row with <paramref name="id"/>, or null if there is none.</summary>
+    Task<AiRequestLogDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
+
     /// <summary>
     /// Persists one Gemini call (SUCCESS, ERROR or TIMEOUT alike) as an ai_requests row. Takes no
     /// cancellation token on purpose: once Gemini has answered, the row is written even if the

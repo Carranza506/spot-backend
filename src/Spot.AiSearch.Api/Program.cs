@@ -81,6 +81,15 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
+// Same handler as the other services: an unhandled exception (e.g. Postgres down) answers with
+// the contract's InternalServerError body instead of an empty 500, and never with its details.
+app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    await context.Response.WriteAsJsonAsync(
+        new ApiError("INTERNAL_ERROR", "Ocurrió un error inesperado. Por favor intenta de nuevo más tarde."));
+}));
+
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
