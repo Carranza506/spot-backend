@@ -24,8 +24,8 @@ info:
     `POST /api/v1/auth/login`, `POST /api/v1/auth/register`,
     `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/google`. The read-only
     business-discovery endpoints (public listing/search, business detail, service
-    catalog, hours, availability, and reviews) are also served without
-    authentication to support anonymous search.
+    catalog, hours, photos and their image files, availability, and reviews) are
+    also served without authentication to support anonymous search.
 
     The internal endpoint `POST /api/v1/notifications/internal/booking-status-changed`
     is not exposed to end clients: the Gateway only routes it when the request
@@ -1154,6 +1154,10 @@ paths:
       security: []
       description: |-
         Access: public (no JWT required).
+
+        Sorted by `displayOrder` ascending, then by `createdAt` and `id`, so
+        pages are stable. An inactive business is reported as 404, same as
+        `GET /business/businesses/{businessId}`.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1172,6 +1176,14 @@ paths:
       summary: Upload a business photo
       description: |-
         Required role: `BUSINESS` who owns the business.
+
+        Accepted images: JPEG, PNG or WebP, detected from the file content
+        (not from its name or declared content type), up to 5 MB and 40
+        megapixels. The image is re-encoded before it is stored, which removes
+        its metadata (EXIF, including GPS location).
+
+        A business can have up to 20 photos and at most one primary photo:
+        uploading with `isPrimary: true` unsets the previous primary photo.
       requestBody:
         required: true
         content:
@@ -1194,6 +1206,16 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The business already has the maximum number of photos (20).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: PHOTO_LIMIT_REACHED
+                message: El negocio ya tiene el máximo de 20 fotos.
+                timestamp: "2026-08-30T20:00:00Z"
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /business/businesses/{businessId}/photos/{photoId}:
@@ -1209,6 +1231,9 @@ paths:
       summary: Delete a business photo
       description: |-
         Required role: `BUSINESS` who owns the business.
+
+        Hard delete: the stored image is removed too. A photo of a different
+        business is reported as 404.
       responses:
         '204':
           description: Photo deleted.
@@ -1227,6 +1252,10 @@ paths:
       security: []
       description: |-
         Access: public (no JWT required).
+
+        Sorted by `displayOrder` ascending, then by `createdAt` and `id`, so
+        pages are stable. An inactive service, or a service of an inactive
+        business, is reported as 404.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1246,6 +1275,13 @@ paths:
       description: |-
         Required role: `BUSINESS` who owns the business the service
         belongs to.
+
+        Accepted images: JPEG, PNG or WebP, detected from the file content
+        (not from its name or declared content type), up to 5 MB and 40
+        megapixels. The image is re-encoded before it is stored, which removes
+        its metadata (EXIF, including GPS location).
+
+        A service can have up to 10 photos.
       requestBody:
         required: true
         content:
@@ -1267,6 +1303,16 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The service already has the maximum number of photos (10).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: PHOTO_LIMIT_REACHED
+                message: El servicio ya tiene el máximo de 10 fotos.
+                timestamp: "2026-08-30T20:00:00Z"
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /business/services/{serviceId}/photos/{photoId}:
@@ -1283,11 +1329,59 @@ paths:
       description: |-
         Required role: `BUSINESS` who owns the business the service
         belongs to.
+
+        Hard delete: the stored image is removed too. A photo of a different
+        service is reported as 404.
       responses:
         '204':
           description: Photo deleted.
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /business/media/photos/{fileName}:
+    parameters:
+      - name: fileName
+        in: path
+        required: true
+        description: |-
+          Server-generated file name, as it appears at the end of `Photo.url`.
+          Anything else is reported as 404.
+        schema:
+          type: string
+          pattern: '^[0-9a-f]{32}\.(jpg|png|webp)$'
+          example: 3f2b9c1e8d7a4b6c9e0f1a2b3c4d5e6f.jpg
+    get:
+      tags: [Business]
+      operationId: getPhotoFile
+      summary: Download a stored photo (business or service)
+      security: []
+      description: |-
+        Access: public (no JWT required). This is the URL returned in
+        `Photo.url`; clients use it as is (for example, as an `<img>` source)
+        and never build it themselves.
+
+        Stored files are immutable: every upload gets a new file name, so the
+        response is cacheable for a long time. A deleted photo returns 404.
+
+        Responses are sent with `X-Content-Type-Options: nosniff` and
+        `Content-Security-Policy: default-src 'none'; sandbox`, so a stored file
+        can never be interpreted as anything but an image.
+      responses:
+        '200':
+          description: The image, with the content type of its format.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              example: public, max-age=31536000, immutable
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+            image/png:
+              schema: { type: string, format: binary }
+            image/webp:
+              schema: { type: string, format: binary }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
@@ -2109,6 +2203,17 @@ components:
             code: BOOKING_SLOT_OVERLAP
             message: Ese horario ya no está disponible para este negocio.
             timestamp: "2026-08-30T20:00:00Z"
+    PayloadTooLarge:
+      description: |-
+        The request body exceeds the size limit of the endpoint (for example,
+        a photo larger than 5 MB).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: PAYLOAD_TOO_LARGE
+            message: La foto no puede pesar más de 5 MB.
+            timestamp: "2026-08-30T20:00:00Z"
     UnprocessableEntity:
       description: |-
         The request is syntactically valid but violates a business rule (for
@@ -2587,7 +2692,13 @@ components:
       required: [id, url, displayOrder, createdAt]
       properties:
         id: { type: string, format: uuid }
-        url: { type: string, format: uri }
+        url:
+          type: string
+          format: uri
+          description: |-
+            Absolute URL of the image file (`GET /business/media/photos/{fileName}`,
+            public, through the API Gateway). Use it as is; no JWT is needed to
+            fetch it.
         isPrimary:
           type: boolean
           description: Only applies to business photos; omitted/false on service photos.

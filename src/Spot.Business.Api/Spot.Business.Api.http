@@ -225,3 +225,144 @@ Content-Type: application/json
 }
 
 ###
+
+# ============================================================
+# Photos (#65): business and service photos, and the public file endpoint.
+# Reuses {{businessToken}} and {{svcBusinessId}} from the "services" requests above, so run those
+# first. The uploads read ./sample-photo.jpg next to this file: put any JPEG, PNG or WebP of up
+# to 5 MB there (it's not committed). The format is detected from the file's content.
+# ============================================================
+
+### Upload a business photo (owner) as the primary one -> 201, capture its id and url
+# @name uploadBizPhoto
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos
+Authorization: Bearer {{businessToken}}
+Content-Type: multipart/form-data; boundary=SpotPhotoBoundary
+
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="file"; filename="sample-photo.jpg"
+Content-Type: image/jpeg
+
+< ./sample-photo.jpg
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="isPrimary"
+
+true
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="displayOrder"
+
+0
+--SpotPhotoBoundary--
+
+###
+@bizPhotoId = {{uploadBizPhoto.response.body.id}}
+@bizPhotoUrl = {{uploadBizPhoto.response.body.url}}
+
+### List the business's photos (public, no token) -> 200
+GET {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos?page=1&pageSize=20
+Accept: application/json
+
+###
+
+### Download a photo through the URL it was returned with -> 200 image, with nosniff/CSP headers
+# Photo.url points at the Gateway (http://localhost:5195/api/v1/...). Without the Gateway
+# running, call Business.Api directly: {{Spot.Business.Api_HostAddress}}/business/media/photos/<fileName>
+GET {{bizPhotoUrl}}
+
+###
+
+### Download a photo - not a valid file name (traversal attempt) -> 404
+GET {{Spot.Business.Api_HostAddress}}/business/media/photos/..%2F..%2Fappsettings.json
+
+###
+
+### Upload a business photo - not multipart -> 400
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "file": "not-an-upload"
+}
+
+###
+
+### Upload a business photo - text pretending to be a JPEG -> 400 "La foto debe ser JPG, PNG o WebP."
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos
+Authorization: Bearer {{businessToken}}
+Content-Type: multipart/form-data; boundary=SpotPhotoBoundary
+
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="file"; filename="evil.jpg"
+Content-Type: image/jpeg
+
+<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>
+--SpotPhotoBoundary--
+
+###
+
+### Upload a business photo - no token -> 401
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos
+Content-Type: multipart/form-data; boundary=SpotPhotoBoundary
+
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="file"; filename="sample-photo.jpg"
+Content-Type: image/jpeg
+
+< ./sample-photo.jpg
+--SpotPhotoBoundary--
+
+###
+
+### Delete the business photo (owner) -> 204; its file URL returns 404 afterwards
+DELETE {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos/{{bizPhotoId}}
+Authorization: Bearer {{businessToken}}
+
+###
+
+### Create a service for the service-photo requests -> capture its id
+# @name photoSvc
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Manicure",
+  "price": 8000,
+  "durationMinutes": 40
+}
+
+###
+@photoServiceId = {{photoSvc.response.body.id}}
+
+### Upload a service photo (owner) -> 201 (no isPrimary for service photos)
+# @name uploadSvcPhoto
+POST {{Spot.Business.Api_HostAddress}}/business/services/{{photoServiceId}}/photos
+Authorization: Bearer {{businessToken}}
+Content-Type: multipart/form-data; boundary=SpotPhotoBoundary
+
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="file"; filename="sample-photo.jpg"
+Content-Type: image/jpeg
+
+< ./sample-photo.jpg
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="displayOrder"
+
+1
+--SpotPhotoBoundary--
+
+###
+@svcPhotoId = {{uploadSvcPhoto.response.body.id}}
+
+### List the service's photos (public, no token) -> 200
+GET {{Spot.Business.Api_HostAddress}}/business/services/{{photoServiceId}}/photos
+Accept: application/json
+
+###
+
+### Delete the service photo (owner) -> 204
+DELETE {{Spot.Business.Api_HostAddress}}/business/services/{{photoServiceId}}/photos/{{svcPhotoId}}
+Authorization: Bearer {{businessToken}}
+
+###

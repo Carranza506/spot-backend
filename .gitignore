@@ -12,6 +12,10 @@
 *.key
 /keys/
 
+# Photos uploaded while running Spot.Business.Api locally (PhotoStorage:RootPath). User content,
+# never part of the repo.
+**/App_Data/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -489,3 +493,6 @@ $RECYCLE.BIN/
 
 # Local dev settings (contain credentials)
 **/appsettings.Development.json
+
+# Local sample image used by Spot.Business.Api.http's photo upload requests.
+src/Spot.Business.Api/sample-photo.*

@@ -20,3 +20,4 @@ contracts/
 docker-compose*.yml
 Dockerfile*
 **/appsettings.Development.json
+**/App_Data/
