@@ -48,6 +48,35 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
     }
 
     /// <summary>
+    /// PATCH /business/services/{serviceId}: requires the BUSINESS account that owns the service's
+    /// business. The route has no businessId, so ownership is resolved through the service itself.
+    /// 404 if the service doesn't exist, 403 if the caller isn't its owner.
+    /// </summary>
+    [HttpPatch("services/{serviceId:guid}")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(ServiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateService(
+        Guid serviceId, [FromBody] ServiceUpdateRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var result = await serviceOfferingService.UpdateAsync(serviceId, callerId, request, ct);
+            return result is null ? ServiceNotFound() : Ok(result);
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+    }
+
+    /// <summary>
     /// GET /business/businesses/{businessId}/services: public, but owner-aware. Anonymous/non-owner
     /// callers see only active services; the owner (a BUSINESS token owning the business) sees all
     /// and can filter with isActive. 404 if the business doesn't exist, or is inactive for non-owners.

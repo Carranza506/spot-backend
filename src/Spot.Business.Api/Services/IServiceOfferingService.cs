@@ -14,6 +14,14 @@ public interface IServiceOfferingService
     Task<ServiceDto?> CreateAsync(Guid businessId, Guid callerId, ServiceCreateRequest request, CancellationToken ct = default);
 
     /// <summary>
+    /// Partially updates a service (only the fields present in <paramref name="request"/>). Null if
+    /// no service with <paramref name="serviceId"/> exists (404). <c>isActive</c> can reactivate a
+    /// deactivated service; the owner can update even if the business is inactive, same as create.
+    /// </summary>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the service's business.</exception>
+    Task<ServiceDto?> UpdateAsync(Guid serviceId, Guid callerId, ServiceUpdateRequest request, CancellationToken ct = default);
+
+    /// <summary>
     /// A page of the business's services. Owner-aware: the <b>owner</b> (<paramref name="callerId"/>
     /// equal to the business's account) sees all their services and <paramref name="isActive"/>
     /// filters freely (omitted = all); everyone else (public or non-owner) sees only active ones,

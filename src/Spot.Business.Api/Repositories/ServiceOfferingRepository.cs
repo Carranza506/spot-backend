@@ -12,6 +12,15 @@ public sealed class ServiceOfferingRepository(BusinessDbContext db) : IServiceOf
         await db.SaveChangesAsync(ct);
     }
 
+    public Task<ServiceEntity?> GetTrackedByIdAsync(Guid serviceId, CancellationToken ct = default) =>
+        db.Services.FirstOrDefaultAsync(s => s.Id == serviceId, ct);
+
+    public async Task SaveChangesAsync(ServiceEntity service, CancellationToken ct = default)
+    {
+        await db.SaveChangesAsync(ct);
+        await db.Entry(service).ReloadAsync(ct);
+    }
+
     public async Task<(IReadOnlyList<ServiceEntity> Items, int Total)> ListAsync(
         Guid businessId, int page, int pageSize, bool? active, CancellationToken ct = default)
     {
