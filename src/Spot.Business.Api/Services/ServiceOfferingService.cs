@@ -1,5 +1,6 @@
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Repositories;
+using Spot.Shared.Pagination;
 using ServiceEntity = Spot.Business.Api.Models.Service;
 
 namespace Spot.Business.Api.Services;
@@ -65,6 +66,50 @@ public sealed class ServiceOfferingService(
             service.IsActive = isActive;
 
         await repository.SaveChangesAsync(service, ct);
+        return ServiceDto.FromEntity(service);
+    }
+
+    public async Task<PaginatedResponse<ServiceDto>?> ListAsync(
+        Guid businessId, int page, int pageSize, bool? isActive, Guid? callerId, CancellationToken ct = default)
+    {
+        var business = await businessRepository.GetByIdAsync(businessId, ct);
+        if (business is null)
+            return null;
+
+        // Soft ownership check: just "is the caller the owner?", NOT the throwing GetOwnedAsync used
+        // by writes — a non-owner here isn't forbidden, only restricted to the public view.
+        var isOwner = callerId is { } caller && business.AccountId == caller;
+
+        // Public/non-owner can't see an inactive business at all.
+        if (!isOwner && !business.IsActive)
+            return null;
+
+        // Owner: isActive filters freely (null = all). Everyone else: only active, always.
+        bool? activeFilter = isOwner ? isActive : true;
+
+        var (items, total) = await repository.ListAsync(businessId, page, pageSize, activeFilter, ct);
+        var dtos = items.Select(ServiceDto.FromEntity).ToList();
+        var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+
+        return new PaginatedResponse<ServiceDto>(dtos, new PaginationMeta(page, pageSize, total, totalPages));
+    }
+
+    public async Task<ServiceDto?> GetAsync(Guid serviceId, Guid? callerId, CancellationToken ct = default)
+    {
+        var service = await repository.GetByIdAsync(serviceId, ct);
+        if (service is null)
+            return null;
+
+        var business = await businessRepository.GetByIdAsync(service.BusinessId, ct);
+        if (business is null)
+            return null;
+
+        // Same soft ownership check as the list. The owner sees their own service regardless of its
+        // (or the business's) active state; everyone else only sees an active service of an active business.
+        var isOwner = callerId is { } caller && business.AccountId == caller;
+        if (!isOwner && (!service.IsActive || !business.IsActive))
+            return null;
+
         return ServiceDto.FromEntity(service);
     }
 }

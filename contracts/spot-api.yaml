@@ -1020,12 +1020,22 @@ paths:
       summary: List the services offered by a business
       security: []
       description: |-
-        Access: public (no JWT required).
+        Access: public (no JWT required), but owner-aware — a JWT is optional and only widens
+        what the caller sees:
+          * **Public / non-owner** (no token, or a token that doesn't own this business): only
+            active services. `isActive` is ignored for them (even `isActive=false` returns active
+            only). An inactive business returns 404.
+          * **Owner** (a `BUSINESS` token whose account owns this business): all of its services,
+            and `isActive` filters freely — omitted = all, `true` = active only, `false` = inactive
+            only. The owner can list even while the business is inactive.
+
+        Results are ordered by `name`, then `id` (a stable tie-breaker, since names aren't unique).
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
         - name: isActive
           in: query
+          description: Filter by active state. Honored only for the owner; ignored for public callers.
           schema: { type: boolean }
       responses:
         '200':
@@ -1046,6 +1056,7 @@ paths:
                     createdAt: "2026-01-11T10:00:00Z"
                     updatedAt: "2026-01-11T10:00:00Z"
                 pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalServerError' }
     post:
@@ -1087,7 +1098,11 @@ paths:
       summary: Get a service's details
       security: []
       description: |-
-        Access: public (no JWT required).
+        Access: public (no JWT required), but owner-aware — a JWT is optional:
+          * **Public / non-owner**: 404 if the service is inactive or its business is inactive;
+            only an active service of an active business is returned.
+          * **Owner** (a `BUSINESS` token whose account owns the service's business): sees their own
+            service even when it (or the business) is inactive.
       responses:
         '200':
           description: Service details.
