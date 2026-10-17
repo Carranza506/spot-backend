@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Services;
 using Spot.Shared.Errors;
+using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Controllers;
 
@@ -46,8 +47,46 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
         }
     }
 
+    /// <summary>
+    /// GET /business/businesses/{businessId}/services: public, but owner-aware. Anonymous/non-owner
+    /// callers see only active services; the owner (a BUSINESS token owning the business) sees all
+    /// and can filter with isActive. 404 if the business doesn't exist, or is inactive for non-owners.
+    /// No [Authorize]: a token is optional and only widens what the caller sees.
+    /// </summary>
+    [HttpGet("businesses/{businessId:guid}/services")]
+    [ProducesResponseType(typeof(PaginatedResponse<ServiceDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ListBusinessServices(
+        Guid businessId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        [FromQuery] bool? isActive = null, CancellationToken ct = default)
+    {
+        if (page < 1 || pageSize < 1 || pageSize > 100)
+            return BadRequest(new ApiError("BAD_REQUEST", "page debe ser >= 1 y pageSize entre 1 y 100."));
+
+        var result = await serviceOfferingService.ListAsync(businessId, page, pageSize, isActive, CallerIdOrNull(), ct);
+        return result is null ? BusinessNotFound() : Ok(result);
+    }
+
+    /// <summary>
+    /// GET /business/services/{serviceId}: public, but owner-aware. The owner sees their own service
+    /// even if inactive; everyone else gets 404 for an inactive service or a service of an inactive
+    /// business. A token is optional.
+    /// </summary>
+    [HttpGet("services/{serviceId:guid}")]
+    [ProducesResponseType(typeof(ServiceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetService(Guid serviceId, CancellationToken ct)
+    {
+        var result = await serviceOfferingService.GetAsync(serviceId, CallerIdOrNull(), ct);
+        return result is null ? ServiceNotFound() : Ok(result);
+    }
+
     private NotFoundObjectResult BusinessNotFound() =>
         NotFound(new ApiError("NOT_FOUND", "El negocio indicado no existe."));
+
+    private NotFoundObjectResult ServiceNotFound() =>
+        NotFound(new ApiError("NOT_FOUND", "El servicio indicado no existe."));
 
     private ObjectResult NotOwner() =>
         StatusCode(StatusCodes.Status403Forbidden, new ApiError("FORBIDDEN", "No tienes permiso para realizar esta acción."));
@@ -57,4 +96,7 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
 
     /// <summary>Same as BusinessesController.TryGetUserId: User.Identity.Name IS the caller's account id (JWT sub).</summary>
     private bool TryGetUserId(out Guid userId) => Guid.TryParse(User.Identity?.Name, out userId);
+
+    /// <summary>The caller's account id when a valid token was sent, or null for anonymous callers — for the owner-aware public reads.</summary>
+    private Guid? CallerIdOrNull() => TryGetUserId(out var id) ? id : null;
 }
