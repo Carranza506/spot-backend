@@ -120,7 +120,7 @@ public sealed class ServiceOfferingServiceTests
             BusinessId = business.Id, Name = "Corte", Description = "vieja", Price = 5000m, DurationMinutes = 30, IsActive = true,
         });
 
-        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Name = "  Corte Premium  ", Price = 9000m });
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Name = Optional<string>.Of("  Corte Premium  "), Price = Optional<decimal?>.Of(9000m) });
 
         Assert.NotNull(result);
         Assert.Equal("Corte Premium", result!.Name);   // trimmed
@@ -148,7 +148,7 @@ public sealed class ServiceOfferingServiceTests
         var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
         var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = false });
 
-        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { IsActive = true });
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { IsActive = Optional<bool?>.Of(true) });
 
         Assert.True(result!.IsActive);
     }
@@ -160,7 +160,7 @@ public sealed class ServiceOfferingServiceTests
         var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
         var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
 
-        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Price = 10.555m });
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Price = Optional<decimal?>.Of(10.555m) });
 
         Assert.Equal(10.56m, result!.Price);
     }
@@ -172,7 +172,7 @@ public sealed class ServiceOfferingServiceTests
         var business = _businessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella", IsActive = false });
         var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
 
-        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Name = "Nuevo" });
+        var result = await _service.UpdateAsync(service.Id, accountId, new ServiceUpdateRequest { Name = Optional<string>.Of("Nuevo") });
 
         Assert.Equal("Nuevo", result!.Name);
     }
@@ -184,7 +184,7 @@ public sealed class ServiceOfferingServiceTests
         var service = _repository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
 
         await Assert.ThrowsAsync<BusinessAccessDeniedException>(
-            () => _service.UpdateAsync(service.Id, Guid.NewGuid(), new ServiceUpdateRequest { Name = "Hackeado" }));
+            () => _service.UpdateAsync(service.Id, Guid.NewGuid(), new ServiceUpdateRequest { Name = Optional<string>.Of("Hackeado") }));
 
         Assert.Equal("Corte", _repository.All.Single().Name);
     }
@@ -192,7 +192,7 @@ public sealed class ServiceOfferingServiceTests
     [Fact]
     public async Task UpdateAsync_UnknownService_ReturnsNull()
     {
-        var result = await _service.UpdateAsync(Guid.NewGuid(), Guid.NewGuid(), new ServiceUpdateRequest { Name = "X" });
+        var result = await _service.UpdateAsync(Guid.NewGuid(), Guid.NewGuid(), new ServiceUpdateRequest { Name = Optional<string>.Of("X") });
 
         Assert.Null(result);
     }

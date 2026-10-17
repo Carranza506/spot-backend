@@ -220,6 +220,11 @@ public class ServicesControllerTests(BusinessesApiFactory factory) : IClassFixtu
         $$"""{ "name": "{{new string('a', 151)}}" }""",
         """{ "price": -1 }""",
         """{ "durationMinutes": 0 }""",
+        // Explicit null is rejected for the non-nullable fields (only description may be null).
+        """{ "name": null }""",
+        """{ "price": null }""",
+        """{ "durationMinutes": null }""",
+        """{ "isActive": null }""",
     };
 
     [Theory]
@@ -239,6 +244,97 @@ public class ServicesControllerTests(BusinessesApiFactory factory) : IClassFixtu
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
     }
+
+    [Fact]
+    public async Task UpdateService_DescriptionNull_ClearsIt_DescriptionEmpty_Also()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+        var s1 = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Description = "tenia", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var nullResp = await client.PatchAsync($"/business/services/{s1.Id}", Json("""{ "description": null }"""));
+        var nullBody = await nullResp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(HttpStatusCode.OK, nullResp.StatusCode);
+        Assert.Equal(JsonValueKind.Null, nullBody.GetProperty("description").ValueKind);
+
+        var s2 = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Barba", Description = "tenia", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var emptyResp = await client.PatchAsync($"/business/services/{s2.Id}", Json("""{ "description": "" }"""));
+        var emptyBody = await emptyResp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(HttpStatusCode.OK, emptyResp.StatusCode);
+        Assert.Equal(JsonValueKind.Null, emptyBody.GetProperty("description").ValueKind);  // "" normalizes to null
+    }
+
+    [Fact]
+    public async Task UpdateService_BusinessMissing_Returns404()
+    {
+        Reset();
+        // A service whose business was never seeded: GetOwnedAsync can't resolve it -> 404, not an edit.
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = Guid.NewGuid(), Name = "Huerfano", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateService_BusinessIdInBody_IsIgnored()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "Nuevo", businessId = Guid.NewGuid() });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(business.Id, factory.ServiceRepository.All.Single().BusinessId);  // unchanged
+    }
+
+    [Fact]
+    public async Task UpdateService_After403_LeavesTheServiceUnchanged()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        await client.PatchAsJsonAsync($"/business/services/{factory.ServiceRepository.All.Single().Id}", new { name = "Hackeado" });
+
+        Assert.Equal("Corte", factory.ServiceRepository.All.Single().Name);
+    }
+
+    [Fact]
+    public async Task UpdateService_After400_LeavesTheServiceUnchanged()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        await client.PatchAsync($"/business/services/{factory.ServiceRepository.All.Single().Id}", Json("""{ "price": -1 }"""));
+
+        Assert.Equal(5000m, factory.ServiceRepository.All.Single().Price);
+    }
+
+    [Fact]
+    public async Task UpdateService_Owner_InactiveService_Returns200()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", Price = 5000m, DurationMinutes = 30, IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "Reactivado" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private static StringContent Json(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
 
     private void Reset()
     {
