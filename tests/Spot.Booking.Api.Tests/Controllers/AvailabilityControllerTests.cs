@@ -5,6 +5,7 @@ using Spot.Booking.Api.Models;
 
 namespace Spot.Booking.Api.Tests.Controllers;
 
+[Collection(ApiFactoryCollection.Name)]
 public class AvailabilityControllerTests(AvailabilityApiFactory factory) : IClassFixture<AvailabilityApiFactory>
 {
     // 2026-09-01 is a Tuesday. The seeded business opens that weekday 08:00–10:00 local (14:00Z–16:00Z).
