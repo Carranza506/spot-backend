@@ -4,34 +4,53 @@ namespace Spot.Business.Api.DTOs;
 
 /// <summary>
 /// Matches the ServiceUpdateRequest schema in contracts/spot-api.yaml. Every field is optional
-/// (PATCH): an omitted field is left untouched. <see cref="Description"/> is wrapped in
-/// <see cref="Optional{T}"/> so sending it explicitly as <c>null</c> clears it, which a plain
-/// nullable couldn't tell apart from "omitted" — same split as <see cref="CategoryUpdateRequest"/>.
-/// The other fields aren't nullable in the contract, so a plain nullable already means "omitted".
-/// Validations mirror <see cref="ServiceCreateRequest"/> but only fire when the field is present.
+/// (PATCH) and wrapped in <see cref="Optional{T}"/> so an omitted field is left untouched, while
+/// an explicit value is applied — same approach as Spot.Auth.Api's UpdateProfileRequest. Only
+/// <see cref="Description"/> is nullable in the contract (<c>null</c> clears it); the others aren't,
+/// so sending them as <c>null</c> is rejected with 400 (see <see cref="Validate"/>). Validations
+/// mirror <see cref="ServiceCreateRequest"/> and only fire when the field is present.
 /// </summary>
 public sealed class ServiceUpdateRequest : IValidatableObject
 {
-    [MaxLength(150)]
-    public string? Name { get; set; }
+    public Optional<string> Name { get; set; }
 
     public Optional<string?> Description { get; set; }
 
-    // Same bounds as ServiceCreateRequest: the contract allows a free service (minimum: 0); the
-    // upper bound guards the numeric(12,2) column so an oversized price is a 400, not a 500.
-    [Range(typeof(decimal), "0", "9999999999.99",
-        ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
-    public decimal? Price { get; set; }
+    public Optional<decimal?> Price { get; set; }
 
-    [Range(1, int.MaxValue)]
-    public int? DurationMinutes { get; set; }
+    public Optional<int?> DurationMinutes { get; set; }
 
-    public bool? IsActive { get; set; }
+    public Optional<bool?> IsActive { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        // Mirrors ServiceCreateRequest: [MaxLength] doesn't catch a name that's only whitespace.
-        if (Name is not null && string.IsNullOrWhiteSpace(Name))
-            yield return new ValidationResult("name no puede estar vacío ni contener solo espacios.", [nameof(Name)]);
+        if (Name.IsSet)
+        {
+            // null or whitespace name is rejected (null isn't allowed by the contract for name).
+            if (string.IsNullOrWhiteSpace(Name.Value))
+                yield return new ValidationResult("name no puede estar vacío ni contener solo espacios.", [nameof(Name)]);
+            else if (Name.Value.Trim().Length > 150)
+                yield return new ValidationResult("name no puede superar 150 caracteres.", [nameof(Name)]);
+        }
+
+        if (Price.IsSet)
+        {
+            if (Price.Value is null)
+                yield return new ValidationResult("price no puede ser null.", [nameof(Price)]);
+            // The contract allows a free service (minimum: 0). The upper bound guards numeric(12,2).
+            else if (Price.Value is < 0 or > 9_999_999_999.99m)
+                yield return new ValidationResult("price debe ser mayor o igual a 0.", [nameof(Price)]);
+        }
+
+        if (DurationMinutes.IsSet)
+        {
+            if (DurationMinutes.Value is null)
+                yield return new ValidationResult("durationMinutes no puede ser null.", [nameof(DurationMinutes)]);
+            else if (DurationMinutes.Value < 1)
+                yield return new ValidationResult("durationMinutes debe ser mayor o igual a 1.", [nameof(DurationMinutes)]);
+        }
+
+        if (IsActive.IsSet && IsActive.Value is null)
+            yield return new ValidationResult("isActive no puede ser null.", [nameof(IsActive)]);
     }
 }
