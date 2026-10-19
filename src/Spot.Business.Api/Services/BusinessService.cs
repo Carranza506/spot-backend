@@ -1,3 +1,4 @@
+using NetTopologySuite.Geometries;
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
@@ -70,8 +71,16 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
 
     public async Task<PaginatedResponse<BusinessDto>> SearchAsync(BusinessSearchQuery query, CancellationToken ct = default)
     {
+        // Proximity (#119): the controller guarantees lat/lng/radiusKm come as a complete, in-range
+        // trio (or not at all), so here it's enough to build the reference point when all are present.
+        // Reuses GeoPointRequest.ToPoint() (#127) for the (X=lng, Y=lat, SRID 4326) convention.
+        Point? nearPoint = query.Lat is { } lat && query.Lng is { } lng && query.RadiusKm is not null
+            ? new GeoPointRequest { Latitude = lat, Longitude = lng }.ToPoint()
+            : null;
+
         var (items, total) = await repository.SearchAsync(
-            query.Q, query.CategoryId, query.City, query.Province, query.Page, query.PageSize, ct);
+            query.Q, query.CategoryId, query.City, query.Province,
+            nearPoint, query.RadiusKm, query.Page, query.PageSize, ct);
 
         var dtos = items.Select(BusinessDto.FromEntity).ToList();
         var totalPages = (int)Math.Ceiling(total / (double)query.PageSize);

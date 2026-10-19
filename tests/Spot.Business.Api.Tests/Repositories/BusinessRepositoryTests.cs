@@ -134,7 +134,7 @@ public sealed class BusinessRepositoryTests : IDisposable
         var belleza = await SeedCategoryAsync("Belleza");
         await LinkAsync(bella.Id, belleza.Id);
 
-        var (items, total) = await _repository.SearchAsync(null, belleza.Id, null, null, page: 1, pageSize: 20);
+        var (items, total) = await _repository.SearchAsync(null, belleza.Id, null, null, null, null, page: 1, pageSize: 20);
 
         Assert.Equal(1, total);
         Assert.Equal(["Bella"], items.Select(b => b.Name));
@@ -149,7 +149,7 @@ public sealed class BusinessRepositoryTests : IDisposable
         await _repository.CreateAsync(sinUbicacion);
         await SeedLocationAsync(conUbicacion.Id, city: "San José", province: "San José");
 
-        var (items, total) = await _repository.SearchAsync(null, null, "San José", null, page: 1, pageSize: 20);
+        var (items, total) = await _repository.SearchAsync(null, null, "San José", null, null, null, page: 1, pageSize: 20);
 
         Assert.Equal(1, total);
         Assert.Equal(["Con ubicación"], items.Select(b => b.Name));
@@ -161,7 +161,7 @@ public sealed class BusinessRepositoryTests : IDisposable
         await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Activo", Slug = "activo" });
         await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Inactivo", Slug = "inactivo", IsActive = false });
 
-        var (items, total) = await _repository.SearchAsync(null, null, null, null, page: 1, pageSize: 20);
+        var (items, total) = await _repository.SearchAsync(null, null, null, null, null, null, page: 1, pageSize: 20);
 
         Assert.Equal(1, total);
         Assert.Equal(["Activo"], items.Select(b => b.Name));
@@ -175,8 +175,8 @@ public sealed class BusinessRepositoryTests : IDisposable
         await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", Slug = "bella-2" });
         await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", Slug = "bella-3" });
 
-        var (page1, total) = await _repository.SearchAsync(null, null, null, null, page: 1, pageSize: 2);
-        var (page2, _) = await _repository.SearchAsync(null, null, null, null, page: 2, pageSize: 2);
+        var (page1, total) = await _repository.SearchAsync(null, null, null, null, null, null, page: 1, pageSize: 2);
+        var (page2, _) = await _repository.SearchAsync(null, null, null, null, null, null, page: 2, pageSize: 2);
 
         Assert.Equal(3, total);
         // No row repeated across pages and none skipped: the three ids together are distinct.
@@ -191,7 +191,7 @@ public sealed class BusinessRepositoryTests : IDisposable
         await _repository.CreateAsync(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella", Slug = "bella" });
 
         // (page-1)*pageSize would overflow int into a negative OFFSET and 500 — must not here.
-        var (items, total) = await _repository.SearchAsync(null, null, null, null, page: 107374184, pageSize: 20);
+        var (items, total) = await _repository.SearchAsync(null, null, null, null, null, null, page: 107374184, pageSize: 20);
 
         Assert.Empty(items);
         Assert.Equal(1, total);
