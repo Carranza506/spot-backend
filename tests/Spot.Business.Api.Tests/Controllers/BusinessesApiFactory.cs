@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
+using Spot.Business.Api.Billing;
 using Spot.Business.Api.Repositories;
 using Spot.Business.Api.Storage;
 using Spot.Business.Api.Tests.Fakes;
@@ -43,6 +44,16 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
     public FakePhotoRepository PhotoRepository { get; } = new();
     public FakePhotoStorage PhotoStorage { get; } = new();
 
+    /// <summary>
+    /// Billing (#138): plans, subscriptions and payments in memory, and a fake Stripe (no network).
+    /// The real BillingService and StripeWebhookService run on top of them.
+    /// </summary>
+    public FakeBillingRepository BillingRepository { get; } = new();
+    public FakeStripeBillingGateway StripeGateway { get; } = new();
+
+    /// <summary>The Stripe price the test host is configured with (Stripe__ProPriceId).</summary>
+    public const string ProPriceId = "price_pro_test";
+
     private readonly RSA _jwtKey = RSA.Create(2048);
 
     public BusinessesApiFactory()
@@ -58,6 +69,12 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
         // CategoriesApiFactory. Only parsed, never connected to: both repositories are faked.
         Environment.SetEnvironmentVariable(
             "ConnectionStrings__DefaultConnection", "Host=localhost;Database=unused;Username=unused;Password=unused");
+
+        // Placeholder Stripe settings (#138), only so StripeOptionsValidator passes: Stripe itself
+        // and the webhook secret file are faked. Not a real key.
+        Environment.SetEnvironmentVariable("Stripe__SecretKey", "sk_test_placeholder");
+        Environment.SetEnvironmentVariable("Stripe__ProPriceId", ProPriceId);
+        Environment.SetEnvironmentVariable("Stripe__WebhookSecretFile", "unused");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -78,6 +95,12 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IPhotoRepository>(PhotoRepository);
             services.RemoveAll<IPhotoStorage>();
             services.AddSingleton<IPhotoStorage>(PhotoStorage);
+            services.RemoveAll<IBillingRepository>();
+            services.AddSingleton<IBillingRepository>(BillingRepository);
+            services.RemoveAll<IStripeBillingGateway>();
+            services.AddSingleton<IStripeBillingGateway>(StripeGateway);
+            services.RemoveAll<IStripeWebhookSecretProvider>();
+            services.AddSingleton<IStripeWebhookSecretProvider, FakeStripeWebhookSecretProvider>();
         });
     }
 
@@ -113,6 +136,9 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
             Environment.SetEnvironmentVariable("Jwt__Audience", null);
             Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", null);
             Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", null);
+            Environment.SetEnvironmentVariable("Stripe__SecretKey", null);
+            Environment.SetEnvironmentVariable("Stripe__ProPriceId", null);
+            Environment.SetEnvironmentVariable("Stripe__WebhookSecretFile", null);
         }
 
         base.Dispose(disposing);

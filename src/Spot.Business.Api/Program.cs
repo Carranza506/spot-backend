@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Npgsql.NameTranslation;
+using Spot.Business.Api.Billing;
 using Spot.Business.Api.Data;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Options;
@@ -46,8 +47,13 @@ builder.Services.AddHealthChecks();
 // matches the lowercase labels the migration actually created ("whatsapp", not "WHATSAPP"), and
 // is a single shared instance so EF Core doesn't build a new internal service provider per request.
 var nameTranslator = new NpgsqlSnakeCaseNameTranslator();
+// Billing's enums (#138) keep their UPPERCASE labels, same as Spot.AiSearch.Api's: the null
+// translator leaves the C# names as they are ("PAST_DUE"). Shared instance for the same reason.
+var keepLabelsTranslator = new NpgsqlNullNameTranslator();
 var npgsqlDataSource = new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("DefaultConnection"))
     .MapEnum<ContactType>(nameTranslator: nameTranslator)
+    .MapEnum<SubscriptionStatus>("subscription_status", nameTranslator: keepLabelsTranslator)
+    .MapEnum<SubscriptionPaymentStatus>("subscription_payment_status", nameTranslator: keepLabelsTranslator)
     .UseNetTopologySuite()
     .Build();
 
@@ -56,6 +62,8 @@ builder.Services.AddDbContext<BusinessDbContext>(options =>
         npgsql => npgsql
             .MigrationsHistoryTable("__EFMigrationsHistory_business")
             .MapEnum<ContactType>(nameTranslator: nameTranslator)
+            .MapEnum<SubscriptionStatus>("subscription_status", nameTranslator: keepLabelsTranslator)
+            .MapEnum<SubscriptionPaymentStatus>("subscription_payment_status", nameTranslator: keepLabelsTranslator)
             // Maps business_locations.location (geography(Point,4326)) to NetTopologySuite's
             // Point (#58). Registered here and on the data source above: EF Core needs it for the
             // model, Npgsql for reading/writing the values on the connection.
@@ -83,6 +91,10 @@ builder.Services.AddOptions<PhotoLimitsOptions>()
     .ValidateOnStart();
 builder.Services.AddSingleton<IValidateOptions<PhotoLimitsOptions>, PhotoLimitsOptionsValidator>();
 builder.Services.AddScoped<IPhotoService, PhotoService>();
+
+// Business plans paid through Stripe Checkout, test mode only (#138). The Stripe settings are
+// validated on first use, not at startup; see BillingServiceCollectionExtensions.
+builder.Services.AddStripeBilling(builder.Configuration);
 
 // Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the "Jwt"
 // section — the same setup every microservice uses. See Spot.Shared.Auth. Needed here even

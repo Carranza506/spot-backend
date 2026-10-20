@@ -290,6 +290,86 @@ All limits are configuration, validated at startup:
 If a photo's row is deleted but its file can't be, the service logs an `Error` with the storage
 key: that file is still reachable by URL and has to be removed by hand.
 
+## Payments (Stripe test mode)
+
+Businesses can subscribe to the PRO plan (₡10,000/month) through Stripe Checkout
+(`/api/v1/business/billing/...`, see `contracts/spot-api.yaml`). **Test mode only**: no real money,
+and `Spot.Business.Api` refuses any key that isn't `sk_test_...`. Card data never reaches Spot.
+Stripe hosts the payment page, and a subscription is only activated by a verified Stripe webhook,
+never by the redirect back to the frontend.
+
+### With Docker (recommended)
+
+1. Copy `.env.example` to `.env` at the repo root and ask the team for the values
+   (`STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID`). `.env` is git-ignored: never commit it, and never
+   paste the key into `appsettings*.json`, `docker-compose.yml` or any other tracked file.
+2. `docker compose up --build`.
+
+The `stripe-cli` service logs in with the API key (no `stripe login` needed). On every start it
+writes the webhook signing secret to a volume shared with `business-api`, then forwards Stripe's
+events to `http://gateway:8080/api/v1/business/billing/webhooks/stripe`. Check it with
+`docker compose logs -f stripe-cli`. Without a `.env` the rest of the stack still runs; only the
+billing calls that need Stripe fail, and `stripe-cli` keeps restarting.
+
+Checkout returns to `http://localhost:5173/billing/success` / `/billing/cancel` (the Vite dev
+server). To change that, set `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` in `.env`.
+
+**Paying:** call `POST /api/v1/business/billing/checkout` with a BUSINESS token and
+`{ "planCode": "PRO" }`, open the returned `checkoutUrl`, and pay with the test card
+`4242 4242 4242 4242`, any future expiry date, any CVC and any postal code. A few seconds later
+`GET /api/v1/business/billing/subscription` shows `PRO` / `ACTIVE`, and
+`GET /api/v1/business/billing/payments` shows the payment. Other test cards (declines, 3D Secure)
+are listed at https://docs.stripe.com/testing.
+
+**Triggering test events:**
+
+```bash
+docker compose exec stripe-cli stripe trigger invoice.paid
+docker compose exec stripe-cli stripe trigger customer.subscription.deleted
+```
+
+`stripe trigger` creates its own fixture customer and subscription, which don't belong to any Spot
+account. The webhook verifies them and answers 200, but stores nothing (`business-api` logs
+"has no Spot account; ignored"). This checks the forwarding and signature path. To exercise the
+full flow, go through a real checkout as above. You can then act on that subscription from the
+Stripe dashboard (test mode), e.g. cancel it to receive `customer.subscription.deleted`.
+
+### Without Docker
+
+```bash
+# 1. Stripe settings for Business.Api (user-secrets, never appsettings*.json)
+cd src/Spot.Business.Api
+dotnet user-secrets set "Stripe:SecretKey" "sk_test_..."
+dotnet user-secrets set "Stripe:ProPriceId" "price_..."
+
+# 2. Write the webhook signing secret where Business.Api reads it
+#    (Stripe:WebhookSecretFile, App_Data/stripe/webhook-secret by default; App_Data is git-ignored)
+mkdir -p App_Data/stripe
+stripe listen --api-key sk_test_... --print-secret > App_Data/stripe/webhook-secret
+cd ../..
+
+# 3. Run Business.Api and the Gateway (one terminal each)
+dotnet run --project src/Spot.Business.Api
+dotnet run --project src/Spot.Gateway
+
+# 4. Forward events to the Gateway (another terminal; needs the Stripe CLI installed)
+stripe listen --api-key sk_test_... \
+  --events checkout.session.completed,invoice.paid,invoice.payment_failed,customer.subscription.updated,customer.subscription.deleted \
+  --forward-to http://localhost:5195/api/v1/business/billing/webhooks/stripe
+```
+
+`business-api` reads the secret file on every webhook, so rerunning step 2 never needs a restart.
+
+| Setting (`Stripe:*`) | Docker source | Default |
+|---|---|---|
+| `SecretKey` | `STRIPE_SECRET_KEY` in `.env` | — (required) |
+| `ProPriceId` | `STRIPE_PRO_PRICE_ID` in `.env` | — (required; used unless `plans.stripe_price_id` is set) |
+| `WebhookSecretFile` | `/run/stripe/webhook-secret` (written by `stripe-cli`) | `App_Data/stripe/webhook-secret` |
+| `SuccessUrl` / `CancelUrl` | `STRIPE_SUCCESS_URL` / `STRIPE_CANCEL_URL` (optional) | `http://localhost:5173/billing/success?session_id={CHECKOUT_SESSION_ID}` / `.../billing/cancel` |
+
+`GET /billing/plans` also lists what each plan includes (`features`). Those limits are
+informational for now: nothing enforces them yet.
+
 ## Team conventions
 
 - Branches: `feature/short-name`, `fix/short-name`

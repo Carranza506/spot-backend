@@ -18,13 +18,26 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
     public DbSet<ServicePhoto> ServicePhotos => Set<ServicePhoto>();
     public DbSet<FavoriteBusiness> FavoriteBusinesses => Set<FavoriteBusiness>();
     public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<Plan> Plans => Set<Plan>();
+    public DbSet<Subscription> Subscriptions => Set<Subscription>();
+    public DbSet<SubscriptionPayment> SubscriptionPayments => Set<SubscriptionPayment>();
 
     /// <summary>Fixed point in time used for the seed rows below — HasData needs static values.</summary>
     private static readonly DateTimeOffset SeedTimestamp = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
+    /// <summary>Seeded plan ids (#138), fixed so HasData is stable across migrations.</summary>
+    public static readonly Guid FreePlanId = Guid.Parse("0f3c2a6e-5b1d-4c8e-9a7f-1e2d3c4b5a60");
+    public static readonly Guid ProPlanId = Guid.Parse("7d9e1f2a-3b4c-4d5e-8f60-718293a4b5c6");
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresEnum<ContactType>();
+
+        // Billing (#138). Explicit UPPERCASE labels, same as Spot.AiSearch.Api's enums (see the note in
+        // its AiSearchDbContext): they match db/Spot.sql and the contract exactly. Program.cs maps
+        // them with a translator that keeps the C# names as they are.
+        modelBuilder.HasPostgresEnum("subscription_status", ["ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"]);
+        modelBuilder.HasPostgresEnum("subscription_payment_status", ["PAID", "FAILED"]);
 
         // Owned and migrated by Spot.Auth.Api; mapped here only so EF Core can express the
         // user_id foreign keys below. See Models/UserReference.cs.
@@ -286,6 +299,88 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
             e.HasOne(x => x.Business).WithMany(b => b.Reviews).HasForeignKey(x => x.BusinessId).OnDelete(DeleteBehavior.Restrict);
             // db/Spot.sql:155
             e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // ---------- Billing (#138) ----------
+
+        modelBuilder.Entity<Plan>(e =>
+        {
+            e.ToTable("plans", t =>
+            {
+                t.HasCheckConstraint("ck_plans_code", "code IN ('FREE','PRO')");
+                t.HasCheckConstraint("ck_plans_interval", "interval IN ('MONTHLY')");
+                t.HasCheckConstraint("ck_plans_price_crc", "price_crc >= 0");
+            });
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.Code).HasColumnName("code").HasMaxLength(20).HasConversion<string>();
+            e.Property(x => x.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
+            e.Property(x => x.PriceCrc).HasColumnName("price_crc").HasColumnType("numeric(12,2)");
+            e.Property(x => x.Interval).HasColumnName("interval").HasMaxLength(20).HasConversion<string>();
+            e.Property(x => x.StripePriceId).HasColumnName("stripe_price_id").HasMaxLength(255);
+            e.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+            e.HasIndex(x => x.Code).IsUnique();
+
+            // PRO's stripe_price_id is left null on purpose: the real Price id differs per Stripe
+            // account, so it comes from Stripe:ProPriceId (see BillingService) instead of the seed.
+            e.HasData(
+                new Plan
+                {
+                    Id = FreePlanId,
+                    Code = PlanCode.FREE,
+                    Name = "Gratis",
+                    PriceCrc = 0m,
+                    Interval = BillingInterval.MONTHLY,
+                    IsActive = true,
+                },
+                new Plan
+                {
+                    Id = ProPlanId,
+                    Code = PlanCode.PRO,
+                    Name = "Pro",
+                    PriceCrc = 10000m,
+                    Interval = BillingInterval.MONTHLY,
+                    IsActive = true,
+                });
+        });
+
+        modelBuilder.Entity<Subscription>(e =>
+        {
+            e.ToTable("subscriptions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.AccountId).HasColumnName("account_id");
+            e.Property(x => x.PlanId).HasColumnName("plan_id");
+            e.Property(x => x.Status).HasColumnName("status").HasColumnType("subscription_status");
+            e.Property(x => x.StripeCustomerId).HasColumnName("stripe_customer_id").HasMaxLength(255).IsRequired();
+            e.Property(x => x.StripeSubscriptionId).HasColumnName("stripe_subscription_id").HasMaxLength(255).IsRequired();
+            e.Property(x => x.CurrentPeriodEnd).HasColumnName("current_period_end");
+            e.Property(x => x.CancelAtPeriodEnd).HasColumnName("cancel_at_period_end").HasDefaultValue(false);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            e.HasIndex(x => x.StripeSubscriptionId).IsUnique();
+            e.HasIndex(x => x.AccountId).HasDatabaseName("idx_subscriptions_account");
+            // At most one ACTIVE/PAST_DUE subscription per account. A second paid checkout that
+            // completes anyway (two tabs) is rejected here and only logged; see BillingService.
+            e.HasIndex(x => x.AccountId, "ux_subscriptions_one_current").IsUnique().HasFilter("status IN ('ACTIVE','PAST_DUE')");
+            // Owned by Spot.Auth.Api; see Models/UserReference.cs. Cascade, same as businesses.account_id.
+            e.HasOne<UserReference>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.Plan).WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SubscriptionPayment>(e =>
+        {
+            e.ToTable("subscription_payments", t => t.HasCheckConstraint("ck_subscription_payments_amount_crc", "amount_crc >= 0"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.SubscriptionId).HasColumnName("subscription_id");
+            e.Property(x => x.AmountCrc).HasColumnName("amount_crc").HasColumnType("numeric(12,2)");
+            e.Property(x => x.Status).HasColumnName("status").HasColumnType("subscription_payment_status");
+            e.Property(x => x.StripeInvoiceId).HasColumnName("stripe_invoice_id").HasMaxLength(255).IsRequired();
+            e.Property(x => x.PaidAt).HasColumnName("paid_at");
+            e.HasIndex(x => x.StripeInvoiceId).IsUnique();
+            e.HasIndex(x => x.SubscriptionId).HasDatabaseName("idx_subscription_payments_subscription");
+            e.HasOne(x => x.Subscription).WithMany(s => s.Payments).HasForeignKey(x => x.SubscriptionId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -100,12 +100,24 @@ services:
       Logging__Console__FormatterName: json
       # Photo URLs as clients see them: through the Gateway's published port (see gateway below).
       PhotoStorage__PublicBaseUrl: http://localhost:5195/api/v1/business/media/photos
+      # Stripe test mode (#138). The key and price come from the git-ignored .env next to this file
+      # (copy .env.example); they are never committed. Without them the stack still boots, and only
+      # the billing calls that need Stripe fail.
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY}
+      Stripe__ProPriceId: ${STRIPE_PRO_PRICE_ID}
+      # Written by the stripe-cli service below on every start, and read on every webhook.
+      Stripe__WebhookSecretFile: /run/stripe/webhook-secret
+      # Where Checkout returns the user: the Vite dev server by default (spot-frontend #44).
+      Stripe__SuccessUrl: ${STRIPE_SUCCESS_URL:-http://localhost:5173/billing/success?session_id={CHECKOUT_SESSION_ID}}
+      Stripe__CancelUrl: ${STRIPE_CANCEL_URL:-http://localhost:5173/billing/cancel}
     secrets:
       - jwt_public_key
     volumes:
       # Uploaded photos (#65). Named volume, so they survive `docker compose down` and image
       # rebuilds (`down -v` deletes them). The path matches PhotoStorage__RootPath in the Dockerfile.
       - business_photos:/var/lib/spot/photos
+      # The webhook signing secret written by stripe-cli (read-only here).
+      - stripe_cli:/run/stripe:ro
     ports:
       - "5151:8080"
     healthcheck:
@@ -252,9 +264,44 @@ services:
     networks:
       - spot-network
 
+  # Forwards Stripe test-mode webhooks to business-api through the gateway (#138), so nobody needs a
+  # public URL or `stripe login`: it authenticates with the API key from .env. `stripe listen`'s
+  # signing secret can change between runs, so on every start it is written to the stripe_cli volume
+  # (shared read-only with business-api, which reads it on every webhook) before forwarding begins.
+  # The image is Alpine-based, so /bin/sh is available to run both steps. `$$` is a literal `$` for
+  # the shell, not a compose variable.
+  stripe-cli:
+    image: stripe/stripe-cli:v1.53.0
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY}
+      # Avoids an intermittent telemetry panic on start ("WaitGroup is reused before previous Wait").
+      STRIPE_CLI_TELEMETRY_OPTOUT: "1"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        stripe listen --api-key "$$STRIPE_API_KEY" --print-secret > /run/stripe/webhook-secret.tmp
+        grep -q '^whsec_' /run/stripe/webhook-secret.tmp
+        chmod 644 /run/stripe/webhook-secret.tmp
+        mv /run/stripe/webhook-secret.tmp /run/stripe/webhook-secret
+        echo "Webhook signing secret written; forwarding to the gateway."
+        exec stripe listen --api-key "$$STRIPE_API_KEY" --events checkout.session.completed,invoice.paid,invoice.payment_failed,customer.subscription.updated,customer.subscription.deleted --forward-to http://gateway:8080/api/v1/business/billing/webhooks/stripe
+    volumes:
+      - stripe_cli:/run/stripe
+    restart: unless-stopped
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: "0.25"
+    networks:
+      - spot-network
+
 volumes:
   postgres_data:
   business_photos:
+  stripe_cli:
 
 networks:
   spot-network:
