@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,7 +11,8 @@ namespace Spot.Booking.Api.Tests.Controllers;
 /// <summary>
 /// The real Spot.Booking.Api pipeline and the real AvailabilityService, with IAvailabilityRepository
 /// swapped for an in-memory fake and the clock frozen at <see cref="Now"/>. Same shape as
-/// Spot.Business.Api.Tests' BusinessesApiFactory; no JWT setup, since availability is public.
+/// Spot.Business.Api.Tests' BusinessesApiFactory. Availability is public, so no tokens are issued;
+/// the Jwt settings exist only because Program.cs validates them at startup since #67.
 /// </summary>
 public sealed class AvailabilityApiFactory : WebApplicationFactory<Program>
 {
@@ -19,8 +21,15 @@ public sealed class AvailabilityApiFactory : WebApplicationFactory<Program>
 
     public FakeAvailabilityRepository Repository { get; } = new();
 
+    private readonly RSA _jwtKey = RSA.Create(2048);
+
     public AvailabilityApiFactory()
     {
+        // Environment variables are process-wide: see ApiFactoryCollection.
+        Environment.SetEnvironmentVariable("Jwt__Issuer", BookingsApiFactory.Issuer);
+        Environment.SetEnvironmentVariable("Jwt__Audience", BookingsApiFactory.Audience);
+        Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", _jwtKey.ExportSubjectPublicKeyInfoPem());
+
         // Placeholder for Program.cs's eagerly-built NpgsqlDataSource — only parsed, never
         // connected to, since the repository is faked. See BusinessesApiFactory.
         Environment.SetEnvironmentVariable(
@@ -41,7 +50,13 @@ public sealed class AvailabilityApiFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         if (disposing)
+        {
+            _jwtKey.Dispose();
+            Environment.SetEnvironmentVariable("Jwt__Issuer", null);
+            Environment.SetEnvironmentVariable("Jwt__Audience", null);
+            Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", null);
             Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", null);
+        }
 
         base.Dispose(disposing);
     }

@@ -64,6 +64,9 @@ public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbCo
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.BusinessId).HasColumnName("business_id");
+            // Name and price are copied onto a new booking (#67).
+            e.Property(x => x.Name).HasColumnName("name").HasMaxLength(150).IsRequired();
+            e.Property(x => x.Price).HasColumnName("price").HasColumnType("numeric(12,2)");
             e.Property(x => x.DurationMinutes).HasColumnName("duration_minutes");
             e.Property(x => x.IsActive).HasColumnName("is_active");
         });

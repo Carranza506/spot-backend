@@ -45,7 +45,9 @@ public static class AvailabilityCalculator
         for (var i = 0; i <= to.DayNumber - from.DayNumber; i++)
         {
             var date = from.AddDays(i);
-            if (ResolveOpeningHours(date, hoursByDay, exceptionsByDate) is not { } hours)
+            var opening = OpeningHoursResolver.Resolve(
+                hoursByDay.GetValueOrDefault((short)date.DayOfWeek), exceptionsByDate.GetValueOrDefault(date));
+            if (opening is not { } hours)
             {
                 days.Add(new AvailabilityDay(date, IsClosed: true, []));
                 continue;
@@ -72,24 +74,4 @@ public static class AvailabilityCalculator
     /// <summary>The UTC instant (Kind = Utc) of <paramref name="time"/> on the local <paramref name="date"/> in <paramref name="timeZone"/>.</summary>
     public static DateTime ToUtc(DateOnly date, TimeOnly time, TimeZoneInfo timeZone) =>
         TimeZoneInfo.ConvertTimeToUtc(date.ToDateTime(time, DateTimeKind.Unspecified), timeZone);
-
-    private static (TimeOnly Open, TimeOnly Close)? ResolveOpeningHours(
-        DateOnly date,
-        Dictionary<short, BusinessHoursReference> hoursByDay,
-        Dictionary<DateOnly, BusinessScheduleExceptionReference> exceptionsByDate)
-    {
-        if (exceptionsByDate.TryGetValue(date, out var exception))
-            return exception.IsClosed ? null : AsRange(exception.OpenTime, exception.CloseTime);
-
-        // business_hours.day_of_week uses .NET's DayOfWeek numbering (0 = Sunday … 6 = Saturday).
-        if (hoursByDay.TryGetValue((short)date.DayOfWeek, out var weekly) && !weekly.IsClosed)
-            return AsRange(weekly.OpenTime, weekly.CloseTime);
-
-        return null;
-    }
-
-    // The tables' CHECK guarantees both times, with open < close, on a row that isn't closed;
-    // anything else is treated as closed rather than guessed at.
-    private static (TimeOnly Open, TimeOnly Close)? AsRange(TimeOnly? open, TimeOnly? close) =>
-        open is { } o && close is { } c && o < c ? (o, c) : null;
 }

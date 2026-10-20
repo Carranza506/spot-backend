@@ -1,8 +1,11 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Npgsql.NameTranslation;
+using Spot.Booking.Api.Auth;
 using Spot.Booking.Api.Data;
+using Spot.Shared.Auth;
 using Spot.Booking.Api.Models;
 using Spot.Booking.Api.Repositories;
 using Spot.Booking.Api.Services;
@@ -51,10 +54,20 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
             .MigrationsHistoryTable("__EFMigrationsHistory_booking")
             .MapEnum<BookingStatus>(nameTranslator: nameTranslator)));
 
-// Injected so "slots in the past are excluded" (#66) can be tested with a fixed clock.
+// Injected so "slots in the past are excluded" (#66) and "no bookings in the past" (#67) can be
+// tested with a fixed clock.
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IAvailabilityRepository, AvailabilityRepository>();
 builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
+builder.Services.AddScoped<IBookingRepository, BookingRepository>();
+builder.Services.AddScoped<IBookingService, BookingService>();
+
+// Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the "Jwt"
+// section — the same setup every microservice uses. See Spot.Shared.Auth. Needed since #67:
+// creating a booking requires the CLIENT role. Availability (#66) stays public (no [Authorize]).
+builder.Services.AddSpotJwtAuthentication(builder.Configuration);
+// 403s (valid token, wrong role) in the Error shape too; AddSpotJwtAuthentication only covers 401.
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ForbiddenErrorResultHandler>();
 
 var app = builder.Build();
 
@@ -69,6 +82,7 @@ app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
 }));
 
 app.UseHttpsRedirection();
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHealthChecks("/health");
