@@ -26,7 +26,7 @@ public sealed class FakeServiceOfferingRepository : IServiceOfferingRepository
         return Task.CompletedTask;
     }
 
-    /// <summary>Seeds a service directly, bypassing CreateAsync — for list/get test setup.</summary>
+    /// <summary>Seeds a service directly, bypassing CreateAsync — for list/get/update test setup.</summary>
     public ServiceEntity Seed(ServiceEntity service)
     {
         if (service.Id == Guid.Empty)
@@ -36,6 +36,16 @@ public sealed class FakeServiceOfferingRepository : IServiceOfferingRepository
         service.UpdatedAt = service.CreatedAt;
         _services[service.Id] = service;
         return service;
+    }
+
+    public Task<ServiceEntity?> GetTrackedByIdAsync(Guid serviceId, CancellationToken ct = default) =>
+        Task.FromResult(_services.GetValueOrDefault(serviceId));
+
+    public Task SaveChangesAsync(ServiceEntity service, CancellationToken ct = default)
+    {
+        service.UpdatedAt = DateTimeOffset.UtcNow;
+        _services[service.Id] = service;
+        return Task.CompletedTask;
     }
 
     public Task<(IReadOnlyList<ServiceEntity> Items, int Total)> ListAsync(

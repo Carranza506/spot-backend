@@ -348,6 +348,255 @@ public class ServicesControllerTests(BusinessesApiFactory factory) : IClassFixtu
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
+    // ---------- PATCH /business/services/{serviceId} ----------
+
+    [Fact]
+    public async Task UpdateService_Owner_Returns200WithTheUpdatedService()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity
+        {
+            BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true,
+        });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "Corte Premium", price = 9000 });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Corte Premium", body.GetProperty("name").GetString());
+        Assert.Equal(9000m, body.GetProperty("price").GetDecimal());
+    }
+
+    [Fact]
+    public async Task UpdateService_NonOwnerBusinessAccount_Returns403()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "Hackeado" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateService_NoToken_Returns401()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        var response = await factory.CreateClient().PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateService_UnknownService_Returns404()
+    {
+        Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{Guid.NewGuid()}", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    public static TheoryData<string> InvalidUpdateBodies => new()
+    {
+        """{ "name": "   " }""",
+        $$"""{ "name": "{{new string('a', 151)}}" }""",
+        """{ "price": -1 }""",
+        """{ "durationMinutes": 0 }""",
+        // Explicit null is rejected for the non-nullable fields (only description may be null).
+        """{ "name": null }""",
+        """{ "price": null }""",
+        """{ "durationMinutes": null }""",
+        """{ "isActive": null }""",
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidUpdateBodies))]
+    public async Task UpdateService_InvalidBody_Returns400(string json)
+    {
+        var accountId = Guid.NewGuid();
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsync(
+            $"/business/services/{service.Id}", new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateService_DescriptionNull_ClearsIt_DescriptionEmpty_Also()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+        var s1 = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Description = "tenia", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var nullResp = await client.PatchAsync($"/business/services/{s1.Id}", Json("""{ "description": null }"""));
+        var nullBody = await nullResp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(HttpStatusCode.OK, nullResp.StatusCode);
+        Assert.Equal(JsonValueKind.Null, nullBody.GetProperty("description").ValueKind);
+
+        var s2 = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Barba", Description = "tenia", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var emptyResp = await client.PatchAsync($"/business/services/{s2.Id}", Json("""{ "description": "" }"""));
+        var emptyBody = await emptyResp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(HttpStatusCode.OK, emptyResp.StatusCode);
+        Assert.Equal(JsonValueKind.Null, emptyBody.GetProperty("description").ValueKind);  // "" normalizes to null
+    }
+
+    [Fact]
+    public async Task UpdateService_BusinessMissing_Returns404()
+    {
+        Reset();
+        // A service whose business was never seeded: GetOwnedAsync can't resolve it -> 404, not an edit.
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = Guid.NewGuid(), Name = "Huerfano", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateService_BusinessIdInBody_IsIgnored()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "Nuevo", businessId = Guid.NewGuid() });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(business.Id, factory.ServiceRepository.All.Single().BusinessId);  // unchanged
+    }
+
+    [Fact]
+    public async Task UpdateService_After403_LeavesTheServiceUnchanged()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        await client.PatchAsJsonAsync($"/business/services/{factory.ServiceRepository.All.Single().Id}", new { name = "Hackeado" });
+
+        Assert.Equal("Corte", factory.ServiceRepository.All.Single().Name);
+    }
+
+    [Fact]
+    public async Task UpdateService_After400_LeavesTheServiceUnchanged()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        await client.PatchAsync($"/business/services/{factory.ServiceRepository.All.Single().Id}", Json("""{ "price": -1 }"""));
+
+        Assert.Equal(5000m, factory.ServiceRepository.All.Single().Price);
+    }
+
+    [Fact]
+    public async Task UpdateService_Owner_InactiveService_Returns200()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", Price = 5000m, DurationMinutes = 30, IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{service.Id}", new { name = "Reactivado" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private static StringContent Json(string json) => new(json, System.Text.Encoding.UTF8, "application/json");
+
+
+    // ---------- DELETE /business/services/{serviceId} (soft delete) ----------
+
+    [Fact]
+    public async Task DeactivateService_Owner_Returns204AndSoftDeletes()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var stored = factory.ServiceRepository.All.Single();
+        Assert.False(stored.IsActive);   // soft-deleted, still present
+    }
+
+    [Fact]
+    public async Task DeactivateService_AlreadyInactive_Returns204()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Viejo", Price = 5000m, DurationMinutes = 30, IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeactivateService_NonOwnerBusinessAccount_Returns403AndKeepsItActive()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(factory.ServiceRepository.All.Single().IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateService_NoToken_Returns401()
+    {
+        Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var service = factory.ServiceRepository.Seed(new ServiceEntity { BusinessId = business.Id, Name = "Corte", Price = 5000m, DurationMinutes = 30, IsActive = true });
+
+        var response = await factory.CreateClient().DeleteAsync($"/business/services/{service.Id}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeactivateService_UnknownService_Returns404()
+    {
+        Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/services/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 
     private void Reset()
     {

@@ -17,6 +17,18 @@ public interface IServiceOfferingRepository
     Task CreateAsync(ServiceEntity service, CancellationToken ct = default);
 
     /// <summary>
+    /// Loads a service by id as a <b>tracked</b> entity (unlike the read-only lookups), so a caller
+    /// can mutate it and persist with <see cref="SaveChangesAsync"/>. Null if none exists.
+    /// </summary>
+    Task<ServiceEntity?> GetTrackedByIdAsync(Guid serviceId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Persists changes made to a tracked service (from <see cref="GetTrackedByIdAsync"/>) and
+    /// refreshes it from the database afterwards (<c>updated_at</c> is set by a Postgres trigger).
+    /// </summary>
+    Task SaveChangesAsync(ServiceEntity service, CancellationToken ct = default);
+
+    /// <summary>
     /// A page of <paramref name="businessId"/>'s services, ordered by name then id (a stable
     /// tie-breaker, since names aren't unique). <paramref name="active"/> filters by
     /// <c>is_active</c>; <c>null</c> returns both (used for the owner's full view). Callers check
