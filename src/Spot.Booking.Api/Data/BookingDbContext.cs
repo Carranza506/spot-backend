@@ -7,6 +7,10 @@ namespace Spot.Booking.Api.Data;
 public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbContext(options)
 {
     public DbSet<BookingEntity> Bookings => Set<BookingEntity>();
+    public DbSet<BusinessReference> Businesses => Set<BusinessReference>();
+    public DbSet<BusinessHoursReference> BusinessHours => Set<BusinessHoursReference>();
+    public DbSet<BusinessScheduleExceptionReference> BusinessScheduleExceptions => Set<BusinessScheduleExceptionReference>();
+    public DbSet<ServiceReference> Services => Set<ServiceReference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -18,6 +22,50 @@ public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbCo
         {
             e.ToTable("users", t => t.ExcludeFromMigrations());
             e.HasKey(x => x.Id);
+        });
+
+        // Owned and migrated by Spot.Business.Api; mapped read-only (only the columns availability
+        // needs, #66) and excluded from this service's migrations. See Models/BusinessReference.cs.
+        modelBuilder.Entity<BusinessReference>(e =>
+        {
+            e.ToTable("businesses", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+        });
+
+        modelBuilder.Entity<BusinessHoursReference>(e =>
+        {
+            e.ToTable("business_hours", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.BusinessId).HasColumnName("business_id");
+            e.Property(x => x.DayOfWeek).HasColumnName("day_of_week");
+            e.Property(x => x.OpenTime).HasColumnName("open_time");
+            e.Property(x => x.CloseTime).HasColumnName("close_time");
+            e.Property(x => x.IsClosed).HasColumnName("is_closed");
+        });
+
+        modelBuilder.Entity<BusinessScheduleExceptionReference>(e =>
+        {
+            e.ToTable("business_schedule_exceptions", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.BusinessId).HasColumnName("business_id");
+            e.Property(x => x.ExceptionDate).HasColumnName("exception_date");
+            e.Property(x => x.IsClosed).HasColumnName("is_closed");
+            e.Property(x => x.OpenTime).HasColumnName("open_time");
+            e.Property(x => x.CloseTime).HasColumnName("close_time");
+        });
+
+        modelBuilder.Entity<ServiceReference>(e =>
+        {
+            e.ToTable("services", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.BusinessId).HasColumnName("business_id");
+            e.Property(x => x.DurationMinutes).HasColumnName("duration_minutes");
+            e.Property(x => x.IsActive).HasColumnName("is_active");
         });
 
         modelBuilder.Entity<BookingEntity>(e =>
