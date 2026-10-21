@@ -1,3 +1,4 @@
+using NetTopologySuite.Geometries;
 using Spot.Business.Api.Models;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
@@ -63,10 +64,13 @@ public interface IBusinessRepository
     /// name and paged. <paramref name="q"/> matches name/description case-insensitively;
     /// <paramref name="categoryId"/> matches via business_categories; <paramref name="city"/>/
     /// <paramref name="province"/> match via the business's location (a business with no location
-    /// is only excluded when one of those two is given).
+    /// is only excluded when one of those two is given). When <paramref name="nearPoint"/> and
+    /// <paramref name="radiusKm"/> are both given (#119), only businesses whose location is within
+    /// that radius match — businesses without a location are excluded from a proximity search.
     /// </summary>
     Task<(IReadOnlyList<BusinessEntity> Items, int Total)> SearchAsync(
         string? q, Guid? categoryId, string? city, string? province,
+        Point? nearPoint, double? radiusKm,
         int page, int pageSize, CancellationToken ct = default);
 
     /// <summary>

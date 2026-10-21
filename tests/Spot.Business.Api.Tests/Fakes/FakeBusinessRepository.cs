@@ -1,3 +1,4 @@
+using NetTopologySuite.Geometries;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using BusinessEntity = Spot.Business.Api.Models.Business;
@@ -133,8 +134,17 @@ public sealed class FakeBusinessRepository : IBusinessRepository
 
     public Task<(IReadOnlyList<BusinessEntity> Items, int Total)> SearchAsync(
         string? q, Guid? categoryId, string? city, string? province,
+        Point? nearPoint, double? radiusKm,
         int page, int pageSize, CancellationToken ct = default)
     {
+        // nearPoint/radiusKm (#119) are accepted only so the controller->service->repository flow
+        // runs, but this fake deliberately does NOT filter by distance: real ST_DWithin on a
+        // geography column measures meters on the spheroid, which can't be reproduced in memory
+        // without faking the math (a test that passes but proves nothing). Proximity is covered by
+        // the Docker e2e against real PostGIS, the same way ILIKE and the unique-index paths are.
+        _ = nearPoint;
+        _ = radiusKm;
+
         // Mirrors BusinessRepository.SearchAsync: active only, AND of the given filters, ordered by name.
         IEnumerable<BusinessEntity> matches = _businesses.Values.Where(b => b.IsActive);
 

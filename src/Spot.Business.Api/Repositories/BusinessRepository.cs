@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NetTopologySuite.Geometries;
 using Npgsql;
 using Spot.Business.Api.Data;
 using Spot.Business.Api.Models;
@@ -47,6 +48,7 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
 
     public async Task<(IReadOnlyList<BusinessEntity> Items, int Total)> SearchAsync(
         string? q, Guid? categoryId, string? city, string? province,
+        Point? nearPoint, double? radiusKm,
         int page, int pageSize, CancellationToken ct = default)
     {
         // Only active businesses are publicly searchable — same visibility rule as GetPublicAsync.
@@ -72,6 +74,14 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
 
         if (!string.IsNullOrWhiteSpace(province))
             query = query.Where(b => b.Location != null && b.Location.Province == province.Trim());
+
+        // Proximity (#119): only businesses whose location is within radiusKm of nearPoint.
+        // business_locations.location is geography(Point,4326), on which ST_DWithin measures in
+        // METERS — so convert km to m (×1000). IsWithinDistance translates to ST_DWithin (the query
+        // runs in Postgres, not in memory). A business with no location can't match, so it's excluded.
+        if (nearPoint is not null && radiusKm is { } km)
+            query = query.Where(b => b.Location != null
+                && b.Location.Location.IsWithinDistance(nearPoint, km * 1000));
 
         var total = await query.CountAsync(ct);
 

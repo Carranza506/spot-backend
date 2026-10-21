@@ -580,8 +580,11 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
     }
 
     [Fact]
-    public async Task SearchBusinesses_ProximityParams_AreIgnoredNot400()
+    public async Task SearchBusinesses_CompleteProximityTrio_Returns200()
     {
+        // A complete, in-range trio is honored (not a 400). Whether the distance actually filters
+        // is PostGIS behavior (ST_DWithin) verified by the Docker e2e, not asserted here — the fake
+        // doesn't filter by distance on purpose, so this only proves the trio is accepted.
         factory.BusinessRepository.Reset();
         factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
         var client = factory.CreateClient();
@@ -589,8 +592,73 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         var response = await client.GetAsync("/business/businesses?lat=9.9&lng=-84.1&radiusKm=5");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("?lat=9.9")]
+    [InlineData("?lng=-84.1")]
+    [InlineData("?radiusKm=5")]
+    [InlineData("?lat=9.9&lng=-84.1")]
+    [InlineData("?lat=9.9&radiusKm=5")]
+    [InlineData("?lng=-84.1&radiusKm=5")]
+    public async Task SearchBusinesses_PartialProximityTrio_Returns400(string queryString)
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses{queryString}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(1, body.GetProperty("pagination").GetProperty("total").GetInt32());
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData(0d)]
+    [InlineData(0.05d)]
+    [InlineData(100.1d)]
+    public async Task SearchBusinesses_RadiusKmOutOfRange_Returns400(double radiusKm)
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/business/businesses?lat=9.9&lng=-84.1&radiusKm={radiusKm.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData("?lat=91&lng=-84.1&radiusKm=5")]
+    [InlineData("?lat=9.9&lng=-181&radiusKm=5")]
+    public async Task SearchBusinesses_CoordinateOutOfRange_Returns400(string queryString)
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses{queryString}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task SearchBusinesses_NoProximityParams_BehavesLikeBefore()
+    {
+        // Regression: without lat/lng/radiusKm the endpoint works exactly as in #118.
+        factory.BusinessRepository.Reset();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Ferretería" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/business/businesses");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, body.GetProperty("pagination").GetProperty("total").GetInt32());
     }
 
     [Theory]

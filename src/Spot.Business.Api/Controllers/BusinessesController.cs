@@ -20,8 +20,9 @@ public class BusinessesController(IBusinessService businessService) : Controller
 {
     /// <summary>
     /// GET /business/businesses: public (contract: security: []). Traditional search of active
-    /// businesses by text/category/city/province, paged. The contract's proximity params
-    /// (lat/lng/radiusKm) aren't handled here — that's #119 (PostGIS); they're ignored, not 400.
+    /// businesses by text/category/city/province, paged, plus the optional proximity filter
+    /// (lat/lng/radiusKm, #119). The proximity params are an all-or-nothing trio: a partial trio,
+    /// an out-of-range coordinate, or a radiusKm outside 0.1–100 is a 400 — never silently ignored.
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(PaginatedResponse<BusinessDto>), StatusCodes.Status200OK)]
@@ -30,6 +31,21 @@ public class BusinessesController(IBusinessService businessService) : Controller
     {
         if (query.Page < 1 || query.PageSize < 1 || query.PageSize > 100)
             return BadRequest(new ApiError("BAD_REQUEST", "page debe ser >= 1 y pageSize entre 1 y 100."));
+
+        // Proximity (#119): lat/lng/radiusKm must come as a complete trio, validated here the same
+        // way as page/pageSize. A partial trio is a 400 instead of a half-applied (or ignored) filter.
+        var proximityCount = (query.Lat.HasValue ? 1 : 0) + (query.Lng.HasValue ? 1 : 0) + (query.RadiusKm.HasValue ? 1 : 0);
+        if (proximityCount is > 0 and < 3)
+            return BadRequest(new ApiError("BAD_REQUEST", "lat, lng y radiusKm deben enviarse juntos."));
+
+        if (proximityCount == 3)
+        {
+            if (query.Lat is < -90d or > 90d || query.Lng is < -180d or > 180d)
+                return BadRequest(new ApiError("BAD_REQUEST", "lat debe estar entre -90 y 90, y lng entre -180 y 180."));
+
+            if (query.RadiusKm is < 0.1d or > 100d)
+                return BadRequest(new ApiError("BAD_REQUEST", "radiusKm debe estar entre 0.1 y 100."));
+        }
 
         var result = await businessService.SearchAsync(query, ct);
         return Ok(result);
