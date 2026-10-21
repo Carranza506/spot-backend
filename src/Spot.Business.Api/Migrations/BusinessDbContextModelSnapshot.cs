@@ -23,6 +23,8 @@ namespace Spot.Business.Api.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "contact_type", new[] { "phone", "whatsapp", "email", "website", "facebook", "instagram", "tiktok", "other" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "subscription_payment_status", new[] { "PAID", "FAILED" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "subscription_status", new[] { "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED" });
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "postgis");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
@@ -525,6 +527,82 @@ namespace Spot.Business.Api.Migrations
                     b.ToTable("favorite_businesses", (string)null);
                 });
 
+            modelBuilder.Entity("Spot.Business.Api.Models.Plan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("Interval")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("interval");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("PriceCrc")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("price_crc");
+
+                    b.Property<string>("StripePriceId")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("stripe_price_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("plans", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_plans_code", "code IN ('FREE','PRO')");
+
+                            t.HasCheckConstraint("ck_plans_interval", "interval IN ('MONTHLY')");
+
+                            t.HasCheckConstraint("ck_plans_price_crc", "price_crc >= 0");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("0f3c2a6e-5b1d-4c8e-9a7f-1e2d3c4b5a60"),
+                            Code = "FREE",
+                            Interval = "MONTHLY",
+                            IsActive = true,
+                            Name = "Gratis",
+                            PriceCrc = 0m
+                        },
+                        new
+                        {
+                            Id = new Guid("7d9e1f2a-3b4c-4d5e-8f60-718293a4b5c6"),
+                            Code = "PRO",
+                            Interval = "MONTHLY",
+                            IsActive = true,
+                            Name = "Pro",
+                            PriceCrc = 10000m
+                        });
+                });
+
             modelBuilder.Entity("Spot.Business.Api.Models.Review", b =>
                 {
                     b.Property<Guid>("Id")
@@ -675,6 +753,121 @@ namespace Spot.Business.Api.Migrations
                     b.ToTable("service_photos", null, t =>
                         {
                             t.HasCheckConstraint("service_photos_display_order_check", "display_order >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("Spot.Business.Api.Models.Subscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<bool>("CancelAtPeriodEnd")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("cancel_at_period_end");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<DateTimeOffset>("CurrentPeriodEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("current_period_end");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plan_id");
+
+                    b.Property<SubscriptionStatus>("Status")
+                        .HasColumnType("subscription_status")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StripeCustomerId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("stripe_customer_id");
+
+                    b.Property<string>("StripeSubscriptionId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("stripe_subscription_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountId")
+                        .HasDatabaseName("idx_subscriptions_account");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("StripeSubscriptionId")
+                        .IsUnique();
+
+                    b.HasIndex(new[] { "AccountId" }, "ux_subscriptions_one_current")
+                        .IsUnique()
+                        .HasFilter("status IN ('ACTIVE','PAST_DUE')");
+
+                    b.ToTable("subscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("Spot.Business.Api.Models.SubscriptionPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<decimal>("AmountCrc")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("amount_crc");
+
+                    b.Property<DateTimeOffset?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<SubscriptionPaymentStatus>("Status")
+                        .HasColumnType("subscription_payment_status")
+                        .HasColumnName("status");
+
+                    b.Property<string>("StripeInvoiceId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("stripe_invoice_id");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("subscription_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StripeInvoiceId")
+                        .IsUnique();
+
+                    b.HasIndex("SubscriptionId")
+                        .HasDatabaseName("idx_subscription_payments_subscription");
+
+                    b.ToTable("subscription_payments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_subscription_payments_amount_crc", "amount_crc >= 0");
                         });
                 });
 
@@ -841,6 +1034,34 @@ namespace Spot.Business.Api.Migrations
                     b.Navigation("Service");
                 });
 
+            modelBuilder.Entity("Spot.Business.Api.Models.Subscription", b =>
+                {
+                    b.HasOne("Spot.Business.Api.Models.UserReference", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Spot.Business.Api.Models.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+                });
+
+            modelBuilder.Entity("Spot.Business.Api.Models.SubscriptionPayment", b =>
+                {
+                    b.HasOne("Spot.Business.Api.Models.Subscription", "Subscription")
+                        .WithMany("Payments")
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Subscription");
+                });
+
             modelBuilder.Entity("Spot.Business.Api.Models.Business", b =>
                 {
                     b.Navigation("Contacts");
@@ -866,6 +1087,11 @@ namespace Spot.Business.Api.Migrations
             modelBuilder.Entity("Spot.Business.Api.Models.Service", b =>
                 {
                     b.Navigation("Photos");
+                });
+
+            modelBuilder.Entity("Spot.Business.Api.Models.Subscription", b =>
+                {
+                    b.Navigation("Payments");
                 });
 #pragma warning restore 612, 618
         }

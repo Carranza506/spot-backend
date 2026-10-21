@@ -154,6 +154,38 @@ CREATE TABLE reviews (
 CREATE INDEX idx_reviews_business ON reviews(business_id);
 CREATE TRIGGER trg_reviews_updated_at BEFORE UPDATE ON reviews FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+CREATE TYPE subscription_status AS ENUM ('ACTIVE','PAST_DUE','CANCELED','EXPIRED');
+CREATE TYPE subscription_payment_status AS ENUM ('PAID','FAILED');
+
+CREATE TABLE plans (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(), code VARCHAR(20) NOT NULL, name VARCHAR(100) NOT NULL,
+ price_crc NUMERIC(12,2) NOT NULL, interval VARCHAR(20) NOT NULL, stripe_price_id VARCHAR(255),
+ is_active BOOLEAN NOT NULL DEFAULT TRUE,
+ CONSTRAINT ck_plans_code CHECK (code IN ('FREE','PRO')),
+ CONSTRAINT ck_plans_interval CHECK (interval IN ('MONTHLY')),
+ CONSTRAINT ck_plans_price_crc CHECK (price_crc >= 0));
+CREATE UNIQUE INDEX "IX_plans_code" ON plans(code);
+
+CREATE TABLE subscriptions (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(), account_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+ plan_id UUID NOT NULL REFERENCES plans(id) ON DELETE RESTRICT, status subscription_status NOT NULL,
+ stripe_customer_id VARCHAR(255) NOT NULL, stripe_subscription_id VARCHAR(255) NOT NULL,
+ current_period_end TIMESTAMPTZ NOT NULL, cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
+ created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE UNIQUE INDEX "IX_subscriptions_stripe_subscription_id" ON subscriptions(stripe_subscription_id);
+CREATE INDEX idx_subscriptions_account ON subscriptions(account_id);
+CREATE INDEX "IX_subscriptions_plan_id" ON subscriptions(plan_id);
+CREATE UNIQUE INDEX ux_subscriptions_one_current ON subscriptions(account_id) WHERE status IN ('ACTIVE','PAST_DUE');
+CREATE TRIGGER trg_subscriptions_updated_at BEFORE UPDATE ON subscriptions FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE subscription_payments (
+ id UUID PRIMARY KEY DEFAULT gen_random_uuid(), subscription_id UUID NOT NULL REFERENCES subscriptions(id) ON DELETE CASCADE,
+ amount_crc NUMERIC(12,2) NOT NULL, status subscription_payment_status NOT NULL,
+ stripe_invoice_id VARCHAR(255) NOT NULL, paid_at TIMESTAMPTZ,
+ CONSTRAINT ck_subscription_payments_amount_crc CHECK (amount_crc >= 0));
+CREATE UNIQUE INDEX "IX_subscription_payments_stripe_invoice_id" ON subscription_payments(stripe_invoice_id);
+CREATE INDEX idx_subscription_payments_subscription ON subscription_payments(subscription_id);
+
 CREATE TABLE ai_requests (
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), user_id UUID REFERENCES users(id) ON DELETE SET NULL,
  provider VARCHAR(50) NOT NULL, model VARCHAR(100) NOT NULL,
@@ -225,3 +257,8 @@ INSERT INTO categories(name,description) VALUES
  ('Deportes','Servicios e instalaciones deportivas'),
  ('Restaurantes','Restaurantes y establecimientos de comida'),
  ('Automotriz','Servicios relacionados con vehículos');
+
+-- PRO's stripe_price_id stays NULL: it comes from the Stripe:ProPriceId setting (per Stripe account).
+INSERT INTO plans(id,code,name,price_crc,interval,stripe_price_id,is_active) VALUES
+ ('0f3c2a6e-5b1d-4c8e-9a7f-1e2d3c4b5a60','FREE','Gratis',0,'MONTHLY',NULL,TRUE),
+ ('7d9e1f2a-3b4c-4d5e-8f60-718293a4b5c6','PRO','Pro',10000,'MONTHLY',NULL,TRUE);

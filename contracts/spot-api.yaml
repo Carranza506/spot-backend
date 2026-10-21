@@ -1401,6 +1401,234 @@ paths:
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   # ============================================================
+  # BUSINESS - Billing
+  # ============================================================
+  /business/billing/plans:
+    get:
+      tags: [Business]
+      operationId: listPlans
+      summary: List the available plans
+      security: []
+      description: |-
+        Access: public (no JWT required).
+
+        The active plans, cheapest first, with the features each one includes
+        (informational; see `PlanFeatures`). A business without a paid
+        subscription is on the `FREE` plan.
+      responses:
+        '200':
+          description: The active plans.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Plan' }
+              example:
+                - code: FREE
+                  name: Gratis
+                  priceCrc: 0.00
+                  interval: MONTHLY
+                  features: { maxServices: 5, maxPhotosPerBusiness: 3, maxPhotosPerService: 3 }
+                - code: PRO
+                  name: Pro
+                  priceCrc: 10000.00
+                  interval: MONTHLY
+                  features: { maxServices: null, maxPhotosPerBusiness: null, maxPhotosPerService: null }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /business/billing/subscription:
+    get:
+      tags: [Business]
+      operationId: getMySubscription
+      summary: Get the caller's current plan and subscription
+      description: |-
+        Required role: `BUSINESS`.
+
+        The caller's effective plan. A subscription counts only while it is
+        `ACTIVE` or `PAST_DUE` and its `currentPeriodEnd` hasn't passed;
+        otherwise (no subscription, or a canceled/expired one) the caller is on
+        `FREE`, and `id`, `status` and `currentPeriodEnd` are null.
+
+        A subscription only becomes active through a verified Stripe webhook,
+        never through the Checkout redirect, so right after paying it can take a
+        few seconds to show up here.
+      responses:
+        '200':
+          description: The caller's effective plan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+              example:
+                id: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                plan:
+                  code: PRO
+                  name: Pro
+                  priceCrc: 10000.00
+                  interval: MONTHLY
+                  features: { maxServices: null, maxPhotosPerBusiness: null, maxPhotosPerService: null }
+                status: ACTIVE
+                currentPeriodEnd: "2026-11-19T18:00:00Z"
+                cancelAtPeriodEnd: false
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /business/billing/checkout:
+    post:
+      tags: [Business]
+      operationId: createCheckoutSession
+      summary: Start a Stripe Checkout session to subscribe to a plan
+      description: |-
+        Required role: `BUSINESS`.
+
+        Creates a Stripe Checkout session (subscription mode) for a paid plan
+        and returns the URL of Stripe's hosted payment page; the client
+        redirects the user there. Card data never reaches Spot.
+
+        Returning to the success URL does **not** activate anything: the
+        subscription is created only when Stripe confirms the payment through
+        the webhook (`POST /business/billing/webhooks/stripe`). Poll
+        `GET /business/billing/subscription` afterwards.
+
+        `FREE`, or an unknown or inactive plan, is a 400. A caller that already
+        has an `ACTIVE` or `PAST_DUE` subscription to that plan gets 409
+        `ALREADY_SUBSCRIBED`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutSessionRequest'
+            example:
+              planCode: PRO
+      responses:
+        '200':
+          description: Checkout session created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutSessionResponse'
+              example:
+                checkoutUrl: https://checkout.stripe.com/c/pay/cs_test_a1b2c3
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: The caller is already subscribed to that plan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: ALREADY_SUBSCRIBED
+                message: Ya tienes una suscripción activa a este plan.
+                timestamp: "2026-08-30T20:00:00Z"
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /business/billing/subscription/cancel:
+    post:
+      tags: [Business]
+      operationId: cancelMySubscription
+      summary: Cancel the caller's subscription at the end of the period
+      description: |-
+        Required role: `BUSINESS`.
+
+        Asks Stripe to cancel the caller's `ACTIVE`/`PAST_DUE` subscription at
+        the end of the current period: the plan's features stay available until
+        `currentPeriodEnd`, and the response has `cancelAtPeriodEnd: true`. The
+        subscription becomes `CANCELED` when Stripe ends it (webhook).
+
+        Idempotent: canceling a subscription that is already set to cancel
+        returns 200 with no further effect. 404 if the caller has no
+        `ACTIVE`/`PAST_DUE` subscription.
+      responses:
+        '200':
+          description: The subscription, set to cancel at the end of the period.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /business/billing/payments:
+    get:
+      tags: [Business]
+      operationId: listMyPayments
+      summary: List the caller's subscription payments
+      description: |-
+        Required role: `BUSINESS`.
+
+        Payments of all of the caller's subscriptions, as reported by Stripe's
+        invoice webhooks. Paid ones come first, most recent first; failed
+        attempts (no `paidAt`) come last. A failed invoice that is paid later
+        on a retry appears once, as `PAID`.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+      responses:
+        '200':
+          description: Page of payments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSubscriptionPayments'
+              example:
+                data:
+                  - id: 9c0d1e2f-3a4b-4c5d-8e6f-7a8b9c0d1e2f
+                    subscriptionId: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+                    amountCrc: 10000.00
+                    status: PAID
+                    paidAt: "2026-10-19T18:00:00Z"
+                pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /business/billing/webhooks/stripe:
+    post:
+      tags: [Business]
+      operationId: stripeWebhook
+      summary: "[Stripe] Receive subscription and payment events"
+      security: []
+      description: |-
+        Called by Stripe only (in development, through `stripe listen`), never
+        by Spot clients. No JWT: the request is authenticated by verifying the
+        `Stripe-Signature` header against the raw body with the webhook signing
+        secret; a missing or invalid signature is a 400.
+
+        Handled events: `checkout.session.completed`, `invoice.paid`,
+        `invoice.payment_failed`, `customer.subscription.updated` and
+        `customer.subscription.deleted`. Any other verified event, or one that
+        doesn't belong to a Spot business account, is acknowledged with 200 and
+        ignored.
+
+        Idempotent: subscriptions are updated by their Stripe subscription id
+        and payments are recorded once per Stripe invoice, so receiving the
+        same event twice has no extra effect.
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A Stripe Event object, verified byte for byte as received.
+              additionalProperties: true
+      responses:
+        '200':
+          description: Event received (processed or ignored).
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  # ============================================================
   # BOOKING
   # ============================================================
   /booking/businesses/{businessId}/availability:
@@ -2318,6 +2546,18 @@ components:
     DevicePlatform:
       type: string
       enum: [ANDROID, IOS, WEB]
+    PlanCode:
+      type: string
+      enum: [FREE, PRO]
+    BillingInterval:
+      type: string
+      enum: [MONTHLY]
+    SubscriptionStatus:
+      type: string
+      enum: [ACTIVE, PAST_DUE, CANCELED, EXPIRED]
+    PaymentStatus:
+      type: string
+      enum: [PAID, FAILED]
 
     # ---------- Auth ----------
     User:
@@ -2727,6 +2967,106 @@ components:
         data:
           type: array
           items: { $ref: '#/components/schemas/Photo' }
+        pagination: { $ref: '#/components/schemas/PaginationMeta' }
+
+    # ---------- Billing ----------
+    PlanFeatures:
+      type: object
+      description: |-
+        What a plan includes. Informational only: these limits are not enforced
+        yet. `null` means the plan sets no limit; the general limits of each
+        endpoint (for example, 20 photos per business) always apply.
+      required: [maxServices, maxPhotosPerBusiness, maxPhotosPerService]
+      properties:
+        maxServices:
+          type: [integer, 'null']
+          minimum: 0
+          description: Maximum number of active services of the business.
+        maxPhotosPerBusiness:
+          type: [integer, 'null']
+          minimum: 0
+          description: Maximum number of photos of the business itself.
+        maxPhotosPerService:
+          type: [integer, 'null']
+          minimum: 0
+          description: Maximum number of photos of each service.
+
+    Plan:
+      type: object
+      required: [code, name, priceCrc, interval, features]
+      properties:
+        code: { $ref: '#/components/schemas/PlanCode' }
+        name: { type: string, maxLength: 100 }
+        priceCrc:
+          type: number
+          format: double
+          minimum: 0
+          description: Price per billing interval in Costa Rican colones (CRC).
+        interval: { $ref: '#/components/schemas/BillingInterval' }
+        features: { $ref: '#/components/schemas/PlanFeatures' }
+
+    Subscription:
+      type: object
+      required: [id, plan, status, currentPeriodEnd, cancelAtPeriodEnd]
+      properties:
+        id:
+          type: [string, 'null']
+          format: uuid
+          description: Null when the caller is on `FREE` without a subscription.
+        plan:
+          $ref: '#/components/schemas/Plan'
+        status:
+          description: Null when the caller is on `FREE` without a subscription.
+          oneOf:
+            - $ref: '#/components/schemas/SubscriptionStatus'
+            - type: 'null'
+        currentPeriodEnd:
+          type: [string, 'null']
+          format: date-time
+          description: End of the period already paid for. Null on `FREE`.
+        cancelAtPeriodEnd:
+          type: boolean
+          description: True once the subscription is set to end at `currentPeriodEnd` instead of renewing.
+
+    CheckoutSessionRequest:
+      type: object
+      required: [planCode]
+      properties:
+        planCode: { $ref: '#/components/schemas/PlanCode' }
+
+    CheckoutSessionResponse:
+      type: object
+      required: [checkoutUrl]
+      properties:
+        checkoutUrl:
+          type: string
+          format: uri
+          description: Stripe-hosted payment page to redirect the user to.
+
+    SubscriptionPayment:
+      type: object
+      required: [id, subscriptionId, amountCrc, status, paidAt]
+      properties:
+        id: { type: string, format: uuid }
+        subscriptionId: { type: string, format: uuid }
+        amountCrc:
+          type: number
+          format: double
+          minimum: 0
+          description: Amount in Costa Rican colones (CRC) — paid, or attempted when `FAILED`.
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+        paidAt:
+          type: [string, 'null']
+          format: date-time
+          description: Null for a `FAILED` payment.
+
+    PaginatedSubscriptionPayments:
+      type: object
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/SubscriptionPayment' }
         pagination: { $ref: '#/components/schemas/PaginationMeta' }
 
     # ---------- Booking ----------
