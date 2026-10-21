@@ -89,6 +89,8 @@ public class AiRequestsControllerTests(AiSearchApiFactory factory) : IClassFixtu
             var raw = await response.Content.ReadAsStringAsync();
             var body = JsonDocument.Parse(raw).RootElement;
             Assert.Equal("INTERNAL_ERROR", body.GetProperty("code").GetString());
+            // Contract: Error.details is an object, not nullable, so it's left out instead of null.
+            Assert.False(body.TryGetProperty("details", out _), "The 500 body must not contain \"details\".");
             // The exception's details must not reach the client.
             Assert.DoesNotContain("10.0.0.5", raw);
             Assert.DoesNotContain("InvalidOperationException", raw);
