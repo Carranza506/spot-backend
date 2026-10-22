@@ -35,4 +35,32 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
         schedule.Bookings.Add((booking.BusinessId, new BookedInterval(booking.StartAt, booking.EndAt, booking.Status)));
         return Task.CompletedTask;
     }
+
+    public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
+        Task.FromResult(Created.FirstOrDefault(b => b.Id == bookingId));
+
+    // Same filters, ordering and paging as BookingRepository's queries.
+    public Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByUserAsync(
+        Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default) =>
+        Task.FromResult(Page(
+            Created.Where(b => b.UserId == userId && (status is null || b.Status == status))
+                .OrderByDescending(b => b.StartAt).ThenBy(b => b.Id),
+            page, pageSize));
+
+    public Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByBusinessAsync(
+        Guid businessId, BookingStatus? status, DateTimeOffset? fromUtc, DateTimeOffset? toUtcExclusive,
+        int page, int pageSize, CancellationToken ct = default) =>
+        Task.FromResult(Page(
+            Created.Where(b => b.BusinessId == businessId
+                    && (status is null || b.Status == status)
+                    && (fromUtc is null || b.StartAt >= fromUtc)
+                    && (toUtcExclusive is null || b.StartAt < toUtcExclusive))
+                .OrderBy(b => b.StartAt).ThenBy(b => b.Id),
+            page, pageSize));
+
+    private static (IReadOnlyList<BookingEntity> Items, int Total) Page(IEnumerable<BookingEntity> bookings, int page, int pageSize)
+    {
+        var all = bookings.ToList();
+        return (all.Skip((page - 1) * pageSize).Take(pageSize).ToList(), all.Count);
+    }
 }

@@ -1707,7 +1707,9 @@ paths:
       description: |-
         Required role: `CLIENT` (or another authenticated role querying its own
         history). Only returns bookings where `bookings.user_id` is the
-        authenticated user.
+        authenticated user, ordered by `startAt` descending (most recent first).
+        An invalid `page`/`pageSize` or a `status` that isn't one of the
+        uppercase `BookingStatus` values responds `400`.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1721,6 +1723,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedBookings'
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '500': { $ref: '#/components/responses/InternalServerError' }
     post:
@@ -1922,7 +1925,13 @@ paths:
       operationId: listBusinessBookings
       summary: List a business's bookings
       description: |-
-        Required role: `BUSINESS` who owns the business.
+        Required role: `BUSINESS` who owns the business (also when the business
+        is inactive, so its past bookings stay readable). Ordered by `startAt`
+        ascending (earliest first). `from`/`to` are optional and inclusive, and
+        refer to calendar days in the business's time zone (America/Costa_Rica)
+        matched against `startAt`. A malformed date, `from` after `to`, an invalid
+        `page`/`pageSize` or a `status` that isn't one of the uppercase
+        `BookingStatus` values responds `400`.
       parameters:
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/PageSizeParam'
@@ -1942,6 +1951,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedBookings'
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }

@@ -25,12 +25,14 @@ public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbCo
         });
 
         // Owned and migrated by Spot.Business.Api; mapped read-only (only the columns availability
-        // needs, #66) and excluded from this service's migrations. See Models/BusinessReference.cs.
+        // and the bookings ownership checks need, #66/#68) and excluded from this service's
+        // migrations. See Models/BusinessReference.cs.
         modelBuilder.Entity<BusinessReference>(e =>
         {
             e.ToTable("businesses", t => t.ExcludeFromMigrations());
             e.HasKey(x => x.Id);
             e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.AccountId).HasColumnName("account_id");
             e.Property(x => x.IsActive).HasColumnName("is_active");
         });
 
