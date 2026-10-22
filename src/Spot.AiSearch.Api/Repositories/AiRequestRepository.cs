@@ -29,14 +29,24 @@ public class AiRequestRepository(AiSearchDbContext db) : IAiRequestRepository
 
         var total = await query.CountAsync(ct);
 
+        // Offset as long so a huge page can't overflow int into a negative OFFSET (a 500 on
+        // Postgres); past the last row there's nothing to return anyway, and a valid offset is
+        // < total, so the Skip cast below is safe. Same as NotificationRepository.
+        var offset = (long)(filter.Page - 1) * filter.PageSize;
+        if (offset >= total)
+            return ([], total);
+
         var items = await query
             .OrderByDescending(x => x.CreatedAt)
-            .Skip((filter.Page - 1) * filter.PageSize)
+            .Skip((int)offset)
             .Take(filter.PageSize)
             .ToListAsync(ct);
 
         return (items, total);
     }
+
+    public Task<AiRequest?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        db.AiRequests.AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, ct);
 
     public async Task AddAsync(AiRequest entity, CancellationToken ct = default)
     {

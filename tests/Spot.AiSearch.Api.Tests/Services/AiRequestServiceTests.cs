@@ -2,6 +2,7 @@ using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Spot.AiSearch.Api.DTOs;
 using Spot.AiSearch.Api.Models;
 using Spot.AiSearch.Api.Options;
 using Spot.AiSearch.Api.Services;
@@ -173,6 +174,100 @@ public sealed class AiRequestServiceTests
         Assert.Contains("TIMEOUT", entry.Message);
         Assert.Contains("GEMINI_TIMEOUT", entry.Message);
     }
+
+    // ---------- GetByIdAsync ----------
+
+    [Fact]
+    public async Task GetByIdAsync_ExistingRow_ReturnsEveryColumnMapped()
+    {
+        var row = NewFullRow();
+        await _repository.AddAsync(row);
+        await _repository.AddAsync(NewFullRow()); // a second row, so the lookup must filter by id
+
+        var dto = await _service.GetByIdAsync(row.Id);
+
+        Assert.NotNull(dto);
+        Assert.Equal(row.Id, dto!.Id);
+        Assert.Equal(row.UserId, dto.UserId);
+        Assert.Equal("gemini", dto.Provider);
+        Assert.Equal(Model, dto.Model);
+        Assert.Equal("BUSINESS_SEARCH", dto.RequestType);
+        Assert.Equal("Busco barbería en Heredia", dto.Prompt);
+        Assert.Equal("""{"candidates":[]}""", dto.Response);
+        Assert.Equal("Heredia", dto.ExtractedParameters!.Value.GetProperty("city").GetString());
+        Assert.Equal("searchBusinesses", dto.ToolCalls!.Value[0].GetProperty("name").GetString());
+        Assert.Equal("SUCCESS", dto.Status);
+        Assert.Equal(40, dto.InputTokens);
+        Assert.Equal(10, dto.OutputTokens);
+        Assert.Equal(50, dto.TotalTokens);
+        Assert.Equal(640, dto.LatencyMs);
+        Assert.Null(dto.ErrorCode);
+        Assert.Null(dto.ErrorMessage);
+        Assert.Equal("203.0.113.7", dto.IpAddress);
+        Assert.Equal("SpotApp/1.0", dto.UserAgent);
+        Assert.Equal(row.CreatedAt, dto.CreatedAt);
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_JsonColumns_OutliveTheEntityDocuments()
+    {
+        var row = NewFullRow();
+        await _repository.AddAsync(row);
+
+        var dto = await _service.GetByIdAsync(row.Id);
+        row.ExtractedParameters!.Dispose();
+        row.ToolCalls!.Dispose();
+
+        // Cloned, so serializing the response after the entity is gone still works.
+        Assert.Equal("Heredia", dto!.ExtractedParameters!.Value.GetProperty("city").GetString());
+        Assert.Equal(1, dto.ToolCalls!.Value.GetArrayLength());
+    }
+
+    [Fact]
+    public async Task GetByIdAsync_UnknownId_ReturnsNull()
+    {
+        await _repository.AddAsync(NewFullRow());
+
+        Assert.Null(await _service.GetByIdAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task ListAsync_MapsItemsTheSameWayAsGetByIdAsync()
+    {
+        var row = NewFullRow();
+        await _repository.AddAsync(row);
+
+        var page = await _service.ListAsync(new AiSearchFilterQuery());
+        var single = await _service.GetByIdAsync(row.Id);
+
+        var item = Assert.Single(page.Data);
+        // Records compare JsonElement by reference, so compare the JSON columns by their text.
+        Assert.Equal(single! with { ExtractedParameters = null, ToolCalls = null },
+            item with { ExtractedParameters = null, ToolCalls = null });
+        Assert.Equal(single.ExtractedParameters!.Value.GetRawText(), item.ExtractedParameters!.Value.GetRawText());
+        Assert.Equal(single.ToolCalls!.Value.GetRawText(), item.ToolCalls!.Value.GetRawText());
+    }
+
+    private static AiRequest NewFullRow() => new()
+    {
+        Id = Guid.NewGuid(),
+        UserId = Guid.NewGuid(),
+        Provider = "gemini",
+        Model = Model,
+        RequestType = AiRequestType.BUSINESS_SEARCH,
+        Prompt = "Busco barbería en Heredia",
+        Response = """{"candidates":[]}""",
+        ExtractedParameters = JsonDocument.Parse("""{"city":"Heredia"}"""),
+        ToolCalls = JsonDocument.Parse("""[{"name":"searchBusinesses"}]"""),
+        Status = AiRequestStatus.SUCCESS,
+        InputTokens = 40,
+        OutputTokens = 10,
+        TotalTokens = 50,
+        LatencyMs = 640,
+        IpAddress = IPAddress.Parse("203.0.113.7"),
+        UserAgent = "SpotApp/1.0",
+        CreatedAt = DateTime.UtcNow,
+    };
 
     private static void AssertCreatedNowInUtc(DateTime createdAt, DateTime before)
     {

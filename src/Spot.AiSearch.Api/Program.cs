@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Npgsql.NameTranslation;
 using Spot.AiSearch.Api.Data;
 using Spot.AiSearch.Api.Models;
@@ -80,6 +81,19 @@ var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
+
+// Same handler as the other services: an unhandled exception (e.g. Postgres down) answers with
+// the contract's InternalServerError body instead of an empty 500, and never with its details.
+// Serialized with the MVC JSON options (WhenWritingNull): WriteAsJsonAsync's default HTTP options
+// would write "details": null, and the contract's Error.details isn't nullable.
+app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    var jsonOptions = context.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
+    await context.Response.WriteAsJsonAsync(
+        new ApiError("INTERNAL_ERROR", "Ocurrió un error inesperado. Por favor intenta de nuevo más tarde."),
+        jsonOptions);
+}));
 
 app.UseHttpsRedirection();
 app.UseAuthentication();

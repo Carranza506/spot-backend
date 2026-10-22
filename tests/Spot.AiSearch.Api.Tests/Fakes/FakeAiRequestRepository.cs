@@ -36,6 +36,14 @@ public sealed class FakeAiRequestRepository : IAiRequestRepository
         return Task.CompletedTask;
     }
 
+    /// <summary>When set, GetByIdAsync throws it, like a database that is down.</summary>
+    public Exception? FailGetByIdWith { get; set; }
+
+    public Task<AiRequest?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
+        FailGetByIdWith is not null
+            ? Task.FromException<AiRequest?>(FailGetByIdWith)
+            : Task.FromResult(_rows.FirstOrDefault(x => x.Id == id));
+
     public Task<(IReadOnlyList<AiRequest> Items, int Total)> ListAsync(
         AiSearchFilterQuery filter, CancellationToken ct = default)
     {
@@ -53,7 +61,9 @@ public sealed class FakeAiRequestRepository : IAiRequestRepository
             query = query.Where(x => x.CreatedAt <= filter.To.Value);
 
         var all = query.OrderByDescending(x => x.CreatedAt).ToList();
-        var page = all.Skip((filter.Page - 1) * filter.PageSize).Take(filter.PageSize).ToList();
+        // Same long offset as AiRequestRepository: an int one overflows for a huge page.
+        var offset = (long)(filter.Page - 1) * filter.PageSize;
+        var page = offset >= all.Count ? [] : all.Skip((int)offset).Take(filter.PageSize).ToList();
 
         return Task.FromResult(((IReadOnlyList<AiRequest>)page, all.Count));
     }
