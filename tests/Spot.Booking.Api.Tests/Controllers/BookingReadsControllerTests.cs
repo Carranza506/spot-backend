@@ -251,6 +251,33 @@ public class BookingReadsControllerTests(BookingsApiFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task ListBusiness_ToIsTheLastRepresentableDate_MeansNoUpperBound()
+    {
+        var businessId = SeedBusiness(_owner);
+        var booking = AddBooking(_client, businessId, "2026-09-01T14:00:00Z");
+
+        var response = await Client(_owner, "BUSINESS")
+            .GetAsync($"/booking/businesses/{businessId}/bookings?from=2026-09-01&to=9999-12-31");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal([booking.Id], Ids(await response.Content.ReadFromJsonAsync<JsonElement>()));
+    }
+
+    [Theory]
+    [InlineData("?from=9999-12-31&to=9999-12-31")]
+    [InlineData("?from=0001-01-01&to=0001-01-01")]
+    public async Task ListBusiness_ExtremeDates_Return200(string query)
+    {
+        var businessId = SeedBusiness(_owner);
+        AddBooking(_client, businessId, "2026-09-01T14:00:00Z");
+
+        var response = await Client(_owner, "BUSINESS").GetAsync($"/booking/businesses/{businessId}/bookings{query}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty(Ids(await response.Content.ReadFromJsonAsync<JsonElement>()));
+    }
+
+    [Fact]
     public async Task ListBusiness_InactiveBusiness_StillReturnsItsBookingsToTheOwner()
     {
         var businessId = SeedBusiness(_owner, isActive: false);

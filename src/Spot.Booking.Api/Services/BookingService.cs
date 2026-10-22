@@ -90,9 +90,13 @@ public sealed class BookingService(
             throw new BookingAccessDeniedException();
 
         // Local calendar days → UTC instants: [start of `from`, start of the day after `to`).
+        // to = 9999-12-31 has no day after it (AddDays would throw), and nothing can start later
+        // anyway, so it means no upper bound.
         var timeZone = BusinessTimeZone.Instance;
         DateTimeOffset? fromUtc = from is { } f ? AvailabilityCalculator.ToUtc(f, TimeOnly.MinValue, timeZone) : null;
-        DateTimeOffset? toUtcExclusive = to is { } t ? AvailabilityCalculator.ToUtc(t.AddDays(1), TimeOnly.MinValue, timeZone) : null;
+        DateTimeOffset? toUtcExclusive = to is { } t && t != DateOnly.MaxValue
+            ? AvailabilityCalculator.ToUtc(t.AddDays(1), TimeOnly.MinValue, timeZone)
+            : null;
 
         var (items, total) = await bookingRepository.ListByBusinessAsync(
             businessId, status, fromUtc, toUtcExclusive, page, pageSize, ct);

@@ -110,6 +110,29 @@ public sealed class BookingRepositoryTests
         Assert.Equal(4, unbounded.Count);
     }
 
+    [Theory]
+    [InlineData(int.MaxValue, 100)] // (page - 1) * pageSize overflows int to -200
+    [InlineData(int.MaxValue, 1)]
+    [InlineData(1073741825, 4)] // 2^30 * 4 = 2^32 overflows int and wraps to offset 0 (the first page)
+    [InlineData(3, 1)] // just past the last row
+    public async Task ListAsync_PagePastTheLastRow_ReturnsNoItemsAndTheTotal(int page, int pageSize)
+    {
+        await using var db = NewContext();
+        var userId = Guid.NewGuid();
+        var businessId = Guid.NewGuid();
+        await Insert(db, NewBooking(userId: userId, businessId: businessId, startUtc: "2026-09-01T14:00:00Z"));
+        await Insert(db, NewBooking(userId: userId, businessId: businessId, startUtc: "2026-09-02T14:00:00Z"));
+        var repository = new BookingRepository(db);
+
+        var (own, ownTotal) = await repository.ListByUserAsync(userId, null, page, pageSize);
+        var (business, businessTotal) = await repository.ListByBusinessAsync(businessId, null, null, null, page, pageSize);
+
+        Assert.Empty(own);
+        Assert.Equal(2, ownTotal);
+        Assert.Empty(business);
+        Assert.Equal(2, businessTotal);
+    }
+
     private static async Task<BookingEntity> Insert(BookingDbContext db, BookingEntity booking)
     {
         await new BookingRepository(db).CreateAsync(booking);

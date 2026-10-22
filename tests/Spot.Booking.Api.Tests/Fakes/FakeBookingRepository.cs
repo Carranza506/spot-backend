@@ -61,6 +61,7 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
     private static (IReadOnlyList<BookingEntity> Items, int Total) Page(IEnumerable<BookingEntity> bookings, int page, int pageSize)
     {
         var all = bookings.ToList();
-        return (all.Skip((page - 1) * pageSize).Take(pageSize).ToList(), all.Count);
+        var offset = (long)(page - 1) * pageSize;
+        return offset >= all.Count ? ([], all.Count) : (all.Skip((int)offset).Take(pageSize).ToList(), all.Count);
     }
 }

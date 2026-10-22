@@ -63,7 +63,15 @@ public sealed class BookingRepository(BookingDbContext db) : IBookingRepository
         IOrderedQueryable<BookingEntity> query, int page, int pageSize, CancellationToken ct)
     {
         var total = await query.CountAsync(ct);
-        var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+
+        // Same as BusinessRepository: the offset is a long so a huge page can't overflow int into
+        // a negative OFFSET (Postgres rejects that with a 500) or wrap to the wrong page. Past the
+        // last row there's nothing to return, which also keeps the cast safe (offset < total).
+        var offset = (long)(page - 1) * pageSize;
+        if (offset >= total)
+            return ([], total);
+
+        var items = await query.Skip((int)offset).Take(pageSize).ToListAsync(ct);
         return (items, total);
     }
 }
