@@ -103,6 +103,43 @@ public sealed class BookingService(
         return ToPage(items, total, page, pageSize);
     }
 
+    public Task<BookingDto> CancelAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
+        ChangeStatusAsync(bookingId, callerId, clientAllowed: true,
+            [BookingStatus.PENDING, BookingStatus.CONFIRMED], BookingStatus.CANCELLED,
+            "Solo se puede cancelar una reservación pendiente o confirmada.", ct);
+
+    public Task<BookingDto> CompleteAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
+        ChangeStatusAsync(bookingId, callerId, clientAllowed: false,
+            [BookingStatus.CONFIRMED], BookingStatus.COMPLETED,
+            "Solo se puede completar una reservación confirmada.", ct);
+
+    public Task<BookingDto> MarkNoShowAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
+        ChangeStatusAsync(bookingId, callerId, clientAllowed: false,
+            [BookingStatus.CONFIRMED], BookingStatus.NO_SHOW,
+            "Solo se puede marcar como no presentada una reservación confirmada.", ct);
+
+    /// <summary>
+    /// 404, then 403, then 422: the status is only checked once the caller may change the booking,
+    /// so other users can't learn it.
+    /// </summary>
+    private async Task<BookingDto> ChangeStatusAsync(
+        Guid bookingId, Guid callerId, bool clientAllowed, BookingStatus[] validFrom, BookingStatus to,
+        string invalidMessage, CancellationToken ct)
+    {
+        var booking = await bookingRepository.GetByIdAsync(bookingId, ct)
+                      ?? throw new BookingNotFoundException(bookingId);
+
+        var isClient = clientAllowed && booking.UserId == callerId;
+        if (!isClient && (await scheduleRepository.GetBusinessAsync(booking.BusinessId, ct))?.AccountId != callerId)
+            throw new BookingAccessDeniedException();
+
+        if (!validFrom.Contains(booking.Status))
+            throw new BookingRuleViolationException(BookingRuleViolationException.InvalidStatusTransition, invalidMessage);
+
+        await bookingRepository.UpdateStatusAsync(booking, to, ct);
+        return BookingDto.FromEntity(booking);
+    }
+
     private static PaginatedResponse<BookingDto> ToPage(IReadOnlyList<BookingEntity> items, int total, int page, int pageSize) =>
         new(items.Select(BookingDto.FromEntity).ToList(),
             new PaginationMeta(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));

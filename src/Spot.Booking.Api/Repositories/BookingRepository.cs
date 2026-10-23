@@ -33,6 +33,14 @@ public sealed class BookingRepository(BookingDbContext db) : IBookingRepository
     public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
         db.Bookings.AsNoTracking().FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
+    public async Task UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
+    {
+        db.Bookings.Attach(booking);
+        booking.Status = status;
+        await db.SaveChangesAsync(ct);
+        await db.Entry(booking).ReloadAsync(ct);
+    }
+
     public Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByUserAsync(
         Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default)
     {

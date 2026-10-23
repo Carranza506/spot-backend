@@ -39,6 +39,19 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
     public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
         Task.FromResult(Created.FirstOrDefault(b => b.Id == bookingId));
 
+    public Task UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
+    {
+        // Keeps availability's copy in sync, so a cancelled booking frees its slot.
+        var i = schedule.Bookings.FindIndex(x => x.BusinessId == booking.BusinessId
+            && x.Booking.StartAt == booking.StartAt && x.Booking.EndAt == booking.EndAt);
+        if (i >= 0)
+            schedule.Bookings[i] = (booking.BusinessId, schedule.Bookings[i].Booking with { Status = status });
+
+        booking.Status = status;
+        booking.UpdatedAt = DateTimeOffset.UtcNow;
+        return Task.CompletedTask;
+    }
+
     // Same filters, ordering and paging as BookingRepository's queries.
     public Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByUserAsync(
         Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default) =>

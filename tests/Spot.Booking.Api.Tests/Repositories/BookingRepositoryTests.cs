@@ -61,6 +61,32 @@ public sealed class BookingRepositoryTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_PersistsTheNewStatus()
+    {
+        var options = NewOptions();
+        var booking = NewBooking();
+        await using (var seed = new BookingDbContext(options))
+            await new BookingRepository(seed).CreateAsync(booking);
+
+        // A fresh context, as in a real request: the booking comes back untracked from GetByIdAsync.
+        await using (var db = new BookingDbContext(options))
+        {
+            var repository = new BookingRepository(db);
+            var loaded = (await repository.GetByIdAsync(booking.Id))!;
+            await repository.UpdateStatusAsync(loaded, BookingStatus.CANCELLED);
+            Assert.Equal(BookingStatus.CANCELLED, loaded.Status);
+        }
+
+        await using var check = new BookingDbContext(options);
+        Assert.Equal(BookingStatus.CANCELLED, Assert.Single(check.Bookings).Status);
+    }
+
+    private static DbContextOptions<BookingDbContext> NewOptions() =>
+        new DbContextOptionsBuilder<BookingDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+    [Fact]
     public async Task ListByUserAsync_FiltersByUserAndStatus_MostRecentFirst_Paged()
     {
         await using var db = NewContext();
