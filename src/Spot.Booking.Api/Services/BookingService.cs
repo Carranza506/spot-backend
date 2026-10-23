@@ -1,6 +1,7 @@
 using Spot.Booking.Api.DTOs;
 using Spot.Booking.Api.Models;
 using Spot.Booking.Api.Repositories;
+using Spot.Shared.Pagination;
 using BookingEntity = Spot.Booking.Api.Models.Booking;
 
 namespace Spot.Booking.Api.Services;
@@ -56,6 +57,55 @@ public sealed class BookingService(
         await bookingRepository.CreateAsync(booking, ct);
         return BookingDto.FromEntity(booking);
     }
+
+    public async Task<PaginatedResponse<BookingDto>> ListOwnAsync(
+        Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default)
+    {
+        var (items, total) = await bookingRepository.ListByUserAsync(userId, status, page, pageSize, ct);
+        return ToPage(items, total, page, pageSize);
+    }
+
+    public async Task<BookingDto> GetAsync(Guid bookingId, Guid callerId, bool callerIsSuperAdmin, CancellationToken ct = default)
+    {
+        var booking = await bookingRepository.GetByIdAsync(bookingId, ct)
+                      ?? throw new BookingNotFoundException(bookingId);
+
+        if (callerIsSuperAdmin || booking.UserId == callerId)
+            return BookingDto.FromEntity(booking);
+
+        var business = await scheduleRepository.GetBusinessAsync(booking.BusinessId, ct);
+        if (business?.AccountId != callerId)
+            throw new BookingAccessDeniedException();
+
+        return BookingDto.FromEntity(booking);
+    }
+
+    public async Task<PaginatedResponse<BookingDto>> ListBusinessAsync(
+        Guid businessId, Guid callerId, BookingStatus? status, DateOnly? from, DateOnly? to,
+        int page, int pageSize, CancellationToken ct = default)
+    {
+        var business = await scheduleRepository.GetBusinessAsync(businessId, ct)
+                       ?? throw new BusinessNotFoundException(businessId);
+        if (business.AccountId != callerId)
+            throw new BookingAccessDeniedException();
+
+        // Local calendar days → UTC instants: [start of `from`, start of the day after `to`).
+        // to = 9999-12-31 has no day after it (AddDays would throw), and nothing can start later
+        // anyway, so it means no upper bound.
+        var timeZone = BusinessTimeZone.Instance;
+        DateTimeOffset? fromUtc = from is { } f ? AvailabilityCalculator.ToUtc(f, TimeOnly.MinValue, timeZone) : null;
+        DateTimeOffset? toUtcExclusive = to is { } t && t != DateOnly.MaxValue
+            ? AvailabilityCalculator.ToUtc(t.AddDays(1), TimeOnly.MinValue, timeZone)
+            : null;
+
+        var (items, total) = await bookingRepository.ListByBusinessAsync(
+            businessId, status, fromUtc, toUtcExclusive, page, pageSize, ct);
+        return ToPage(items, total, page, pageSize);
+    }
+
+    private static PaginatedResponse<BookingDto> ToPage(IReadOnlyList<BookingEntity> items, int total, int page, int pageSize) =>
+        new(items.Select(BookingDto.FromEntity).ToList(),
+            new PaginationMeta(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
 
     /// <summary>
     /// The whole [start, end) must fall within the opening hours of start's local date

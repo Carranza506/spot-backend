@@ -1,3 +1,4 @@
+using Spot.Booking.Api.Models;
 using BookingEntity = Spot.Booking.Api.Models.Booking;
 
 namespace Spot.Booking.Api.Repositories;
@@ -14,4 +15,19 @@ public interface IBookingRepository
     /// propagates unchanged.
     /// </exception>
     Task CreateAsync(BookingEntity booking, CancellationToken ct = default);
+
+    Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default);
+
+    /// <summary>A page of <paramref name="userId"/>'s bookings, most recent startAt first, plus the total count.</summary>
+    Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByUserAsync(
+        Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// A page of <paramref name="businessId"/>'s bookings, earliest startAt first (an agenda), plus
+    /// the total count. <paramref name="fromUtc"/> is inclusive and <paramref name="toUtcExclusive"/>
+    /// exclusive, both compared against startAt; null means unbounded.
+    /// </summary>
+    Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByBusinessAsync(
+        Guid businessId, BookingStatus? status, DateTimeOffset? fromUtc, DateTimeOffset? toUtcExclusive,
+        int page, int pageSize, CancellationToken ct = default);
 }
