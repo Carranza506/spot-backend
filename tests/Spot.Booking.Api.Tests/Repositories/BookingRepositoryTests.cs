@@ -48,6 +48,44 @@ public sealed class BookingRepositoryTests
         await Assert.ThrowsAsync<DbUpdateException>(() => new BookingRepository(db).CreateAsync(NewBooking()));
     }
 
+    [Fact]
+    public async Task GetByIdAsync_ReturnsTheBookingOrNull()
+    {
+        await using var db = NewContext();
+        var repository = new BookingRepository(db);
+        var booking = NewBooking();
+        await repository.CreateAsync(booking);
+
+        Assert.Equal(booking.Id, (await repository.GetByIdAsync(booking.Id))?.Id);
+        Assert.Null(await repository.GetByIdAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_PersistsTheNewStatus()
+    {
+        var options = NewOptions();
+        var booking = NewBooking();
+        await using (var seed = new BookingDbContext(options))
+            await new BookingRepository(seed).CreateAsync(booking);
+
+        // A fresh context, as in a real request: the booking comes back untracked from GetByIdAsync.
+        await using (var db = new BookingDbContext(options))
+        {
+            var repository = new BookingRepository(db);
+            var loaded = (await repository.GetByIdAsync(booking.Id))!;
+            await repository.UpdateStatusAsync(loaded, BookingStatus.CANCELLED);
+            Assert.Equal(BookingStatus.CANCELLED, loaded.Status);
+        }
+
+        await using var check = new BookingDbContext(options);
+        Assert.Equal(BookingStatus.CANCELLED, Assert.Single(check.Bookings).Status);
+    }
+
+    private static DbContextOptions<BookingDbContext> NewOptions() =>
+        new DbContextOptionsBuilder<BookingDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
     private static BookingDbContext NewContext(params IInterceptor[] interceptors) =>
         new(new DbContextOptionsBuilder<BookingDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())

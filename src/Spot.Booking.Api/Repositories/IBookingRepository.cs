@@ -1,3 +1,4 @@
+using Spot.Booking.Api.Models;
 using BookingEntity = Spot.Booking.Api.Models.Booking;
 
 namespace Spot.Booking.Api.Repositories;
@@ -14,4 +15,12 @@ public interface IBookingRepository
     /// propagates unchanged.
     /// </exception>
     Task CreateAsync(BookingEntity booking, CancellationToken ct = default);
+
+    Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Saves <paramref name="status"/> on <paramref name="booking"/> and refreshes the entity, so
+    /// updated_at (set by trg_bookings_updated_at) is the stored one.
+    /// </summary>
+    Task UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default);
 }

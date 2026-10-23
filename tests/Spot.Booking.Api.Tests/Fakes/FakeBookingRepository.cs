@@ -35,4 +35,20 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
         schedule.Bookings.Add((booking.BusinessId, new BookedInterval(booking.StartAt, booking.EndAt, booking.Status)));
         return Task.CompletedTask;
     }
+
+    public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
+        Task.FromResult(Created.FirstOrDefault(b => b.Id == bookingId));
+
+    public Task UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
+    {
+        // Keeps availability's copy in sync, so a cancelled booking frees its slot.
+        var i = schedule.Bookings.FindIndex(x => x.BusinessId == booking.BusinessId
+            && x.Booking.StartAt == booking.StartAt && x.Booking.EndAt == booking.EndAt);
+        if (i >= 0)
+            schedule.Bookings[i] = (booking.BusinessId, schedule.Bookings[i].Booking with { Status = status });
+
+        booking.Status = status;
+        booking.UpdatedAt = DateTimeOffset.UtcNow;
+        return Task.CompletedTask;
+    }
 }

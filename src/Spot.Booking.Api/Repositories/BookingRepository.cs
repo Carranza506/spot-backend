@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Spot.Booking.Api.Data;
+using Spot.Booking.Api.Models;
 using Spot.Booking.Api.Services;
 using BookingEntity = Spot.Booking.Api.Models.Booking;
 
@@ -27,5 +28,16 @@ public sealed class BookingRepository(BookingDbContext db) : IBookingRepository
         {
             throw new BookingSlotOverlapException(ex);
         }
+    }
+
+    public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
+        db.Bookings.AsNoTracking().FirstOrDefaultAsync(b => b.Id == bookingId, ct);
+
+    public async Task UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
+    {
+        db.Bookings.Attach(booking);
+        booking.Status = status;
+        await db.SaveChangesAsync(ct);
+        await db.Entry(booking).ReloadAsync(ct);
     }
 }
