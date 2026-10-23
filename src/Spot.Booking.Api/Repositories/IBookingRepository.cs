@@ -23,4 +23,17 @@ public interface IBookingRepository
     /// updated_at (set by trg_bookings_updated_at) is the stored one.
     /// </summary>
     Task UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default);
+
+    /// <summary>A page of <paramref name="userId"/>'s bookings, most recent startAt first, plus the total count.</summary>
+    Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByUserAsync(
+        Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default);
+
+    /// <summary>
+    /// A page of <paramref name="businessId"/>'s bookings, earliest startAt first (an agenda), plus
+    /// the total count. <paramref name="fromUtc"/> is inclusive and <paramref name="toUtcExclusive"/>
+    /// exclusive, both compared against startAt; null means unbounded.
+    /// </summary>
+    Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByBusinessAsync(
+        Guid businessId, BookingStatus? status, DateTimeOffset? fromUtc, DateTimeOffset? toUtcExclusive,
+        int page, int pageSize, CancellationToken ct = default);
 }
