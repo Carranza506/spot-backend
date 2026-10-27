@@ -27,4 +27,10 @@ public interface IDeviceTokenRepository
     /// removing an already-inactive token is a no-op that still succeeds.
     /// </summary>
     Task DeactivateAsync(DeviceToken token, CancellationToken ct = default);
+
+    /// <summary>
+    /// The active tokens of <paramref name="userId"/> on <paramref name="platform"/> — who a push
+    /// goes to (#80). Tracked, so a token that turns out dead can be passed to <see cref="DeactivateAsync"/>.
+    /// </summary>
+    Task<IReadOnlyList<DeviceToken>> ListActiveByUserAsync(Guid userId, DevicePlatform platform, CancellationToken ct = default);
 }

@@ -65,4 +65,11 @@ public sealed class FakeDeviceTokenRepository : IDeviceTokenRepository
         _tokens[token.Id] = token;
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<DeviceToken>> ListActiveByUserAsync(
+        Guid userId, DevicePlatform platform, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<DeviceToken>>(_tokens.Values
+            .Where(x => x.UserId == userId && x.IsActive && x.Platform == platform)
+            .OrderBy(x => x.CreatedAt)
+            .ToList());
 }

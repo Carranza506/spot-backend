@@ -209,9 +209,16 @@ services:
       # Needed since #77: every /notifications/device-tokens action requires a valid access
       # token (AddSpotJwtAuthentication), so this service only ever needs the public key.
       JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # Push delivery through FCM (#80), optional: without FCM_PROJECT_ID in .env the service still
+      # boots and sending reports "not configured". The service account key is the fcm_credentials
+      # secret below (read-only, never in the repo or the image).
+      Fcm__ProjectId: ${FCM_PROJECT_ID:-}
+      Fcm__CredentialsFile: /run/secrets/fcm_credentials
+      Fcm__ValidateOnly: ${FCM_VALIDATE_ONLY:-false}
       Logging__Console__FormatterName: json
     secrets:
       - jwt_public_key
+      - fcm_credentials
     ports:
       - "5102:8080"
     healthcheck:
@@ -317,3 +324,8 @@ secrets:
     file: ./jwt-private.pem
   jwt_public_key:
     file: ./jwt-public.pem
+  # FCM service account key (#80): the file FCM_CREDENTIALS_FILE in .env points to, kept outside the
+  # repo. Without it, the committed placeholder (an empty {}, not a key) keeps `docker compose up`
+  # working for everyone; push delivery then stays "not configured".
+  fcm_credentials:
+    file: ${FCM_CREDENTIALS_FILE:-./fcm-credentials.placeholder.json}
