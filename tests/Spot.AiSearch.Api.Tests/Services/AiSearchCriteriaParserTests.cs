@@ -88,6 +88,52 @@ public sealed class AiSearchCriteriaParserTests
     }
 
     [Fact]
+    public void Parse_LongServiceQuery_IsCappedAt150Characters()
+    {
+        var longText = new string('a', 120) + " " + new string('b', 1_000_000);
+
+        var serviceQuery = AiSearchCriteriaParser.Parse(Json($$"""{"serviceQuery":"{{longText}}"}""")).ServiceQuery;
+
+        Assert.Equal(AiSearchCriteriaParser.ServiceQueryMaxLength, serviceQuery!.Length);
+        Assert.Equal(longText[..AiSearchCriteriaParser.ServiceQueryMaxLength], serviceQuery);
+    }
+
+    [Fact]
+    public void Parse_ServiceQueryOfExactlyTheMaximum_IsKeptWhole()
+    {
+        var text = new string('a', AiSearchCriteriaParser.ServiceQueryMaxLength);
+
+        Assert.Equal(text, AiSearchCriteriaParser.Parse(Json($$"""{"serviceQuery":"{{text}}"}""")).ServiceQuery);
+    }
+
+    [Fact]
+    public void Parse_CappingNeverSplitsAnEmoji()
+    {
+        // 149 letters + a 2-char emoji: cutting at 150 would leave half a surrogate pair.
+        var text = new string('a', AiSearchCriteriaParser.ServiceQueryMaxLength - 1) + "💇";
+
+        Assert.Equal(new string('a', AiSearchCriteriaParser.ServiceQueryMaxLength - 1),
+            AiSearchCriteriaParser.Parse(Json($$"""{"serviceQuery":"{{text}}"}""")).ServiceQuery);
+    }
+
+    [Fact]
+    public void Parse_ControlCharacters_BecomeSpaces_InEveryTextField()
+    {
+        var criteria = AiSearchCriteriaParser.Parse(Json(
+            """{"serviceQuery":"cor\u0000te\nde\tpelo","rawLocationText":"Here\u0000dia\r\n"}"""));
+
+        Assert.Equal("cor te de pelo", criteria.ServiceQuery);
+        Assert.Equal("Here dia", criteria.RawLocationText);
+        Assert.DoesNotContain(criteria.ServiceQuery!, char.IsControl);
+    }
+
+    [Fact]
+    public void Parse_OnlyControlCharacters_IsNull()
+    {
+        Assert.Null(AiSearchCriteriaParser.Parse(Json("""{"serviceQuery":"\u0000\n\t\u001f"}""")).ServiceQuery);
+    }
+
+    [Fact]
     public void Parse_CategoryId_IsNeverTakenFromTheModel()
     {
         // The model can't know real category ids; resolving one is a follow-up of #73.

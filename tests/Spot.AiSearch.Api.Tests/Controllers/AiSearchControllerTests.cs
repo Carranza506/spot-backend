@@ -102,6 +102,22 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
     }
 
     [Fact]
+    public async Task Query_AiRequest_HasExactlyTheAiRequestSummaryKeys()
+    {
+        // Any role can call this endpoint: nothing else from the ai_requests row (prompt, model
+        // response, tokens split, IP, user agent, user id, error fields) may leak through aiRequest.
+        _factory.Gemini.Respond = _ => FakeGeminiClient.Success("""{"serviceQuery":"corte de cabello"}""");
+
+        var response = await CreateClient("CLIENT").PostAsJsonAsync(Url, new { query = "corte de cabello" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var aiRequest = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("aiRequest");
+        Assert.Equal(
+            ["createdAt", "id", "latencyMs", "requestType", "status", "totalTokens"],
+            aiRequest.EnumerateObject().Select(p => p.Name).Order());
+    }
+
+    [Fact]
     public async Task Query_SendsServiceQueryLocationAndPagingToBusiness_NotDateTimeOrBudget()
     {
         _factory.Gemini.Respond = _ => FakeGeminiClient.Success(
@@ -165,6 +181,7 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
         Assert.Equal(AiRequestStatus.SUCCESS, row.Status);
         Assert.Equal(AiRequestType.BUSINESS_SEARCH, row.RequestType);
         Assert.NotNull(row.UserId);
+        Assert.Null(row.ErrorCode);
     }
 
     [Fact]
@@ -187,7 +204,7 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
     // ---------- 422 ----------
 
     [Fact]
-    public async Task Query_NothingUsable_Returns422_StillRecordsTheCall_AndNeverSearches()
+    public async Task Query_NothingUsable_Returns422_RecordsWhyInTheAudit_AndNeverSearches()
     {
         // Date and budget alone can't narrow a business search.
         _factory.Gemini.Respond = _ => FakeGeminiClient.Success("""{"date":"2026-08-31","budgetMaxColones":5000}""");
@@ -199,7 +216,11 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("AI_SEARCH_NOT_UNDERSTOOD", body.GetProperty("code").GetString());
         Assert.Equal(rowsBefore + 1, _factory.Repository.All.Count);
-        Assert.Equal(AiRequestStatus.SUCCESS, _factory.Repository.All[^1].Status);
+        var row = _factory.Repository.All[^1];
+        // status describes the Gemini call (it answered); why the search didn't run is in error_code.
+        Assert.Equal(AiRequestStatus.SUCCESS, row.Status);
+        Assert.Equal("AI_SEARCH_NOT_UNDERSTOOD", row.ErrorCode);
+        Assert.NotNull(row.ErrorMessage);
         Assert.Null(_factory.BusinessSearch.LastRequest);
     }
 
@@ -232,7 +253,7 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
     }
 
     [Fact]
-    public async Task Query_BusinessDown_Returns500Generic_AndKeepsTheRecordedCall()
+    public async Task Query_BusinessDown_Returns500Generic_AndRecordsTheBusinessFailure()
     {
         _factory.Gemini.Respond = _ => FakeGeminiClient.Success("""{"serviceQuery":"corte de cabello"}""");
         _factory.BusinessSearch.FailWith = new BusinessSearchUnavailableException("Business search call failed: connection to 10.0.0.5 refused.");
@@ -241,6 +262,26 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
         var response = await CreateClient("CLIENT").PostAsJsonAsync(Url, new { query = "corte de cabello" });
 
         await AssertGenericServerErrorAsync(response, "10.0.0.5");
+        Assert.Equal(rowsBefore + 1, _factory.Repository.All.Count);
+        var row = _factory.Repository.All[^1];
+        Assert.Equal(AiRequestStatus.SUCCESS, row.Status);
+        Assert.Equal("BUSINESS_SEARCH_FAILED", row.ErrorCode);
+        // The detail stays in the audit row (SUPERADMIN only), never in the response.
+        Assert.Contains("10.0.0.5", row.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task Query_UnexpectedFailureDuringTheSearch_StillRecordsTheCall()
+    {
+        // Gemini already answered (and was billed): the call is audited even when the search ends
+        // some other way than a Business failure.
+        _factory.Gemini.Respond = _ => FakeGeminiClient.Success("""{"serviceQuery":"corte de cabello"}""");
+        _factory.BusinessSearch.FailWith = new InvalidOperationException("unexpected failure at 10.0.0.9");
+        var rowsBefore = _factory.Repository.All.Count;
+
+        var response = await CreateClient("CLIENT").PostAsJsonAsync(Url, new { query = "corte de cabello" });
+
+        await AssertGenericServerErrorAsync(response, "10.0.0.9");
         Assert.Equal(rowsBefore + 1, _factory.Repository.All.Count);
         Assert.Equal(AiRequestStatus.SUCCESS, _factory.Repository.All[^1].Status);
     }

@@ -48,7 +48,7 @@ public class AiSearchController(IAiSearchQueryService service) : ControllerBase
         catch (AiSearchNotUnderstoodException)
         {
             return UnprocessableEntity(new ApiError(
-                "AI_SEARCH_NOT_UNDERSTOOD",
+                AiSearchQueryService.NotUnderstoodErrorCode,
                 "No pudimos entender tu búsqueda. Intenta describir el servicio que buscas."));
         }
         catch (Exception ex) when (ex is AiSearchUnavailableException or BusinessSearchUnavailableException)

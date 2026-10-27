@@ -56,6 +56,34 @@ public sealed class BusinessSearchClientTests
     }
 
     [Fact]
+    public async Task SearchAsync_HostileServiceQuery_ArrivesAsASingleEncodedQ()
+    {
+        // A prompt-injected serviceQuery must not add, override or smuggle filters into the URL.
+        const string hostile = "corte&categoryId=11111111-1111-1111-1111-111111111111&lat=0&lng=0&radiusKm=100&page=9";
+        var client = CreateClient((_, _) => Task.FromResult(JsonResponse(HttpStatusCode.OK, EmptyPage)), out var handler);
+
+        await client.SearchAsync(new BusinessSearchRequest(hostile, null, null, null, null, 1, 20));
+
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(handler.LastRequest!.RequestUri!.Query);
+        Assert.Equal(["page", "pageSize", "q"], query.Keys.Order());
+        Assert.Equal(hostile, query["q"]);
+        Assert.Equal("1", query["page"]);
+        Assert.Equal("20", query["pageSize"]);
+    }
+
+    [Fact]
+    public async Task SearchAsync_SendsNoAuthorizationHeader()
+    {
+        // Business search is public: the caller's token must never be forwarded to another service.
+        var client = CreateClient((_, _) => Task.FromResult(JsonResponse(HttpStatusCode.OK, EmptyPage)), out var handler);
+
+        await client.SearchAsync(new BusinessSearchRequest("corte", null, null, null, null, 1, 20));
+
+        Assert.Null(handler.LastRequest!.Headers.Authorization);
+        Assert.False(handler.LastRequest.Headers.Contains("Authorization"));
+    }
+
+    [Fact]
     public async Task SearchAsync_NumbersUseADecimalPoint_WhateverTheCurrentCulture()
     {
         var previous = CultureInfo.CurrentCulture;
