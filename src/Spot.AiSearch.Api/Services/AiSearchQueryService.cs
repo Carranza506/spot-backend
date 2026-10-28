@@ -22,7 +22,8 @@ public sealed class AiSearchQueryService(
     public async Task<AiSearchResultDto> SearchAsync(
         AiSearchQueryRequest request, Guid? userId, IPAddress? ipAddress, string? userAgent, CancellationToken ct = default)
     {
-        var query = request.Query!.Trim();
+        // Without NUL: it's sent to Gemini and stored in ai_requests.prompt (text).
+        var query = request.NormalizedQuery();
 
         var extraction = await gemini.ExtractSearchCriteriaAsync(query, ct);
         // GeminiClient hands ownership of the document to the caller; RecordAsync keeps its own copy.
@@ -30,8 +31,13 @@ public sealed class AiSearchQueryService(
 
         // Every call is stored exactly once (#74), once its outcome is known, so the row says why it
         // failed. status keeps describing the Gemini call itself; a later failure goes in error_code.
-        Task<AiRequestSummaryDto> RecordAsync(GeminiExtractionResult outcome) =>
-            aiRequestService.RecordAsync(query, outcome, userId, ipAddress, userAgent);
+        // The model's answer is stored without NUL, which Postgres would reject (text and jsonb).
+        async Task<AiRequestSummaryDto> RecordAsync(GeminiExtractionResult outcome)
+        {
+            var storable = AuditStorage.WithoutNul(outcome);
+            using var storableParameters = storable.ExtractedParameters;
+            return await aiRequestService.RecordAsync(query, storable, userId, ipAddress, userAgent);
+        }
 
         if (extraction.Status != AiRequestStatus.SUCCESS || extracted is null)
         {

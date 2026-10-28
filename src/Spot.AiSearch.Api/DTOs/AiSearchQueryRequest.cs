@@ -27,4 +27,11 @@ public sealed class AiSearchQueryRequest
 
     [Range(1, 100)]
     public int PageSize { get; set; } = 20;
+
+    /// <summary>
+    /// <see cref="Query"/> as it's validated, sent to the AI model and stored in ai_requests.prompt:
+    /// NUL becomes a space (Postgres text can't hold it) and the ends are trimmed. Call only after
+    /// model validation, when <see cref="Query"/> is set.
+    /// </summary>
+    public string NormalizedQuery() => Query!.Replace('\0', ' ').Trim();
 }

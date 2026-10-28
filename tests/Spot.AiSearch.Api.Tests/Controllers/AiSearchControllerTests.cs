@@ -6,8 +6,12 @@ using System.Text.Json;
 using Spot.AiSearch.Api.DTOs;
 using Spot.AiSearch.Api.Models;
 using Spot.AiSearch.Api.Services.Business;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Spot.AiSearch.Api.Services.Gemini;
 using Spot.AiSearch.Api.Tests.Fakes;
+using Spot.AiSearch.Api.Tests.TestSupport;
 
 namespace Spot.AiSearch.Api.Tests.Controllers;
 
@@ -201,6 +205,78 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
         Assert.False(criteria.TryGetProperty("rawLocationText", out _));
     }
 
+    [Fact]
+    public async Task Query_NulInTheUsersQuery_NeverReachesGeminiOrTheAudit()
+    {
+        // Postgres text rejects NUL: it would make ai_requests.prompt fail to save.
+        _factory.Gemini.Respond = _ => FakeGeminiClient.Success("""{"serviceQuery":"corte"}""");
+
+        var response = await CreateClient("CLIENT").PostAsync(Url,
+            new StringContent("""{"query":"corte\u0000de pelo"}""", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("corte de pelo", _factory.Gemini.LastQuery);
+        Assert.Equal("corte de pelo", _factory.Repository.All[^1].Prompt);
+    }
+
+    [Fact]
+    public async Task Query_NulInTheModelsAnswer_IsStrippedFromEverythingStored()
+    {
+        // jsonb rejects the \u0000 escape and text rejects a literal NUL: either would fail the audit row.
+        _factory.Gemini.Respond = _ => GeminiExtractionResult.Success(
+            "{\"serviceQuery\":\"cor\0te\"}",
+            JsonDocument.Parse("""{"serviceQuery":"cor\u0000te","extra":{"k\u0000":["a\u0000b", 1, true]}}"""),
+            inputTokens: 40, outputTokens: 20, totalTokens: 60, latencyMs: 300);
+
+        var response = await CreateClient("CLIENT").PostAsJsonAsync(Url, new { query = "corte de pelo" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var row = _factory.Repository.All[^1];
+        var stored = row.ExtractedParameters!.RootElement;
+        Assert.DoesNotContain("\\u0000", stored.GetRawText());
+        Assert.Equal("cor te", stored.GetProperty("serviceQuery").GetString());
+        Assert.Equal("a b", stored.GetProperty("extra").GetProperty("k ")[0].GetString());
+        Assert.Equal(1, stored.GetProperty("extra").GetProperty("k ")[1].GetInt32());
+        Assert.DoesNotContain('\0', row.Response!);
+        Assert.Equal("cor te", (await response.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("criteria").GetProperty("serviceQuery").GetString());
+    }
+
+    [Fact]
+    public async Task Query_TheRealBusinessClient_NeverForwardsTheCallersToken()
+    {
+        // Every other test swaps the whole Business client. Here it's the one Program.cs registers,
+        // with whatever configuration it adds, and only the network replaced: copying the caller's
+        // header onto it (e.g. through ConfigureHttpClient or a message handler) must be caught.
+        _factory.Gemini.Respond = _ => FakeGeminiClient.Success("""{"serviceQuery":"corte"}""");
+        bool? sentAuthorization = null;
+        var network = new FakeHttpMessageHandler((request, _) =>
+        {
+            sentAuthorization = request.Headers.Contains("Authorization");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    data = Array.Empty<object>(),
+                    pagination = new { page = 1, pageSize = 20, total = 0, totalPages = 0 },
+                }),
+            });
+        });
+        using var withRealClient = _factory.WithWebHostBuilder(builder => builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<IBusinessSearchClient>();
+            services.AddHttpClient<IBusinessSearchClient, BusinessSearchClient>()
+                .ConfigurePrimaryHttpMessageHandler(() => network);
+        }));
+        var client = withRealClient.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _factory.IssueAccessToken("CLIENT"));
+
+        var response = await client.PostAsJsonAsync(Url, new { query = "corte de cabello" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.False(sentAuthorization);
+    }
+
     // ---------- 422 ----------
 
     [Fact]
@@ -294,6 +370,7 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
     [InlineData("""{"query":"ab"}""")]
     [InlineData("""{"query":"     "}""")]
     [InlineData("""{"query":"  a  "}""")]
+    [InlineData("""{"query":"ab\u0000\u0000\u0000"}""")]
     [InlineData("""{"query":"corte","radiusKm":0}""")]
     [InlineData("""{"query":"corte","radiusKm":100.5}""")]
     [InlineData("""{"query":"corte","radiusKm":null}""")]

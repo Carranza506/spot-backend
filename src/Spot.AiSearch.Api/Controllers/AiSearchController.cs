@@ -26,8 +26,9 @@ public class AiSearchController(IAiSearchQueryService service) : ControllerBase
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> AiSearchQuery([FromBody] AiSearchQueryRequest request, CancellationToken ct)
     {
-        // [StringLength] counts whitespace, so a blank or padded-out query passes it: checked trimmed here.
-        if (request.Query!.Trim().Length < AiSearchQueryRequest.QueryMinLength)
+        // [StringLength] counts whitespace (and NUL), so a blank or padded-out query passes it: checked
+        // here on the normalized text, the same one the service sends and stores.
+        if (request.NormalizedQuery().Length < AiSearchQueryRequest.QueryMinLength)
             return BadRequest(new ApiError(
                 "BAD_REQUEST",
                 $"La búsqueda debe tener al menos {AiSearchQueryRequest.QueryMinLength} caracteres.",

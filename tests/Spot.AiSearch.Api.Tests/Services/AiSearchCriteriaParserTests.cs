@@ -107,6 +107,18 @@ public sealed class AiSearchCriteriaParserTests
     }
 
     [Fact]
+    public void Parse_LongRawLocationText_IsCappedAt150_WithoutSplittingAnEmoji()
+    {
+        var huge = new string('h', 1_000_000);
+        var withEmoji = new string('h', AiSearchCriteriaParser.RawLocationTextMaxLength - 1) + "🏙";
+
+        Assert.Equal(new string('h', AiSearchCriteriaParser.RawLocationTextMaxLength),
+            AiSearchCriteriaParser.Parse(Json($$"""{"rawLocationText":"{{huge}}"}""")).RawLocationText);
+        Assert.Equal(new string('h', AiSearchCriteriaParser.RawLocationTextMaxLength - 1),
+            AiSearchCriteriaParser.Parse(Json($$"""{"rawLocationText":"{{withEmoji}}"}""")).RawLocationText);
+    }
+
+    [Fact]
     public void Parse_CappingNeverSplitsAnEmoji()
     {
         // 149 letters + a 2-char emoji: cutting at 150 would leave half a surrogate pair.

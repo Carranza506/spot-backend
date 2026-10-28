@@ -19,6 +19,12 @@ public static class AiSearchCriteriaParser
     /// </summary>
     public const int ServiceQueryMaxLength = 150;
 
+    /// <summary>
+    /// Longest <c>rawLocationText</c> kept, same cap as <see cref="ServiceQueryMaxLength"/>: it's only
+    /// echoed back in <c>criteria</c>, and a place name never needs more, so a huge value can't be echoed.
+    /// </summary>
+    public const int RawLocationTextMaxLength = 150;
+
     private static readonly string[] TimeFormats = ["HH:mm:ss", "HH:mm"];
 
     public static AiSearchCriteriaDto Parse(JsonElement extracted)
@@ -45,7 +51,7 @@ public static class AiSearchCriteriaParser
                 && amount >= 0
                     ? amount
                     : null,
-            RawLocationText: ReadText(extracted, "rawLocationText"));
+            RawLocationText: Truncate(ReadText(extracted, "rawLocationText"), RawLocationTextMaxLength));
     }
 
     // Control characters (NUL, CR/LF, tabs…) become spaces rather than being dropped, so words they
