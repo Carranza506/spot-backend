@@ -22,7 +22,19 @@ public sealed class PushNotificationService(
 
         foreach (var token in tokens)
         {
-            var result = await sender.SendAsync(new PushMessage(token.Token, title, body, data), ct);
+            PushSendResult result;
+            try
+            {
+                result = await sender.SendAsync(new PushMessage(token.Token, title, body, data), ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                // One device's failure must not cost the others their push. Only the row id and the
+                // exception type: its message could carry the token.
+                logger.LogWarning("Push to device token {DeviceTokenId} failed unexpectedly ({ExceptionType}).", token.Id, ex.GetType().Name);
+                failed++;
+                continue;
+            }
 
             switch (result.Outcome)
             {
@@ -36,10 +48,19 @@ public sealed class PushNotificationService(
                     break;
 
                 case PushSendOutcome.InvalidToken:
-                    await deviceTokens.DeactivateAsync(token, ct);
-                    deactivated++;
-                    // The row id, never the token itself.
-                    logger.LogInformation("Device token {DeviceTokenId} deactivated: FCM {ErrorCode}.", token.Id, result.ErrorCode);
+                    try
+                    {
+                        await deviceTokens.DeactivateAsync(token, ct);
+                        deactivated++;
+                        // The row id, never the token itself.
+                        logger.LogInformation("Device token {DeviceTokenId} deactivated: FCM {ErrorCode}.", token.Id, result.ErrorCode);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                    {
+                        // Still dead, so the next push retries the deactivation.
+                        logger.LogWarning("Couldn't deactivate device token {DeviceTokenId} ({ExceptionType}).", token.Id, ex.GetType().Name);
+                        failed++;
+                    }
                     break;
 
                 default:

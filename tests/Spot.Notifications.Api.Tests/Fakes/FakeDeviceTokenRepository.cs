@@ -59,8 +59,14 @@ public sealed class FakeDeviceTokenRepository : IDeviceTokenRepository
     public Task<DeviceToken?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         Task.FromResult(_tokens.GetValueOrDefault(id));
 
+    /// <summary>DeactivateAsync throws whatever this returns for a token (null = succeed), like a failed SaveChanges.</summary>
+    public Func<DeviceToken, Exception?> FailDeactivateWith { get; set; } = _ => null;
+
     public Task DeactivateAsync(DeviceToken token, CancellationToken ct = default)
     {
+        if (FailDeactivateWith(token) is { } error)
+            return Task.FromException(error);
+
         token.IsActive = false;
         _tokens[token.Id] = token;
         return Task.CompletedTask;

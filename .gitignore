@@ -12,6 +12,12 @@
 *.key
 /keys/
 
+# Firebase/Google service account keys for FCM push (#80): they belong outside the repo (see
+# .env.example > FCM_CREDENTIALS_FILE). The committed fcm-credentials.placeholder.json ({}) stays.
+fcm-credentials.json
+*-firebase-adminsdk-*.json
+service-account*.json
+
 # Photos uploaded while running Spot.Business.Api locally (PhotoStorage:RootPath). User content,
 # never part of the repo.
 **/App_Data/

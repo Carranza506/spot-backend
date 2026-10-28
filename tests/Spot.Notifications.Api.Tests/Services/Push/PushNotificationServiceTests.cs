@@ -108,4 +108,65 @@ public sealed class PushNotificationServiceTests
         Assert.Contains(dead.Id.ToString(), _logger.AllText);
         Assert.DoesNotContain("token-value-must-never-be-logged", _logger.AllText);
     }
+
+    [Fact]
+    public async Task SendToUserAsync_DeactivateFails_CountsItAsFailed_AndTheOtherTokensAreStillProcessed()
+    {
+        var deadButStuck = Seed("dead-1");
+        var dead = Seed("dead-2");
+        var alive = Seed("alive");
+        _sender.Respond = token => token.StartsWith("dead")
+            ? new PushSendResult(PushSendOutcome.InvalidToken, "UNREGISTERED")
+            : PushSendResult.Sent;
+        _repo.FailDeactivateWith = token => token.Token == "dead-1"
+            ? new InvalidOperationException("database unavailable while saving dead-1")
+            : null;
+
+        var summary = await CreateService().SendToUserAsync(_userId, "T", "B");
+
+        Assert.Equal(new PushDeliverySummary(true, 1, 1, 1), summary);
+        Assert.Equal(["alive", "dead-1", "dead-2"], _sender.Sent.Select(m => m.DeviceToken).Order());
+        Assert.True(deadButStuck.IsActive);
+        Assert.False(dead.IsActive);
+        Assert.True(alive.IsActive);
+        Assert.Contains(deadButStuck.Id.ToString(), _logger.AllText);
+        // The exception's message names the token: only its type may reach the log.
+        Assert.DoesNotContain("dead-1", _logger.AllText);
+    }
+
+    [Fact]
+    public async Task SendToUserAsync_SenderThrowsUnexpectedly_TheOtherTokensStillGetThePush()
+    {
+        var broken = Seed("android-broken");
+        Seed("android-1");
+        Seed("android-2");
+        _sender.Respond = token => token == "android-broken"
+            ? throw new IOException("connection reset while sending to android-broken")
+            : PushSendResult.Sent;
+
+        var summary = await CreateService().SendToUserAsync(_userId, "T", "B");
+
+        Assert.Equal(new PushDeliverySummary(true, 2, 0, 1), summary);
+        Assert.Equal(["android-1", "android-2", "android-broken"], _sender.Sent.Select(m => m.DeviceToken).Order());
+        Assert.True(broken.IsActive);
+        Assert.Contains(broken.Id.ToString(), _logger.AllText);
+        Assert.DoesNotContain("android-broken", _logger.AllText);
+    }
+
+    [Fact]
+    public async Task SendToUserAsync_CallerCancels_StillPropagates()
+    {
+        Seed("android-1");
+        Seed("android-2");
+        using var cts = new CancellationTokenSource();
+        _sender.Respond = _ =>
+        {
+            cts.Cancel();
+            throw new OperationCanceledException(cts.Token);
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => CreateService().SendToUserAsync(_userId, "T", "B", ct: cts.Token));
+        Assert.Single(_sender.Sent);
+    }
 }

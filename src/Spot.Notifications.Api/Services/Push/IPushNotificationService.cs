@@ -18,7 +18,9 @@ public interface IPushNotificationService
 {
     /// <summary>
     /// Sends to each of <paramref name="userId"/>'s active Android tokens and deactivates the ones FCM
-    /// reports dead. Never throws for a delivery failure; a user with no tokens is a no-op.
+    /// reports dead. Each token is isolated: a failure on one (sending or deactivating) is counted in
+    /// <see cref="PushDeliverySummary.Failed"/> and the rest still get their push. Never throws for a
+    /// delivery failure (only a cancellation by the caller propagates); a user with no tokens is a no-op.
     /// </summary>
     Task<PushDeliverySummary> SendToUserAsync(
         Guid userId, string title, string body, IReadOnlyDictionary<string, string>? data = null, CancellationToken ct = default);
