@@ -6,6 +6,7 @@ using Spot.Notifications.Api.Data;
 using Spot.Notifications.Api.Models;
 using Spot.Notifications.Api.Repositories;
 using Spot.Notifications.Api.Services;
+using Spot.Notifications.Api.Services.Push;
 using Spot.Shared.Auth;
 using Spot.Shared.Errors;
 
@@ -50,6 +51,10 @@ builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
 builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Push delivery through FCM HTTP v1 (#80). Optional: without Fcm settings the service still boots
+// and sending reports "not configured". See PushServiceCollectionExtensions.
+builder.Services.AddFcmPush(builder.Configuration);
 
 // Validates incoming access tokens (public key only) for [Authorize] endpoints — every action
 // under /notifications/device-tokens requires one. Same shared setup every other microservice

@@ -59,6 +59,13 @@ public sealed class DeviceTokenRepository(NotificationsDbContext db) : IDeviceTo
         return db.SaveChangesAsync(ct);
     }
 
+    public async Task<IReadOnlyList<DeviceToken>> ListActiveByUserAsync(
+        Guid userId, DevicePlatform platform, CancellationToken ct = default) =>
+        await db.DeviceTokens
+            .Where(x => x.UserId == userId && x.IsActive && x.Platform == platform)
+            .OrderBy(x => x.CreatedAt)
+            .ToListAsync(ct);
+
     /// <summary>Assigns the row to <paramref name="userId"/>, reactivating it regardless of who owned it before.</summary>
     private static void Claim(DeviceToken token, Guid userId, DevicePlatform platform)
     {
