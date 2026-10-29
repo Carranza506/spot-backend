@@ -1,3 +1,4 @@
+using System.Reflection;
 using Spot.Booking.Api.Models;
 using Spot.Booking.Api.Repositories;
 using Spot.Booking.Api.Services;
@@ -36,21 +37,36 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
         return Task.CompletedTask;
     }
 
+    /// <summary>Runs inside UpdateStatusAsync before the write: a concurrent request between the read and the write.</summary>
+    public Action? BeforeUpdate { get; set; }
+
+    // A copy, like BookingRepository's AsNoTracking read: later changes to the stored booking don't reach it.
     public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
-        Task.FromResult(Created.FirstOrDefault(b => b.Id == bookingId));
+        Task.FromResult(Created.FirstOrDefault(b => b.Id == bookingId) is { } b ? Copy(b) : null);
 
-    public Task UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
+    public Task<bool> UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
     {
-        // Keeps availability's copy in sync, so a cancelled booking frees its slot.
-        var i = schedule.Bookings.FindIndex(x => x.BusinessId == booking.BusinessId
-            && x.Booking.StartAt == booking.StartAt && x.Booking.EndAt == booking.EndAt);
-        if (i >= 0)
-            schedule.Bookings[i] = (booking.BusinessId, schedule.Bookings[i].Booking with { Status = status });
+        BeforeUpdate?.Invoke();
 
-        booking.Status = status;
-        booking.UpdatedAt = DateTimeOffset.UtcNow;
-        return Task.CompletedTask;
+        // Same as BookingRepository's concurrency token: only if the stored status is still the one read.
+        var stored = Created.FirstOrDefault(b => b.Id == booking.Id);
+        if (stored is null || stored.Status != booking.Status)
+            return Task.FromResult(false);
+
+        // Keeps availability's copy in sync, so a cancelled booking frees its slot. Matching the
+        // status too picks the active entry, not a cancelled one that held the same slot before.
+        var i = schedule.Bookings.FindIndex(x => x.BusinessId == stored.BusinessId
+            && x.Booking.StartAt == stored.StartAt && x.Booking.EndAt == stored.EndAt && x.Booking.Status == stored.Status);
+        if (i >= 0)
+            schedule.Bookings[i] = (stored.BusinessId, schedule.Bookings[i].Booking with { Status = status });
+
+        stored.Status = booking.Status = status;
+        stored.UpdatedAt = booking.UpdatedAt = DateTimeOffset.UtcNow;
+        return Task.FromResult(true);
     }
+
+    private static BookingEntity Copy(BookingEntity b) =>
+        (BookingEntity)typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(b, null)!;
 
     // Same filters, ordering and paging as BookingRepository's queries.
     public Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByUserAsync(

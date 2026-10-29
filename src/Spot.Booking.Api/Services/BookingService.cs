@@ -136,7 +136,12 @@ public sealed class BookingService(
         if (!validFrom.Contains(booking.Status))
             throw new BookingRuleViolationException(BookingRuleViolationException.InvalidStatusTransition, invalidMessage);
 
-        await bookingRepository.UpdateStatusAsync(booking, to, ct);
+        // Lost a race with another transition, or a delete, after the read above.
+        if (!await bookingRepository.UpdateStatusAsync(booking, to, ct))
+            throw await bookingRepository.GetByIdAsync(bookingId, ct) is null
+                ? new BookingNotFoundException(bookingId)
+                : new BookingRuleViolationException(BookingRuleViolationException.InvalidStatusTransition, invalidMessage);
+
         return BookingDto.FromEntity(booking);
     }
 

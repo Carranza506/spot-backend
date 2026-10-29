@@ -120,15 +120,65 @@ public class BookingStatusTransitionTests
         await Assert.ThrowsAsync<BookingNotFoundException>(() => _service.CancelAsync(Guid.NewGuid(), ClientId));
     }
 
+    // ---------- business missing: fail closed ----------
+
+    [Theory]
+    [InlineData(BookingStatus.COMPLETED)]
+    [InlineData(BookingStatus.NO_SHOW)]
+    [InlineData(BookingStatus.CANCELLED)]
+    public async Task BusinessTransition_WhenTheBusinessIsMissing_ThrowsAccessDenied(BookingStatus to)
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED, withBusiness: false);
+
+        await Assert.ThrowsAsync<BookingAccessDeniedException>(() => to == BookingStatus.CANCELLED
+            ? _service.CancelAsync(booking.Id, OwnerId)
+            : Transition(to, booking.Id, OwnerId));
+        Assert.Equal(BookingStatus.CONFIRMED, booking.Status);
+    }
+
+    [Fact]
+    public async Task Cancel_ByTheClient_WhenTheBusinessIsMissing_StillCancels()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED, withBusiness: false);
+
+        var result = await _service.CancelAsync(booking.Id, ClientId);
+
+        Assert.Equal(BookingStatus.CANCELLED, result.Status);
+    }
+
+    // ---------- concurrency ----------
+
+    [Fact]
+    public async Task Cancel_WhenAConcurrentCompleteWinsTheRace_Throws422AndKeepsCompleted()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+        _bookings.BeforeUpdate = () => booking.Status = BookingStatus.COMPLETED;
+
+        var ex = await Assert.ThrowsAsync<BookingRuleViolationException>(() => _service.CancelAsync(booking.Id, ClientId));
+
+        Assert.Equal(BookingRuleViolationException.InvalidStatusTransition, ex.Code);
+        Assert.Equal(BookingStatus.COMPLETED, booking.Status);
+    }
+
+    [Fact]
+    public async Task AnyTransition_WhenTheBookingIsDeletedBeforeTheWrite_ThrowsNotFound()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+        _bookings.BeforeUpdate = () => _bookings.Created.Remove(booking);
+
+        await Assert.ThrowsAsync<BookingNotFoundException>(() => _service.CompleteAsync(booking.Id, OwnerId));
+    }
+
     private Task<BookingDto> Transition(BookingStatus to, Guid bookingId, Guid callerId) =>
         to == BookingStatus.COMPLETED
             ? _service.CompleteAsync(bookingId, callerId)
             : _service.MarkNoShowAsync(bookingId, callerId);
 
-    private async Task<BookingEntity> SeedAsync(BookingStatus status)
+    private async Task<BookingEntity> SeedAsync(BookingStatus status, bool withBusiness = true)
     {
         var business = new BusinessReference { Id = Guid.NewGuid(), AccountId = OwnerId, IsActive = true };
-        _schedule.Businesses.Add(business);
+        if (withBusiness)
+            _schedule.Businesses.Add(business);
 
         var start = new DateTimeOffset(2026, 9, 1, 14, 0, 0, TimeSpan.Zero);
         var booking = new BookingEntity

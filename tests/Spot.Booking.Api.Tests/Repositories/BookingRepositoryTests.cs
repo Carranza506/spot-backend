@@ -81,6 +81,46 @@ public sealed class BookingRepositoryTests
         Assert.Equal(BookingStatus.CANCELLED, Assert.Single(check.Bookings).Status);
     }
 
+    [Fact]
+    public async Task UpdateStatusAsync_WhenTheStatusChangedSinceTheRead_ReturnsFalseAndKeepsTheOtherWrite()
+    {
+        var options = NewOptions();
+        var booking = NewBooking();
+        await using (var seed = new BookingDbContext(options))
+            await new BookingRepository(seed).CreateAsync(booking);
+
+        await using var first = new BookingDbContext(options);
+        await using var second = new BookingDbContext(options);
+        var readByFirst = (await new BookingRepository(first).GetByIdAsync(booking.Id))!;
+        var readBySecond = (await new BookingRepository(second).GetByIdAsync(booking.Id))!;
+
+        Assert.True(await new BookingRepository(second).UpdateStatusAsync(readBySecond, BookingStatus.COMPLETED));
+        Assert.False(await new BookingRepository(first).UpdateStatusAsync(readByFirst, BookingStatus.CANCELLED));
+
+        Assert.Equal(booking.Status, readByFirst.Status);
+        await using var check = new BookingDbContext(options);
+        Assert.Equal(BookingStatus.COMPLETED, Assert.Single(check.Bookings).Status);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_WhenTheBookingWasDeletedSinceTheRead_ReturnsFalse()
+    {
+        var options = NewOptions();
+        var booking = NewBooking();
+        await using (var seed = new BookingDbContext(options))
+            await new BookingRepository(seed).CreateAsync(booking);
+
+        await using var db = new BookingDbContext(options);
+        var loaded = (await new BookingRepository(db).GetByIdAsync(booking.Id))!;
+        await using (var other = new BookingDbContext(options))
+        {
+            other.Bookings.Remove(other.Bookings.Single());
+            await other.SaveChangesAsync();
+        }
+
+        Assert.False(await new BookingRepository(db).UpdateStatusAsync(loaded, BookingStatus.CANCELLED));
+    }
+
     private static DbContextOptions<BookingDbContext> NewOptions() =>
         new DbContextOptionsBuilder<BookingDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
