@@ -91,7 +91,10 @@ public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbCo
             // what HasPostgresEnum<BookingStatus>()'s naming convention actually creates the
             // booking_status type with (see also this migration's own note on the identical
             // lowercase-vs-uppercase-Spot.sql-labels discrepancy in the exclusion constraint).
-            e.Property(x => x.Status).HasColumnName("status").HasColumnType("booking_status").HasDefaultValueSql("'pending'::booking_status");
+            e.Property(x => x.Status).HasColumnName("status").HasColumnType("booking_status").HasDefaultValueSql("'pending'::booking_status")
+                // Concurrency token: a status change is "WHERE id = @id AND status = <the status read>",
+                // so two concurrent transitions can't both succeed (#69). Not a schema change.
+                .IsConcurrencyToken();
             e.Property(x => x.ServiceName).HasColumnName("service_name").HasMaxLength(255).IsRequired();
             e.Property(x => x.ServicePrice).HasColumnName("service_price").HasColumnType("numeric(10,2)");
             e.Property(x => x.ServiceDurationMinutes).HasColumnName("service_duration_minutes");

@@ -18,6 +18,14 @@ public interface IBookingRepository
 
     Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Saves <paramref name="status"/> on <paramref name="booking"/>, only if its stored status is
+    /// still the one <paramref name="booking"/> was read with, and refreshes the entity, so
+    /// updated_at (set by trg_bookings_updated_at) is the stored one.
+    /// </summary>
+    /// <returns>False, with nothing changed, if the status changed or the booking was deleted since it was read.</returns>
+    Task<bool> UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default);
+
     /// <summary>A page of <paramref name="userId"/>'s bookings, most recent startAt first, plus the total count.</summary>
     Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByUserAsync(
         Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default);

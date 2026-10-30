@@ -8,8 +8,9 @@ using Spot.Shared.Pagination;
 namespace Spot.Booking.Api.Controllers;
 
 /// <summary>
-/// contracts/spot-api.yaml, "Booking" tag: bookings (#67, #68). A business's bookings are listed by
-/// BusinessBookingsController, since they live under /booking/businesses/{businessId}.
+/// contracts/spot-api.yaml, "Booking" tag: bookings (#67, #68) and their status transitions (#69).
+/// A business's bookings are listed by BusinessBookingsController, since they live under
+/// /booking/businesses/{businessId}.
 /// </summary>
 [ApiController]
 [Route("booking/bookings")]
@@ -109,6 +110,74 @@ public class BookingsController(IBookingService bookingService) : ControllerBase
         catch (BookingSlotOverlapException)
         {
             return Conflict(new ApiError("BOOKING_SLOT_OVERLAP", "Ese horario ya no está disponible para este negocio."));
+        }
+    }
+
+    /// <summary>
+    /// POST /booking/bookings/{bookingId}/cancel (operationId cancelBooking): the booking's CLIENT
+    /// or the BUSINESS that owns it; only from PENDING or CONFIRMED, else 422. The optional reason
+    /// isn't read: bookings has no column for it and the Booking schema doesn't return it.
+    /// </summary>
+    [HttpPost("{bookingId:guid}/cancel")]
+    [Authorize(Roles = "CLIENT,BUSINESS")]
+    [ProducesResponseType(typeof(BookingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    public Task<IActionResult> CancelBooking(Guid bookingId, CancellationToken ct) =>
+        ChangeStatus(callerId => bookingService.CancelAsync(bookingId, callerId, ct));
+
+    /// <summary>
+    /// POST /booking/bookings/{bookingId}/complete (operationId completeBooking): the BUSINESS that
+    /// owns the booking; only from CONFIRMED, else 422.
+    /// </summary>
+    [HttpPost("{bookingId:guid}/complete")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(BookingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    public Task<IActionResult> CompleteBooking(Guid bookingId, CancellationToken ct) =>
+        ChangeStatus(callerId => bookingService.CompleteAsync(bookingId, callerId, ct));
+
+    /// <summary>
+    /// POST /booking/bookings/{bookingId}/no-show (operationId markBookingNoShow): the BUSINESS that
+    /// owns the booking; only from CONFIRMED, else 422.
+    /// </summary>
+    [HttpPost("{bookingId:guid}/no-show")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(BookingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    public Task<IActionResult> MarkBookingNoShow(Guid bookingId, CancellationToken ct) =>
+        ChangeStatus(callerId => bookingService.MarkNoShowAsync(bookingId, callerId, ct));
+
+    /// <summary>The error mapping the three status transitions share.</summary>
+    private async Task<IActionResult> ChangeStatus(Func<Guid, Task<BookingDto>> transition)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            return Ok(await transition(callerId));
+        }
+        catch (BookingNotFoundException)
+        {
+            return NotFound(new ApiError("NOT_FOUND", "La reservación indicada no existe."));
+        }
+        catch (BookingAccessDeniedException)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new ApiError("FORBIDDEN", "No tienes permiso para realizar esta acción."));
+        }
+        catch (BookingRuleViolationException ex)
+        {
+            return UnprocessableEntity(new ApiError(ex.Code, ex.Message));
         }
     }
 

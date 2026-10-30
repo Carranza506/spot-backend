@@ -86,6 +86,7 @@ namespace Spot.Booking.Api.Migrations
                         .HasColumnName("start_at");
 
                     b.Property<int>("Status")
+                        .IsConcurrencyToken()
                         .ValueGeneratedOnAdd()
                         .HasColumnType("booking_status")
                         .HasDefaultValueSql("'pending'::booking_status")
