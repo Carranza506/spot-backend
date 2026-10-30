@@ -41,6 +41,17 @@ public sealed class AuditStorageTests
     }
 
     [Fact]
+    public void WithoutNul_RepeatedKeys_AreKeptInOrder_AndCleaned()
+    {
+        using var original = JsonDocument.Parse("""{"k":"a\u0000","k":{"k":1,"k":"b\u0000"}}""");
+
+        using var cleaned = AuditStorage.WithoutNul(GeminiExtractionResult.Success("raw", original, null, null, null, 1))
+            .ExtractedParameters!;
+
+        Assert.Equal("""{"k":"a ","k":{"k":1,"k":"b "}}""", cleaned.RootElement.GetRawText());
+    }
+
+    [Fact]
     public void WithoutNul_TextFields_LoseTheirNul()
     {
         var error = AuditStorage.WithoutNul(GeminiExtractionResult.Error(10, "GEMINI_API_ERROR", "bad\0message"));

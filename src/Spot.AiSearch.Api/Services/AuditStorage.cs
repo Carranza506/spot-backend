@@ -1,5 +1,5 @@
+using System.Buffers;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using Spot.AiSearch.Api.Services.Gemini;
 
 namespace Spot.AiSearch.Api.Services;
@@ -19,24 +19,47 @@ public static class AuditStorage
     {
         RawResponse = WithoutNul(result.RawResponse),
         ErrorMessage = WithoutNul(result.ErrorMessage),
-        ExtractedParameters = result.ExtractedParameters is { } document
-            ? JsonDocument.Parse(WithoutNul(JsonNode.Parse(document.RootElement.GetRawText()))?.ToJsonString() ?? "null")
-            : null,
+        ExtractedParameters = result.ExtractedParameters is { } document ? WithoutNul(document.RootElement) : null,
     };
 
     public static string? WithoutNul(string? text) => text?.Replace('\0', ' ');
 
-    // Walks the JSON instead of editing its text, so an escaped backslash followed by "u0000" (a
-    // legitimate string) is never mistaken for a NUL escape. Property names are cleaned too.
-    private static JsonNode? WithoutNul(JsonNode? node) => node switch
+    // Copies the JSON token by token instead of editing its text, so an escaped backslash followed by
+    // "u0000" (a legitimate string) is never mistaken for a NUL escape. Property names are cleaned too.
+    // A key the model repeated is copied as is: JsonNode would throw on it and fail the audit row.
+    private static JsonDocument WithoutNul(JsonElement root)
     {
-        JsonObject obj => obj.Aggregate(new JsonObject(), (clean, property) =>
+        var buffer = new ArrayBufferWriter<byte>();
+        using (var writer = new Utf8JsonWriter(buffer))
+            Write(writer, root);
+        return JsonDocument.Parse(buffer.WrittenMemory);
+    }
+
+    private static void Write(Utf8JsonWriter writer, JsonElement element)
+    {
+        switch (element.ValueKind)
         {
-            clean[WithoutNul(property.Key)!] = WithoutNul(property.Value);
-            return clean;
-        }),
-        JsonArray array => new JsonArray(array.Select(WithoutNul).ToArray()),
-        JsonValue value when value.TryGetValue<string>(out var text) => JsonValue.Create(WithoutNul(text)),
-        _ => node?.DeepClone(),
-    };
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (var property in element.EnumerateObject())
+                {
+                    writer.WritePropertyName(WithoutNul(property.Name)!);
+                    Write(writer, property.Value);
+                }
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (var item in element.EnumerateArray())
+                    Write(writer, item);
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.String:
+                writer.WriteStringValue(WithoutNul(element.GetString()));
+                break;
+            default:
+                element.WriteTo(writer);
+                break;
+        }
+    }
 }

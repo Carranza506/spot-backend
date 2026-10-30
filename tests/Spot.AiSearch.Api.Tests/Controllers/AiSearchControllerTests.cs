@@ -243,6 +243,28 @@ public class AiSearchControllerTests : IClassFixture<AiSearchApiFactory>
     }
 
     [Fact]
+    public async Task Query_DuplicateKeyInTheModelsAnswer_StillSearches_AndStoresTheAuditRow()
+    {
+        // JsonDocument accepts a repeated key (the last one wins), so the search runs on "corte";
+        // the copy stored for the audit must not choke on it either.
+        _factory.Gemini.Respond = _ => FakeGeminiClient.Success("""{"serviceQuery":"a","serviceQuery":"corte"}""");
+        var rowsBefore = _factory.Repository.All.Count;
+
+        var response = await CreateClient("CLIENT").PostAsJsonAsync(Url, new { query = "corte de pelo" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(rowsBefore + 1, _factory.Repository.All.Count);
+        var row = _factory.Repository.All[^1];
+        Assert.Equal(AiRequestStatus.SUCCESS, row.Status);
+        Assert.Null(row.ErrorCode);
+        Assert.Equal(
+            """{"serviceQuery":"a","serviceQuery":"corte"}""",
+            row.ExtractedParameters!.RootElement.GetRawText());
+        Assert.Equal("corte", (await response.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("criteria").GetProperty("serviceQuery").GetString());
+    }
+
+    [Fact]
     public async Task Query_TheRealBusinessClient_NeverForwardsTheCallersToken()
     {
         // Every other test swaps the whole Business client. Here it's the one Program.cs registers,
