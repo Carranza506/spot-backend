@@ -25,8 +25,9 @@ RUN apt-get update \
 
 COPY --from=build /app/publish .
 
-ENV ASPNETCORE_URLS=http://+:8080
-EXPOSE 8080
+# 8081 is the internal port (#79): only reachable on the Compose network, never published.
+ENV ASPNETCORE_URLS="http://+:8080;http://+:8081"
+EXPOSE 8080 8081
 
 # Run as the non-root "app" user baked into the base image instead of root (default).
 USER $APP_UID

@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using Spot.Booking.Api.Repositories;
+using Spot.Booking.Api.Services;
 using Spot.Booking.Api.Tests.Fakes;
 
 namespace Spot.Booking.Api.Tests.Controllers;
@@ -27,6 +28,7 @@ public sealed class BookingsApiFactory : WebApplicationFactory<Program>
 
     public FakeAvailabilityRepository ScheduleRepository { get; } = new();
     public FakeBookingRepository BookingRepository { get; }
+    public FakeBookingStatusNotifier StatusNotifier { get; } = new();
 
     private readonly RSA _jwtKey = RSA.Create(2048);
 
@@ -50,6 +52,8 @@ public sealed class BookingsApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IAvailabilityRepository>(ScheduleRepository);
             services.RemoveAll<IBookingRepository>();
             services.AddSingleton<IBookingRepository>(BookingRepository);
+            services.RemoveAll<IBookingStatusNotifier>();
+            services.AddSingleton<IBookingStatusNotifier>(StatusNotifier);
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(new FixedTimeProvider(Now));
         });

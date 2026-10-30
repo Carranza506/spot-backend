@@ -14,12 +14,55 @@ public class BookingStatusTransitionTests
 
     private readonly FakeAvailabilityRepository _schedule = new();
     private readonly FakeBookingRepository _bookings;
+    private readonly FakeBookingStatusNotifier _notifier = new();
     private readonly BookingService _service;
 
     public BookingStatusTransitionTests()
     {
         _bookings = new FakeBookingRepository(_schedule);
-        _service = new BookingService(_schedule, _bookings, TimeProvider.System);
+        _service = new BookingService(_schedule, _bookings, TimeProvider.System, _notifier);
+    }
+
+    // ---------- status notification (#79) ----------
+
+    [Fact]
+    public async Task Cancel_NotifiesTheNewStatus()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        await _service.CancelAsync(booking.Id, ClientId);
+
+        Assert.Equal([(booking.Id, BookingStatus.CANCELLED)], _notifier.Notified);
+    }
+
+    [Fact]
+    public async Task Complete_NotifiesTheNewStatus()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        await _service.CompleteAsync(booking.Id, OwnerId);
+
+        Assert.Equal([(booking.Id, BookingStatus.COMPLETED)], _notifier.Notified);
+    }
+
+    [Fact]
+    public async Task MarkNoShow_NotifiesTheNewStatus()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        await _service.MarkNoShowAsync(booking.Id, OwnerId);
+
+        Assert.Equal([(booking.Id, BookingStatus.NO_SHOW)], _notifier.Notified);
+    }
+
+    [Fact]
+    public async Task ARejectedTransition_NotifiesNothing()
+    {
+        var booking = await SeedAsync(BookingStatus.COMPLETED);
+
+        await Assert.ThrowsAsync<BookingRuleViolationException>(() => _service.CancelAsync(booking.Id, ClientId));
+
+        Assert.Empty(_notifier.Notified);
     }
 
     // ---------- cancel ----------

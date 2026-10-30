@@ -13,7 +13,8 @@ namespace Spot.Booking.Api.Services;
 public sealed class BookingService(
     IAvailabilityRepository scheduleRepository,
     IBookingRepository bookingRepository,
-    TimeProvider timeProvider) : IBookingService
+    TimeProvider timeProvider,
+    IBookingStatusNotifier statusNotifier) : IBookingService
 {
     public async Task<BookingDto> CreateAsync(Guid userId, BookingCreateRequest request, CancellationToken ct = default)
     {
@@ -141,6 +142,8 @@ public sealed class BookingService(
             throw await bookingRepository.GetByIdAsync(bookingId, ct) is null
                 ? new BookingNotFoundException(bookingId)
                 : new BookingRuleViolationException(BookingRuleViolationException.InvalidStatusTransition, invalidMessage);
+
+        await statusNotifier.NotifyAsync(booking);
 
         return BookingDto.FromEntity(booking);
     }
