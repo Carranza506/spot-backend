@@ -79,6 +79,8 @@ builder.Services.AddScoped<IBusinessContactRepository, BusinessContactRepository
 builder.Services.AddScoped<IBusinessContactService, BusinessContactService>();
 builder.Services.AddScoped<IBusinessScheduleExceptionRepository, BusinessScheduleExceptionRepository>();
 builder.Services.AddScoped<IBusinessScheduleExceptionService, BusinessScheduleExceptionService>();
+builder.Services.AddScoped<IReviewRepository, ReviewRepository>();
+builder.Services.AddScoped<IReviewService, ReviewService>();
 
 // Business and service photo files (#65): a local directory (a named volume in Docker), behind
 // IPhotoStorage so it can move to an object store later. Options are validated at startup.
