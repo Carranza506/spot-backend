@@ -144,9 +144,15 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
       JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # Status notifications (#79) go through the gateway's internal port, which is not published.
+      # Deliberately no depends_on on the gateway: it already depends on this service, and the call
+      # is best-effort anyway.
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+      InternalApi__GatewayBaseUrl: http://gateway:8081
       Logging__Console__FormatterName: json
     secrets:
       - jwt_public_key
+      - internal_api_key
     ports:
       - "5197:8080"
     healthcheck:
@@ -215,10 +221,13 @@ services:
       Fcm__ProjectId: ${FCM_PROJECT_ID:-}
       Fcm__CredentialsFile: /run/secrets/fcm_credentials
       Fcm__ValidateOnly: ${FCM_VALIDATE_ONLY:-false}
+      # Checked on /notifications/internal/* (#79).
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
       Logging__Console__FormatterName: json
     secrets:
       - jwt_public_key
       - fcm_credentials
+      - internal_api_key
     ports:
       - "5102:8080"
     healthcheck:
@@ -329,3 +338,7 @@ secrets:
   # working for everyone; push delivery then stays "not configured".
   fcm_credentials:
     file: ${FCM_CREDENTIALS_FILE:-./fcm-credentials.placeholder.json}
+  # Shared key for internal service-to-service calls (#79). The committed placeholder is a dev-only
+  # value so `docker compose up` works for everyone; INTERNAL_API_KEY_FILE in .env overrides it.
+  internal_api_key:
+    file: ${INTERNAL_API_KEY_FILE:-./internal-api-key.placeholder.txt}

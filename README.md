@@ -246,6 +246,28 @@ own `healthcheck:`), runs as the container's built-in non-root user, and logs st
 stdout — check status with `docker compose ps` (look for `healthy`) or `docker compose logs
 <service>`.
 
+## Internal API key and internal Gateway port
+
+`Spot.Booking.Api` tells `Spot.Notifications.Api` about every booking status change (#79) through
+`POST /api/v1/notifications/internal/booking-status-changed`. End clients can't use that route:
+
+- **Internal port:** the Gateway also listens on `8081` (`Gateway:InternalPort`), which is **not**
+  published in `docker-compose.yml`, so it's only reachable on the Compose network. It serves routes
+  marked `"InternalOnly"` in `appsettings.json`. On the public port those answer `404`.
+- **Internal API key:** callers send it in `X-Internal-Api-Key`, and `Spot.Notifications.Api` answers
+  `401` without the right one. Configuration key: `InternalApi:Key`, in both services.
+
+| | `docker compose up` | `dotnet run` |
+| --- | --- | --- |
+| Key | `internal_api_key` secret (default: the committed `internal-api-key.placeholder.txt`) | `launchSettings.json` |
+| Booking → Gateway (`InternalApi:GatewayBaseUrl`) | `http://gateway:8081` | `http://localhost:8081` (`launchSettings.json`) |
+
+Neither needs any setup. Both default values are for development only: the placeholder key is public
+in this repo, so anywhere else point `INTERNAL_API_KEY_FILE` in `.env` at a file outside the repo, or
+set `InternalApi__Key` directly.
+
+The call is best-effort: if it fails, Booking logs a warning and the status change still succeeds.
+
 ## Photo storage (Spot.Business.Api)
 
 Business and service photos (#65) are stored as files, and only their storage key goes into

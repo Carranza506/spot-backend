@@ -9,7 +9,7 @@ public class NotificationServiceTests
     private readonly FakeNotificationRepository _repository = new();
     private readonly NotificationService _service;
 
-    public NotificationServiceTests() => _service = new NotificationService(_repository);
+    public NotificationServiceTests() => _service = new NotificationService(_repository, new FakePushNotificationService());
 
     [Fact]
     public async Task ListAsync_MapsEveryFieldAndWrapsPaginationMetadata()
