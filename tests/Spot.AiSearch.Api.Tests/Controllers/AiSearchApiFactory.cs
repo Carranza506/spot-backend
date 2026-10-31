@@ -7,6 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using Spot.AiSearch.Api.Repositories;
+using Spot.AiSearch.Api.Services.Business;
+using Spot.AiSearch.Api.Services.Gemini;
 using Spot.AiSearch.Api.Tests.Fakes;
 
 namespace Spot.AiSearch.Api.Tests.Controllers;
@@ -22,6 +24,12 @@ public sealed class AiSearchApiFactory : WebApplicationFactory<Program>
     public const string Audience = "spot-clients";
 
     public FakeAiRequestRepository Repository { get; } = new();
+
+    /// <summary>Replaces the Gemini API (#73's POST /ai-search/query); the requests endpoints never call it.</summary>
+    public FakeGeminiClient Gemini { get; } = new();
+
+    /// <summary>Replaces the HTTP call to Spot.Business.Api (#73).</summary>
+    public FakeBusinessSearchClient BusinessSearch { get; } = new();
 
     // The app only validates tokens; the private half is here to mint test tokens it will accept.
     private readonly RSA _jwtKey = RSA.Create(2048);
@@ -44,6 +52,10 @@ public sealed class AiSearchApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IAiRequestRepository>();
             services.AddSingleton<IAiRequestRepository>(Repository);
+            services.RemoveAll<IGeminiClient>();
+            services.AddSingleton<IGeminiClient>(Gemini);
+            services.RemoveAll<IBusinessSearchClient>();
+            services.AddSingleton<IBusinessSearchClient>(BusinessSearch);
         });
     }
 
