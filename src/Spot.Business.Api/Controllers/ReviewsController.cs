@@ -56,7 +56,6 @@ public class ReviewsController(IReviewService reviewService) : ControllerBase
         }
         catch (BookingNotReviewableException)
         {
-            // The contract defines no code for this case; same convention as BOOKING_START_IN_PAST.
             return UnprocessableEntity(new ApiError("REVIEW_BOOKING_NOT_COMPLETED", "Solo se puede reseñar una reservación completada."));
         }
     }
@@ -73,7 +72,6 @@ public class ReviewsController(IReviewService reviewService) : ControllerBase
     public async Task<IActionResult> ListBusinessReviews(
         Guid businessId, [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
     {
-        // Not a documented response of listBusinessReviews, but the same guard every other listing applies.
         if (page < 1 || pageSize < 1 || pageSize > 100)
             return BadRequest(new ApiError("BAD_REQUEST", "page debe ser >= 1 y pageSize entre 1 y 100."));
 

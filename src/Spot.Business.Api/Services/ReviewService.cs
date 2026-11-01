@@ -27,7 +27,8 @@ public sealed class ReviewService(
             UserId = callerId,
             BusinessId = booking.BusinessId,
             Rating = (short)request.Rating!.Value,
-            Comment = string.IsNullOrWhiteSpace(request.Comment) ? null : request.Comment.Trim(),
+            // Postgres text can't hold NUL (22021, a 500): replaced like AiSearch's AuditStorage does.
+            Comment = request.Comment?.Replace('\0', ' ').Trim() is { Length: > 0 } comment ? comment : null,
         };
         await reviewRepository.CreateAsync(review, ct);
 

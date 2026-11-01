@@ -43,6 +43,23 @@ public class ReviewsControllerTests(BusinessesApiFactory factory) : IClassFixtur
     }
 
     [Fact]
+    public async Task Create_IdsInTheBody_AreIgnored()
+    {
+        Reset();
+        var clientId = Guid.NewGuid();
+        var business = SeedBusiness("Bella");
+        var booking = factory.ReviewRepository.SeedBooking(clientId, business.Id);
+
+        var response = await CreateClient(clientId, "CLIENT").PostAsJsonAsync(
+            $"/booking/bookings/{booking.Id}/review",
+            new { rating = 5, userId = Guid.NewGuid(), businessId = Guid.NewGuid(), bookingId = Guid.NewGuid() });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var stored = Assert.Single(factory.ReviewRepository.All);
+        Assert.Equal((booking.Id, clientId, business.Id), (stored.BookingId, stored.UserId, stored.BusinessId));
+    }
+
+    [Fact]
     public async Task Create_WithoutAComment_StoresNull()
     {
         Reset();

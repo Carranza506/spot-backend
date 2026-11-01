@@ -30,6 +30,19 @@ public sealed class ReviewServiceTests
         Assert.Single(_reviews.All);
     }
 
+    [Theory]
+    [InlineData("a\0b", "a b")]
+    [InlineData("\0 \0", null)]
+    public async Task CreateAsync_NulInTheComment_IsReplacedSoPostgresAcceptsIt(string comment, string? expected)
+    {
+        var clientId = Guid.NewGuid();
+        var booking = _reviews.SeedBooking(clientId, Guid.NewGuid());
+
+        var result = await _service.CreateAsync(booking.Id, clientId, new ReviewCreateRequest { Rating = 5, Comment = comment });
+
+        Assert.Equal(expected, result.Comment);
+    }
+
     [Fact]
     public async Task CreateAsync_UnknownBooking_ThrowsNotFound()
     {
