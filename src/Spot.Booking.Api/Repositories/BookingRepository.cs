@@ -33,6 +33,27 @@ public sealed class BookingRepository(BookingDbContext db) : IBookingRepository
     public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
         db.Bookings.AsNoTracking().FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
+    public async Task<bool> UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
+    {
+        var from = booking.Status;
+        db.Bookings.Attach(booking);
+        booking.Status = status;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // 0 rows: another request changed the status, or deleted the booking, after it was read.
+            db.Entry(booking).State = EntityState.Detached;
+            booking.Status = from;
+            return false;
+        }
+
+        await db.Entry(booking).ReloadAsync(ct);
+        return true;
+    }
+
     public Task<(IReadOnlyList<BookingEntity> Items, int Total)> ListByUserAsync(
         Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default)
     {

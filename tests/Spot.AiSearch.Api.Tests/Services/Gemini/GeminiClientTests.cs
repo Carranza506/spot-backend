@@ -113,6 +113,8 @@ public sealed class GeminiClientTests
         Assert.True(root.GetProperty("generationConfig").TryGetProperty("responseSchema", out var responseSchema));
         Assert.Equal("OBJECT", responseSchema.GetProperty("type").GetString());
         Assert.True(responseSchema.GetProperty("properties").TryGetProperty("serviceQuery", out _));
+        // #73: the place the user mentions is part of AiSearchCriteria too.
+        Assert.True(responseSchema.GetProperty("properties").TryGetProperty("rawLocationText", out _));
 
         var systemInstructionText = root.GetProperty("systemInstruction").GetProperty("parts")[0].GetProperty("text").GetString();
         var expectedToday = DateOnly.FromDateTime(DateTime.UtcNow + TimeSpan.FromHours(-6));

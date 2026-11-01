@@ -178,6 +178,8 @@ services:
       # Gemini API; otherwise this placeholder lets the stack boot, and only requests that
       # actually call Gemini fail.
       Gemini__ApiKey: ${GEMINI_API_KEY:-not-configured}
+      # POST /ai-search/query delegates the business search to Business.Api (#73), service to service.
+      BusinessApi__BaseUrl: http://business-api:8080
       Logging__Console__FormatterName: json
     secrets:
       - jwt_public_key

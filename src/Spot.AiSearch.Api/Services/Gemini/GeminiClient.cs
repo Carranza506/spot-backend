@@ -25,7 +25,8 @@ public sealed class GeminiClient(
     private static string BuildSystemInstructionText(DateOnly today) =>
         $"You are a natural-language parser for a business-booking search. Today's date is " +
         $"{today:yyyy-MM-dd} (Costa Rica time). Extract the service the user is looking for, the " +
-        "desired date, time, and maximum budget (in Costa Rican colones) from their query. " +
+        "desired date, time, maximum budget (in Costa Rican colones) and the place they mention " +
+        "(e.g. a town or neighborhood, as written) from their query. " +
         "Resolve relative expressions (e.g. \"mañana\", \"el viernes que viene\", \"en la tarde\") " +
         "into an actual ISO-8601 date and a 24-hour time using today's date as the reference " +
         "point. You have no access to any database or external tool: only return what can be " +
@@ -43,6 +44,7 @@ public sealed class GeminiClient(
             date = new { type = "STRING", nullable = true, description = "ISO-8601 date (YYYY-MM-DD)." },
             time = new { type = "STRING", nullable = true, description = "24-hour time (HH:mm:ss)." },
             budgetMaxColones = new { type = "NUMBER", nullable = true, description = "Maximum budget in Costa Rican colones." },
+            rawLocationText = new { type = "STRING", nullable = true, description = "Place mentioned in the query, as written, e.g. \"Sarapiquí\"." },
         },
     };
 
