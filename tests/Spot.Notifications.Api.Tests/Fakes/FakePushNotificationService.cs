@@ -14,15 +14,22 @@ public sealed class FakePushNotificationService : IPushNotificationService
 
     public PushDeliverySummary Summary { get; set; } = new(true, 1, 0, 0);
 
+    /// <summary>Users whose push throws instead of being recorded.</summary>
+    public HashSet<Guid> FailFor { get; } = [];
+
     public void Reset()
     {
         _sent.Clear();
         Summary = new PushDeliverySummary(true, 1, 0, 0);
+        FailFor.Clear();
     }
 
     public Task<PushDeliverySummary> SendToUserAsync(
         Guid userId, string title, string body, IReadOnlyDictionary<string, string>? data = null, CancellationToken ct = default)
     {
+        if (FailFor.Contains(userId))
+            throw new InvalidOperationException("Simulated push failure.");
+
         _sent.Add(new SentPush(userId, title, body, data, ct));
         return Task.FromResult(Summary);
     }

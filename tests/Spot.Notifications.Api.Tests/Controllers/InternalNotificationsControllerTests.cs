@@ -103,6 +103,32 @@ public class InternalNotificationsControllerTests : IClassFixture<NotificationsA
         await AssertErrorAsync(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
     }
 
+    [Fact]
+    public async Task MessageOverTheLimit_Returns400InTheErrorShape()
+    {
+        var response = await PostAsync(Body("CONFIRMED", message: new string('a', 501)));
+
+        await AssertErrorAsync(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
+        Assert.Empty(_factory.NotificationRepository.All);
+        Assert.Empty(_factory.PushNotifications.Sent);
+    }
+
+    [Theory]
+    [InlineData("\0")]
+    [InlineData("before\0after")]
+    [InlineData("line\nbreak")]
+    [InlineData("trailing newline\n")]
+    [InlineData("\u001F")]
+    [InlineData("\u007F")]
+    public async Task MessageWithControlCharacters_Returns400InTheErrorShape(string message)
+    {
+        var response = await PostAsync(Body("CONFIRMED", message: message));
+
+        await AssertErrorAsync(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
+        Assert.Empty(_factory.NotificationRepository.All);
+        Assert.Empty(_factory.PushNotifications.Sent);
+    }
+
     // ---------- 404 ----------
 
     [Fact]
@@ -175,15 +201,50 @@ public class InternalNotificationsControllerTests : IClassFixture<NotificationsA
         Assert.Equal("See you at 2pm.", Assert.Single(_factory.PushNotifications.Sent).Body);
     }
 
+    [Fact]
+    public async Task MessageAtTheLimit_Returns202()
+    {
+        var message = new string('a', 500);
+
+        var response = await PostAsync(Body("CONFIRMED", message: message));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(message, Assert.Single(_factory.NotificationRepository.All).Body);
+    }
+
+    [Fact]
+    public async Task Message_KeepsAccentsAndEmoji()
+    {
+        var response = await PostAsync(Body("CONFIRMED", message: "¡Nos vemos mañana! 😀"));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("¡Nos vemos mañana! 😀", Assert.Single(_factory.NotificationRepository.All).Body);
+    }
+
     [Theory]
-    [InlineData("CONFIRMED", "Your booking has been confirmed.")]
-    [InlineData("COMPLETED", "Your booking has been completed.")]
-    [InlineData("NO_SHOW", "This booking was marked as a no-show.")]
-    public async Task WithoutMessage_TheBodyIsTheDefaultForTheStatus(string status, string expected)
+    [InlineData("CONFIRMED", "Tu reservación fue confirmada", "El negocio confirmó tu reservación.")]
+    [InlineData("COMPLETED", "Reservación completada", "Tu reservación fue marcada como completada. ¡Gracias por usar Spot!")]
+    [InlineData("NO_SHOW", "Reservación no asistida", "Tu reservación fue marcada como no asistida.")]
+    public async Task WithoutMessage_TheTextIsTheDefaultForTheStatus(string status, string title, string body)
     {
         await PostAsync(Body(status));
 
-        Assert.Equal(expected, Assert.Single(_factory.NotificationRepository.All).Body);
+        var row = Assert.Single(_factory.NotificationRepository.All);
+        Assert.Equal(title, row.Title);
+        Assert.Equal(body, row.Body);
+    }
+
+    [Fact]
+    public async Task CancelledWithoutMessage_BothRecipientsGetTheSameNeutralText()
+    {
+        await PostAsync(Body("CANCELLED"));
+
+        Assert.Equal(2, _factory.NotificationRepository.All.Count);
+        Assert.All(_factory.NotificationRepository.All, row =>
+        {
+            Assert.Equal("Reservación cancelada", row.Title);
+            Assert.Equal("La reservación fue cancelada.", row.Body);
+        });
     }
 
     [Fact]
@@ -198,11 +259,31 @@ public class InternalNotificationsControllerTests : IClassFixture<NotificationsA
     }
 
     [Fact]
+    public async Task PushThrowingForTheClient_StillPushesToTheBusinessAccount_AndReturns202()
+    {
+        _factory.PushNotifications.FailFor.Add(_clientId);
+
+        var response = await PostAsync(Body("CANCELLED"));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(2, _factory.NotificationRepository.All.Count);
+        Assert.Equal(_businessAccountId, Assert.Single(_factory.PushNotifications.Sent).UserId);
+    }
+
+    [Fact]
     public async Task Push_IsNotTiedToTheRequest_SoBookingsTimeoutCantCutItShort()
     {
         await PostAsync(Body("CONFIRMED"));
 
         Assert.False(Assert.Single(_factory.PushNotifications.Sent).Token.CanBeCanceled);
+    }
+
+    [Fact]
+    public async Task Insert_IsNotTiedToTheRequest_SoBookingsTimeoutCantCancelIt()
+    {
+        await PostAsync(Body("CONFIRMED"));
+
+        Assert.False(_factory.NotificationRepository.LastAddToken.CanBeCanceled);
     }
 
     private void AssertStored(Notification row, Guid expectedUserId)

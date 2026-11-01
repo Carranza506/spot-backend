@@ -8,7 +8,8 @@ namespace Spot.Notifications.Api.Services;
 
 public sealed class NotificationService(
     INotificationRepository repository,
-    IPushNotificationService pushNotifications) : INotificationService
+    IPushNotificationService pushNotifications,
+    ILogger<NotificationService> logger) : INotificationService
 {
     /// <summary>notifications.related_entity_type for bookings, as in the contract's Notification example.</summary>
     private const string BookingEntityType = "booking";
@@ -56,6 +57,8 @@ public sealed class NotificationService(
 
         Guid[] recipients = status == BookingStatus.CANCELLED ? [userId, businessAccountId] : [userId];
 
+        // Not the request's token, here or on the pushes below: the booking already changed, so
+        // Booking giving up on its short timeout must not cost the notification its row or delivery.
         await repository.AddRangeAsync(recipients.Select(recipient => new Notification
         {
             UserId = recipient,
@@ -64,7 +67,7 @@ public sealed class NotificationService(
             Body = body,
             RelatedEntityType = BookingEntityType,
             RelatedEntityId = bookingId,
-        }).ToList(), ct);
+        }).ToList(), CancellationToken.None);
 
         var data = new Dictionary<string, string>
         {
@@ -72,20 +75,32 @@ public sealed class NotificationService(
             ["status"] = status.ToString(),
         };
 
-        // Not the request's token: the rows are already stored, so Booking giving up on its short
-        // timeout must not cut the delivery short.
         foreach (var recipient in recipients)
-            await pushNotifications.SendToUserAsync(recipient, title, body, data, CancellationToken.None);
+        {
+            try
+            {
+                await pushNotifications.SendToUserAsync(recipient, title, body, data, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                // One recipient's failure must not cost the next one their push, nor the 202: the
+                // rows are stored. Only the exception type: its message could carry a device token.
+                logger.LogWarning(
+                    "Push to user {UserId} for booking {BookingId} failed ({ExceptionType}).",
+                    recipient, bookingId, ex.GetType().Name);
+            }
+        }
 
         return BookingStatusNotificationResult.Accepted;
     }
 
     private static (string Title, string Body) DefaultTextFor(BookingStatus status) => status switch
     {
-        BookingStatus.CONFIRMED => ("Booking confirmed", "Your booking has been confirmed."),
-        BookingStatus.COMPLETED => ("Booking completed", "Your booking has been completed."),
-        BookingStatus.CANCELLED => ("Booking cancelled", "This booking has been cancelled."),
-        BookingStatus.NO_SHOW => ("Booking marked as no-show", "This booking was marked as a no-show."),
+        BookingStatus.CONFIRMED => ("Tu reservación fue confirmada", "El negocio confirmó tu reservación."),
+        BookingStatus.COMPLETED => ("Reservación completada", "Tu reservación fue marcada como completada. ¡Gracias por usar Spot!"),
+        // Neutral on purpose: this one goes to both the client and the business account.
+        BookingStatus.CANCELLED => ("Reservación cancelada", "La reservación fue cancelada."),
+        BookingStatus.NO_SHOW => ("Reservación no asistida", "Tu reservación fue marcada como no asistida."),
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, "Not a status change."),
     };
 }

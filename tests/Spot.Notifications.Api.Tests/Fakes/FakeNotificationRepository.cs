@@ -18,11 +18,15 @@ public sealed class FakeNotificationRepository : INotificationRepository
     public HashSet<Guid> Users { get; } = [];
     public Dictionary<Guid, Guid> BusinessAccounts { get; } = [];
 
+    /// <summary>The token the last AddRangeAsync got.</summary>
+    public CancellationToken LastAddToken { get; private set; }
+
     public void Reset()
     {
         _notifications.Clear();
         Users.Clear();
         BusinessAccounts.Clear();
+        LastAddToken = default;
     }
 
     /// <summary>Seeds a notification directly, for tests that don't go through the internal endpoint.</summary>
@@ -64,6 +68,8 @@ public sealed class FakeNotificationRepository : INotificationRepository
 
     public Task AddRangeAsync(IReadOnlyList<Notification> notifications, CancellationToken ct = default)
     {
+        LastAddToken = ct;
+
         foreach (var notification in notifications)
             Seed(notification);
 
