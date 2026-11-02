@@ -14,6 +14,8 @@ public sealed class NotificationService(
     /// <summary>notifications.related_entity_type for bookings, as in the contract's Notification example.</summary>
     private const string BookingEntityType = "booking";
 
+    private const int MaxBodyLength = 500;
+
     public async Task<PaginatedResponse<NotificationDto>> ListAsync(
         Guid userId, bool? isRead, int page, int pageSize, CancellationToken ct = default)
     {
@@ -53,7 +55,8 @@ public sealed class NotificationService(
             return BookingStatusNotificationResult.BusinessNotFound;
 
         var (title, defaultBody) = DefaultTextFor(status);
-        var body = string.IsNullOrWhiteSpace(request.Message) ? defaultBody : request.Message;
+        var message = SanitizeMessage(request.Message);
+        var body = message.Length == 0 ? defaultBody : message;
 
         Guid[] recipients = status == BookingStatus.CANCELLED ? [userId, businessAccountId] : [userId];
 
@@ -92,6 +95,20 @@ public sealed class NotificationService(
         }
 
         return BookingStatusNotificationResult.Accepted;
+    }
+
+    /// <summary>
+    /// The contract accepts any string, so instead of rejecting one this makes it safe to store and
+    /// send: Postgres refuses a NUL in TEXT, which would be a 500. Empty if nothing usable is left.
+    /// </summary>
+    private static string SanitizeMessage(string? message)
+    {
+        var clean = string.Concat((message ?? "").Where(c => !char.IsControl(c))).Trim();
+        if (clean.Length <= MaxBodyLength)
+            return clean;
+
+        var splitsSurrogatePair = char.IsSurrogatePair(clean[MaxBodyLength - 1], clean[MaxBodyLength]);
+        return clean[..(splitsSurrogatePair ? MaxBodyLength - 1 : MaxBodyLength)];
     }
 
     private static (string Title, string Body) DefaultTextFor(BookingStatus status) => status switch

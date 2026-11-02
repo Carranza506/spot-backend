@@ -103,26 +103,16 @@ public class InternalNotificationsControllerTests : IClassFixture<NotificationsA
         await AssertErrorAsync(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
     }
 
-    [Fact]
-    public async Task MessageOverTheLimit_Returns400InTheErrorShape()
-    {
-        var response = await PostAsync(Body("CONFIRMED", message: new string('a', 501)));
-
-        await AssertErrorAsync(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
-        Assert.Empty(_factory.NotificationRepository.All);
-        Assert.Empty(_factory.PushNotifications.Sent);
-    }
-
     [Theory]
-    [InlineData("\0")]
-    [InlineData("before\0after")]
-    [InlineData("line\nbreak")]
-    [InlineData("trailing newline\n")]
-    [InlineData("\u001F")]
-    [InlineData("\u007F")]
-    public async Task MessageWithControlCharacters_Returns400InTheErrorShape(string message)
+    [InlineData("1")]
+    [InlineData("true")]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    public async Task NonStringMessage_Returns400InTheErrorShape(string message)
     {
-        var response = await PostAsync(Body("CONFIRMED", message: message));
+        var body = $$"""{"bookingId":"{{_bookingId}}","businessId":"{{_businessId}}","userId":"{{_clientId}}","status":"CONFIRMED","message":{{message}}}""";
+
+        var response = await PostAsync(body);
 
         await AssertErrorAsync(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
         Assert.Empty(_factory.NotificationRepository.All);
@@ -219,6 +209,76 @@ public class InternalNotificationsControllerTests : IClassFixture<NotificationsA
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Equal("¡Nos vemos mañana! 😀", Assert.Single(_factory.NotificationRepository.All).Body);
+    }
+
+    [Theory]
+    [InlineData("before\0after", "beforeafter")]
+    [InlineData("line\nbreak", "linebreak")]
+    [InlineData("trailing newline\n", "trailing newline")]
+    [InlineData("a\u0001b\u001Fc\u007Fd\u0085e\u009Ff", "abcdef")]
+    [InlineData("  \t surrounded \r\n ", "surrounded")]
+    public async Task MessageWithControlCharacters_Returns202_AndStoresThemRemoved(string message, string expected)
+    {
+        var response = await PostAsync(Body("CONFIRMED", message: message));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(expected, Assert.Single(_factory.NotificationRepository.All).Body);
+        Assert.Equal(expected, Assert.Single(_factory.PushNotifications.Sent).Body);
+    }
+
+    [Theory]
+    [InlineData(501)]
+    [InlineData(2 * 1024 * 1024)]
+    public async Task MessageOverTheLimit_Returns202_AndStoresItTruncated(int length)
+    {
+        var response = await PostAsync(Body("CONFIRMED", message: new string('a', length)));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(new string('a', 500), Assert.Single(_factory.NotificationRepository.All).Body);
+        Assert.Equal(new string('a', 500), Assert.Single(_factory.PushNotifications.Sent).Body);
+    }
+
+    [Fact]
+    public async Task MessageLimit_AppliesAfterRemovingControlCharacters()
+    {
+        var response = await PostAsync(Body("CONFIRMED", message: new string('\0', 100) + new string('a', 500)));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(new string('a', 500), Assert.Single(_factory.NotificationRepository.All).Body);
+    }
+
+    [Theory]
+    [InlineData("\0")]
+    [InlineData("\u0001\u001F\u007F")]
+    [InlineData("   ")]
+    [InlineData(" \0\t\n ")]
+    [InlineData("")]
+    public async Task MessageWithNothingUsable_Returns202_AndUsesTheDefaultText(string message)
+    {
+        var response = await PostAsync(Body("CONFIRMED", message: message));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal("El negocio confirmó tu reservación.", Assert.Single(_factory.NotificationRepository.All).Body);
+    }
+
+    [Fact]
+    public async Task EmojiAcrossTheLimit_IsDroppedWhole()
+    {
+        var response = await PostAsync(Body("CONFIRMED", message: new string('a', 499) + "😀b"));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(new string('a', 499), Assert.Single(_factory.NotificationRepository.All).Body);
+    }
+
+    [Fact]
+    public async Task EmojiEndingExactlyAtTheLimit_IsKept()
+    {
+        var message = new string('a', 498) + "😀";
+
+        var response = await PostAsync(Body("CONFIRMED", message: message + "b"));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        Assert.Equal(message, Assert.Single(_factory.NotificationRepository.All).Body);
     }
 
     [Theory]

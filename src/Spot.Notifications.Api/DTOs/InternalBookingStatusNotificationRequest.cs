@@ -25,9 +25,7 @@ public sealed class InternalBookingStatusNotificationRequest
     [JsonConverter(typeof(BookingStatusJsonConverter))]
     public BookingStatus? Status { get; set; }
 
-    /// <summary>No control characters: Postgres rejects a NUL in TEXT, which would be a 500.</summary>
-    [StringLength(500)]
-    [RegularExpression(@"^\P{Cc}*$")]
+    /// <summary>Any string, as in the contract: NotificationService sanitizes it before using it.</summary>
     public string? Message { get; set; }
 }
 
