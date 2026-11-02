@@ -129,8 +129,22 @@ public class BookingsController(IBookingService bookingService) : ControllerBase
         ChangeStatus(callerId => bookingService.CancelAsync(bookingId, callerId, ct));
 
     /// <summary>
+    /// POST /booking/bookings/{bookingId}/confirm (operationId confirmBooking): the BUSINESS that
+    /// owns the booking; only from PENDING, else 422.
+    /// </summary>
+    [HttpPost("{bookingId:guid}/confirm")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(BookingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    public Task<IActionResult> ConfirmBooking(Guid bookingId, CancellationToken ct) =>
+        ChangeStatus(callerId => bookingService.ConfirmAsync(bookingId, callerId, ct));
+
+    /// <summary>
     /// POST /booking/bookings/{bookingId}/complete (operationId completeBooking): the BUSINESS that
-    /// owns the booking; only from CONFIRMED, else 422.
+    /// owns the booking; only from CONFIRMED and once its start time has arrived, else 422.
     /// </summary>
     [HttpPost("{bookingId:guid}/complete")]
     [Authorize(Roles = "BUSINESS")]
@@ -144,7 +158,7 @@ public class BookingsController(IBookingService bookingService) : ControllerBase
 
     /// <summary>
     /// POST /booking/bookings/{bookingId}/no-show (operationId markBookingNoShow): the BUSINESS that
-    /// owns the booking; only from CONFIRMED, else 422.
+    /// owns the booking; only from CONFIRMED and once its start time has arrived, else 422.
     /// </summary>
     [HttpPost("{bookingId:guid}/no-show")]
     [Authorize(Roles = "BUSINESS")]
@@ -156,7 +170,7 @@ public class BookingsController(IBookingService bookingService) : ControllerBase
     public Task<IActionResult> MarkBookingNoShow(Guid bookingId, CancellationToken ct) =>
         ChangeStatus(callerId => bookingService.MarkNoShowAsync(bookingId, callerId, ct));
 
-    /// <summary>The error mapping the three status transitions share.</summary>
+    /// <summary>The error mapping the status transitions share.</summary>
     private async Task<IActionResult> ChangeStatus(Func<Guid, Task<BookingDto>> transition)
     {
         if (!TryGetUserId(out var callerId))
