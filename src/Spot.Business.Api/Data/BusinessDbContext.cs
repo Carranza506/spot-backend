@@ -18,6 +18,7 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
     public DbSet<ServicePhoto> ServicePhotos => Set<ServicePhoto>();
     public DbSet<FavoriteBusiness> FavoriteBusinesses => Set<FavoriteBusiness>();
     public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<BookingReference> Bookings => Set<BookingReference>();
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<Subscription> Subscriptions => Set<Subscription>();
     public DbSet<SubscriptionPayment> SubscriptionPayments => Set<SubscriptionPayment>();
@@ -45,6 +46,17 @@ public class BusinessDbContext(DbContextOptions<BusinessDbContext> options) : Db
         {
             e.ToTable("users", t => t.ExcludeFromMigrations());
             e.HasKey(x => x.Id);
+        });
+
+        // Owned and migrated by Spot.Booking.Api; read-only here, for reviews (#70). No relationship
+        // to reviews is modeled, so this adds nothing to Business.Api's migrations. See Models/BookingReference.cs.
+        modelBuilder.Entity<BookingReference>(e =>
+        {
+            e.ToTable("bookings", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.BusinessId).HasColumnName("business_id");
         });
 
         modelBuilder.Entity<Category>(e =>
