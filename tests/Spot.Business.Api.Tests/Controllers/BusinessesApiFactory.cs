@@ -37,6 +37,9 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
     /// <summary>Schedule exceptions (#61) also live under a business.</summary>
     public FakeBusinessScheduleExceptionRepository ScheduleExceptionRepository { get; } = new();
 
+    /// <summary>Reviews (#70): a business's reviews are listed only while it's visible, so they share its businesses.</summary>
+    public FakeReviewRepository ReviewRepository { get; } = new();
+
     /// <summary>
     /// Photos (#65): rows and files are faked (no database, nothing written to disk), but the real
     /// PhotoService and the real SkiaSharp image processing run, so uploads are decoded for real.
@@ -91,6 +94,8 @@ public sealed class BusinessesApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IBusinessContactRepository>(ContactRepository);
             services.RemoveAll<IBusinessScheduleExceptionRepository>();
             services.AddSingleton<IBusinessScheduleExceptionRepository>(ScheduleExceptionRepository);
+            services.RemoveAll<IReviewRepository>();
+            services.AddSingleton<IReviewRepository>(ReviewRepository);
             services.RemoveAll<IPhotoRepository>();
             services.AddSingleton<IPhotoRepository>(PhotoRepository);
             services.RemoveAll<IPhotoStorage>();
