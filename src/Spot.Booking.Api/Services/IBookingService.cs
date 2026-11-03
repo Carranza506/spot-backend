@@ -23,16 +23,22 @@ public interface IBookingService
     /// <exception cref="BookingRuleViolationException">The booking isn't PENDING or CONFIRMED.</exception>
     Task<BookingDto> CancelAsync(Guid bookingId, Guid callerId, CancellationToken ct = default);
 
-    /// <summary>CONFIRMED → COMPLETED, by the owner of the booking's business.</summary>
+    /// <summary>PENDING → CONFIRMED, by the owner of the booking's business.</summary>
     /// <exception cref="BookingNotFoundException">The booking doesn't exist.</exception>
     /// <exception cref="BookingAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
-    /// <exception cref="BookingRuleViolationException">The booking isn't CONFIRMED.</exception>
+    /// <exception cref="BookingRuleViolationException">The booking isn't PENDING.</exception>
+    Task<BookingDto> ConfirmAsync(Guid bookingId, Guid callerId, CancellationToken ct = default);
+
+    /// <summary>CONFIRMED → COMPLETED, by the owner of the booking's business, once its start time has arrived.</summary>
+    /// <exception cref="BookingNotFoundException">The booking doesn't exist.</exception>
+    /// <exception cref="BookingAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    /// <exception cref="BookingRuleViolationException">The booking isn't CONFIRMED, or its start time hasn't arrived.</exception>
     Task<BookingDto> CompleteAsync(Guid bookingId, Guid callerId, CancellationToken ct = default);
 
-    /// <summary>CONFIRMED → NO_SHOW, by the owner of the booking's business.</summary>
+    /// <summary>CONFIRMED → NO_SHOW, by the owner of the booking's business, once its start time has arrived.</summary>
     /// <exception cref="BookingNotFoundException">The booking doesn't exist.</exception>
     /// <exception cref="BookingAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
-    /// <exception cref="BookingRuleViolationException">The booking isn't CONFIRMED.</exception>
+    /// <exception cref="BookingRuleViolationException">The booking isn't CONFIRMED, or its start time hasn't arrived.</exception>
     Task<BookingDto> MarkNoShowAsync(Guid bookingId, Guid callerId, CancellationToken ct = default);
 
     /// <summary>A page of <paramref name="userId"/>'s own bookings (bookings.user_id), most recent first.</summary>

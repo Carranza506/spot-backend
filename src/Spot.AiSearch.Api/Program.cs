@@ -8,6 +8,7 @@ using Spot.AiSearch.Api.Models;
 using Spot.AiSearch.Api.Options;
 using Spot.AiSearch.Api.Repositories;
 using Spot.AiSearch.Api.Services;
+using Spot.AiSearch.Api.Services.Business;
 using Spot.AiSearch.Api.Services.Gemini;
 using Spot.Shared.Auth;
 using Spot.Shared.Errors;
@@ -71,6 +72,20 @@ if (string.IsNullOrWhiteSpace(geminiSection.Get<GeminiOptions>()?.ApiKey))
     throw new InvalidOperationException(
         $"{GeminiOptions.SectionName}:{nameof(GeminiOptions.ApiKey)} is missing. Set it via user-secrets " +
         "in development or the Gemini__ApiKey environment variable in production (see README.md).");
+}
+
+// POST /ai-search/query (#73) delegates the business search to Spot.Business.Api over HTTP instead
+// of duplicating its text/category/PostGIS query. Fails fast at boot, same as Gemini:ApiKey above.
+var businessApiSection = builder.Configuration.GetSection(BusinessApiOptions.SectionName);
+builder.Services.Configure<BusinessApiOptions>(businessApiSection);
+builder.Services.AddHttpClient<IBusinessSearchClient, BusinessSearchClient>();
+builder.Services.AddScoped<IAiSearchQueryService, AiSearchQueryService>();
+
+if (!Uri.TryCreate(businessApiSection.Get<BusinessApiOptions>()?.BaseUrl, UriKind.Absolute, out _))
+{
+    throw new InvalidOperationException(
+        $"{BusinessApiOptions.SectionName}:{nameof(BusinessApiOptions.BaseUrl)} must be an absolute URL " +
+        "(e.g. http://localhost:5151 for `dotnet run`, http://business-api:8080 in Docker).");
 }
 
 // Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the

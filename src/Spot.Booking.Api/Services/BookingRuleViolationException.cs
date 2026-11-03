@@ -15,5 +15,8 @@ public sealed class BookingRuleViolationException(string code, string message) :
     /// <summary>The contract defines no code for a transition from the wrong status; agreed for #69.</summary>
     public const string InvalidStatusTransition = "BOOKING_INVALID_STATUS_TRANSITION";
 
+    /// <summary>Complete or no-show before the booking's start time; agreed for #146.</summary>
+    public const string NotStarted = "BOOKING_NOT_STARTED";
+
     public string Code { get; } = code;
 }

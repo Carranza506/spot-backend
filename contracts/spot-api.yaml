@@ -1741,7 +1741,9 @@ paths:
         `CONFIRMED`) for the same business cannot coexist with overlapping time
         ranges — attempting to book an already-taken slot responds `409`.
         Booking outside the business's hours (per `business_hours` /
-        `business_schedule_exceptions`) responds `422`.
+        `business_schedule_exceptions`) responds `422`. The booking is created
+        `PENDING`; the business owner moves it to `CONFIRMED` with
+        `confirmBooking`.
 
         Required role: `CLIENT`.
       requestBody:
@@ -1827,6 +1829,33 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
+  /booking/bookings/{bookingId}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/BookingIdParam'
+    post:
+      tags: [Booking]
+      operationId: confirmBooking
+      summary: Confirm a booking
+      description: |-
+        Transitions `status` to `CONFIRMED`. Only valid from `PENDING`;
+        otherwise responds `422` (`BOOKING_INVALID_STATUS_TRANSITION`).
+        Enables completing it or marking it as no-show once its start time
+        has arrived.
+
+        Required role: `BUSINESS` who owns the booking's business.
+      responses:
+        '200':
+          description: Booking confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
   /booking/bookings/{bookingId}/complete:
     parameters:
       - $ref: '#/components/parameters/BookingIdParam'
@@ -1836,7 +1865,9 @@ paths:
       summary: Mark a booking as completed
       description: |-
         Transitions `status` to `COMPLETED`. Only valid from `CONFIRMED`;
-        otherwise responds `422`. Enables the client to leave a review.
+        otherwise responds `422` (`BOOKING_INVALID_STATUS_TRANSITION`). Before
+        the booking's `startAt` it also responds `422` (`BOOKING_NOT_STARTED`).
+        Enables the client to leave a review.
 
         Required role: `BUSINESS` who owns the booking's business.
       responses:
@@ -1861,7 +1892,8 @@ paths:
       summary: Mark a booking as no-show
       description: |-
         Transitions `status` to `NO_SHOW`. Only valid from `CONFIRMED`;
-        otherwise responds `422`.
+        otherwise responds `422` (`BOOKING_INVALID_STATUS_TRANSITION`). Before
+        the booking's `startAt` it also responds `422` (`BOOKING_NOT_STARTED`).
 
         Required role: `BUSINESS` who owns the booking's business.
       responses:
@@ -1885,12 +1917,17 @@ paths:
       operationId: createBookingReview
       summary: Leave a review for a completed booking
       description: |-
-        Creates a row in `reviews` for the booking. The `trg_validate_review`
-        trigger requires that the booking exists, is in `COMPLETED` status, and
-        that the review's user and business match those of the booking;
-        violating any of these rules responds `422`. Since `reviews.booking_id`
-        is unique, attempting to review a booking that already has a review
-        responds `409`.
+        Creates a row in `reviews` for the booking. The review's user and
+        business are always taken from the booking, never from the body. The
+        checks run in this order, so a caller who doesn't own the booking can't
+        learn its status:
+
+        - The booking doesn't exist: `404`.
+        - The caller isn't the booking's client: `403`.
+        - The booking isn't `COMPLETED` (enforced by the `trg_validate_review`
+          trigger): `422` with code `REVIEW_BOOKING_NOT_COMPLETED`.
+        - The booking already has a review (`reviews.booking_id` is unique):
+          `409` with code `REVIEW_ALREADY_EXISTS`.
 
         Required role: `CLIENT` who owns the booking.
       requestBody:
@@ -1966,6 +2003,11 @@ paths:
       summary: List a business's reviews
       security: []
       description: |-
+        Newest first (`createdAt` descending, then `id`). A business that
+        doesn't exist or is inactive responds `404`, same as
+        `GET /business/businesses/{businessId}`. An invalid `page`/`pageSize`
+        responds `400`.
+
         Access: public (no JWT required).
       parameters:
         - $ref: '#/components/parameters/PageParam'
@@ -1988,6 +2030,7 @@ paths:
                     createdAt: "2026-08-20T18:00:00Z"
                     updatedAt: "2026-08-20T18:00:00Z"
                 pagination: { page: 1, pageSize: 20, total: 1, totalPages: 1 }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '404': { $ref: '#/components/responses/NotFound' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 

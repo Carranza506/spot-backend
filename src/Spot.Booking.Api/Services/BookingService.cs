@@ -105,27 +105,32 @@ public sealed class BookingService(
     }
 
     public Task<BookingDto> CancelAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
-        ChangeStatusAsync(bookingId, callerId, clientAllowed: true,
+        ChangeStatusAsync(bookingId, callerId, clientAllowed: true, onlyOnceStarted: false,
             [BookingStatus.PENDING, BookingStatus.CONFIRMED], BookingStatus.CANCELLED,
             "Solo se puede cancelar una reservación pendiente o confirmada.", ct);
 
+    public Task<BookingDto> ConfirmAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
+        ChangeStatusAsync(bookingId, callerId, clientAllowed: false, onlyOnceStarted: false,
+            [BookingStatus.PENDING], BookingStatus.CONFIRMED,
+            "Solo se puede confirmar una reservación pendiente.", ct);
+
     public Task<BookingDto> CompleteAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
-        ChangeStatusAsync(bookingId, callerId, clientAllowed: false,
+        ChangeStatusAsync(bookingId, callerId, clientAllowed: false, onlyOnceStarted: true,
             [BookingStatus.CONFIRMED], BookingStatus.COMPLETED,
             "Solo se puede completar una reservación confirmada.", ct);
 
     public Task<BookingDto> MarkNoShowAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
-        ChangeStatusAsync(bookingId, callerId, clientAllowed: false,
+        ChangeStatusAsync(bookingId, callerId, clientAllowed: false, onlyOnceStarted: true,
             [BookingStatus.CONFIRMED], BookingStatus.NO_SHOW,
             "Solo se puede marcar como no presentada una reservación confirmada.", ct);
 
     /// <summary>
-    /// 404, then 403, then 422: the status is only checked once the caller may change the booking,
-    /// so other users can't learn it.
+    /// 404, then 403, then 422: the status and the time are only checked once the caller may change
+    /// the booking, so other users can't learn them.
     /// </summary>
     private async Task<BookingDto> ChangeStatusAsync(
-        Guid bookingId, Guid callerId, bool clientAllowed, BookingStatus[] validFrom, BookingStatus to,
-        string invalidMessage, CancellationToken ct)
+        Guid bookingId, Guid callerId, bool clientAllowed, bool onlyOnceStarted, BookingStatus[] validFrom,
+        BookingStatus to, string invalidMessage, CancellationToken ct)
     {
         var booking = await bookingRepository.GetByIdAsync(bookingId, ct)
                       ?? throw new BookingNotFoundException(bookingId);
@@ -136,6 +141,10 @@ public sealed class BookingService(
 
         if (!validFrom.Contains(booking.Status))
             throw new BookingRuleViolationException(BookingRuleViolationException.InvalidStatusTransition, invalidMessage);
+
+        if (onlyOnceStarted && booking.StartAt > timeProvider.GetUtcNow())
+            throw new BookingRuleViolationException(
+                BookingRuleViolationException.NotStarted, "Esta acción solo se puede realizar cuando ya llegó la hora de la reservación.");
 
         // Lost a race with another transition, or a delete, after the read above.
         if (!await bookingRepository.UpdateStatusAsync(booking, to, ct))
