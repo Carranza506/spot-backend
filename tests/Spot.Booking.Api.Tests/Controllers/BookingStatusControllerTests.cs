@@ -115,8 +115,126 @@ public class BookingStatusControllerTests(BookingsApiFactory factory) : IClassFi
         await AssertError(response, HttpStatusCode.Unauthorized, "UNAUTHORIZED");
     }
 
-    /// <summary>Resets the fakes, then seeds one booking of <see cref="ClientId"/> at a business owned by <see cref="OwnerId"/>.</summary>
-    private async Task<BookingEntity> SeedAsync(BookingStatus status)
+    // ---------- confirm (#146) ----------
+
+    [Fact]
+    public async Task Confirm_ByTheOwner_FromPending_Returns200WithTheConfirmedBooking()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(booking.Id, body.GetProperty("id").GetGuid());
+        Assert.Equal("CONFIRMED", body.GetProperty("status").GetString());
+        Assert.Equal(BookingStatus.CONFIRMED, booking.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_WithoutToken_Returns401()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await factory.CreateClient().PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.Unauthorized, "UNAUTHORIZED");
+        Assert.Equal(BookingStatus.PENDING, booking.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_AnotherBusiness_Returns403AndKeepsItPending()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(Guid.NewGuid(), "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+        Assert.Equal(BookingStatus.PENDING, booking.Status);
+    }
+
+    [Theory]
+    [InlineData("CLIENT")]
+    [InlineData("SUPERADMIN")]
+    public async Task Confirm_NonBusinessRole_Returns403AndKeepsItPending(string role)
+    {
+        // CLIENT is the booking's own client: it may cancel its booking, never confirm it.
+        var booking = await SeedAsync(BookingStatus.PENDING);
+        var callerId = role == "CLIENT" ? ClientId : Guid.NewGuid();
+
+        var response = await Client(callerId, role).PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+        Assert.Equal(BookingStatus.PENDING, booking.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_OwnersAccountIdWithAClientToken_Returns403()
+    {
+        // The service would let this id through as the owner: only the endpoint's BUSINESS role stops it.
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(OwnerId, "CLIENT").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+        Assert.Equal(BookingStatus.PENDING, booking.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_UnknownBooking_Returns404()
+    {
+        await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{Guid.NewGuid()}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.NotFound, "NOT_FOUND");
+    }
+
+    [Theory]
+    [InlineData(BookingStatus.CONFIRMED)]
+    [InlineData(BookingStatus.COMPLETED)]
+    [InlineData(BookingStatus.CANCELLED)]
+    [InlineData(BookingStatus.NO_SHOW)]
+    public async Task Confirm_FromAnythingButPending_Returns422AndKeepsTheStatus(BookingStatus from)
+    {
+        var booking = await SeedAsync(from);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.UnprocessableEntity, "BOOKING_INVALID_STATUS_TRANSITION");
+        Assert.Equal(from, booking.Status);
+    }
+
+    // ---------- complete / no-show before the start time (#146) ----------
+
+    [Theory]
+    [InlineData("complete")]
+    [InlineData("no-show")]
+    public async Task CompleteOrNoShow_BeforeTheStartTime_Returns422AndKeepsItConfirmed(string action)
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED, BookingsApiFactory.Now.AddMinutes(1));
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/{action}", null);
+
+        await AssertError(response, HttpStatusCode.UnprocessableEntity, "BOOKING_NOT_STARTED");
+        Assert.Equal(BookingStatus.CONFIRMED, booking.Status);
+    }
+
+    [Fact]
+    public async Task Cancel_BeforeTheStartTime_Returns200()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED, BookingsApiFactory.Now.AddDays(1));
+
+        var response = await Client(ClientId, "CLIENT").PostAsync($"/booking/bookings/{booking.Id}/cancel", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Resets the fakes, then seeds one booking of <see cref="ClientId"/> at a business owned by
+    /// <see cref="OwnerId"/>, starting at <paramref name="startAt"/> (by default, before the frozen clock).
+    /// </summary>
+    private async Task<BookingEntity> SeedAsync(BookingStatus status, DateTimeOffset? startAt = null)
     {
         factory.ScheduleRepository.Reset();
         factory.BookingRepository.Reset();
@@ -124,7 +242,7 @@ public class BookingStatusControllerTests(BookingsApiFactory factory) : IClassFi
         var businessId = Guid.NewGuid();
         factory.ScheduleRepository.Businesses.Add(new BusinessReference { Id = businessId, AccountId = OwnerId, IsActive = true });
 
-        var start = new DateTimeOffset(2026, 9, 1, 14, 0, 0, TimeSpan.Zero);
+        var start = startAt ?? BookingsApiFactory.Now.AddDays(-1);
         var booking = new BookingEntity
         {
             UserId = ClientId,

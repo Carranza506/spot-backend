@@ -1741,7 +1741,9 @@ paths:
         `CONFIRMED`) for the same business cannot coexist with overlapping time
         ranges — attempting to book an already-taken slot responds `409`.
         Booking outside the business's hours (per `business_hours` /
-        `business_schedule_exceptions`) responds `422`.
+        `business_schedule_exceptions`) responds `422`. The booking is created
+        `PENDING`; the business owner moves it to `CONFIRMED` with
+        `confirmBooking`.
 
         Required role: `CLIENT`.
       requestBody:
@@ -1827,6 +1829,33 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
+  /booking/bookings/{bookingId}/confirm:
+    parameters:
+      - $ref: '#/components/parameters/BookingIdParam'
+    post:
+      tags: [Booking]
+      operationId: confirmBooking
+      summary: Confirm a booking
+      description: |-
+        Transitions `status` to `CONFIRMED`. Only valid from `PENDING`;
+        otherwise responds `422` (`BOOKING_INVALID_STATUS_TRANSITION`).
+        Enables completing it or marking it as no-show once its start time
+        has arrived.
+
+        Required role: `BUSINESS` who owns the booking's business.
+      responses:
+        '200':
+          description: Booking confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
   /booking/bookings/{bookingId}/complete:
     parameters:
       - $ref: '#/components/parameters/BookingIdParam'
@@ -1836,7 +1865,9 @@ paths:
       summary: Mark a booking as completed
       description: |-
         Transitions `status` to `COMPLETED`. Only valid from `CONFIRMED`;
-        otherwise responds `422`. Enables the client to leave a review.
+        otherwise responds `422` (`BOOKING_INVALID_STATUS_TRANSITION`). Before
+        the booking's `startAt` it also responds `422` (`BOOKING_NOT_STARTED`).
+        Enables the client to leave a review.
 
         Required role: `BUSINESS` who owns the booking's business.
       responses:
@@ -1861,7 +1892,8 @@ paths:
       summary: Mark a booking as no-show
       description: |-
         Transitions `status` to `NO_SHOW`. Only valid from `CONFIRMED`;
-        otherwise responds `422`.
+        otherwise responds `422` (`BOOKING_INVALID_STATUS_TRANSITION`). Before
+        the booking's `startAt` it also responds `422` (`BOOKING_NOT_STARTED`).
 
         Required role: `BUSINESS` who owns the booking's business.
       responses:
