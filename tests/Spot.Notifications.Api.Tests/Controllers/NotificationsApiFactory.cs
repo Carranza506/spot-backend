@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 using Spot.Notifications.Api.Repositories;
+using Spot.Notifications.Api.Services.Push;
 using Spot.Notifications.Api.Tests.Fakes;
 
 namespace Spot.Notifications.Api.Tests.Controllers;
@@ -27,6 +28,11 @@ public sealed class NotificationsApiFactory : WebApplicationFactory<Program>
 
     /// <summary>INotificationRepository is swapped too, so NotificationsControllerTests run the real NotificationService.</summary>
     public FakeNotificationRepository NotificationRepository { get; } = new();
+
+    public const string InternalApiKey = "test-internal-api-key";
+
+    /// <summary>Swapped so the internal endpoint's tests can assert on pushes without FCM.</summary>
+    public FakePushNotificationService PushNotifications { get; } = new();
 
     // Notifications.Api only ever validates tokens (AddSpotJwtAuthentication), never signs them,
     // but this fixture still needs the private half to mint test tokens the app will accept.
@@ -53,6 +59,7 @@ public sealed class NotificationsApiFactory : WebApplicationFactory<Program>
         // parse successfully.
         Environment.SetEnvironmentVariable(
             "ConnectionStrings__DefaultConnection", "Host=localhost;Database=unused;Username=unused;Password=unused");
+        Environment.SetEnvironmentVariable("InternalApi__Key", InternalApiKey);
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -63,6 +70,8 @@ public sealed class NotificationsApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<IDeviceTokenRepository>(DeviceTokenRepository);
             services.RemoveAll<INotificationRepository>();
             services.AddSingleton<INotificationRepository>(NotificationRepository);
+            services.RemoveAll<IPushNotificationService>();
+            services.AddSingleton<IPushNotificationService>(PushNotifications);
         });
     }
 
@@ -98,6 +107,7 @@ public sealed class NotificationsApiFactory : WebApplicationFactory<Program>
             Environment.SetEnvironmentVariable("Jwt__Audience", null);
             Environment.SetEnvironmentVariable("Jwt__PublicKeyPem", null);
             Environment.SetEnvironmentVariable("ConnectionStrings__DefaultConnection", null);
+            Environment.SetEnvironmentVariable("InternalApi__Key", null);
         }
 
         base.Dispose(disposing);

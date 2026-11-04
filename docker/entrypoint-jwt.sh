@@ -13,4 +13,10 @@ if [ -n "$JWT_PUBLIC_KEY_FILE" ] && [ -f "$JWT_PUBLIC_KEY_FILE" ]; then
     export Jwt__PublicKeyPem="$(cat "$JWT_PUBLIC_KEY_FILE")"
 fi
 
+# Same bridge for the internal API key (#79), only set on the services that use it. Line endings are
+# stripped because a key file edited on Windows would otherwise send an invalid header value.
+if [ -n "$INTERNAL_API_KEY_FILE" ] && [ -f "$INTERNAL_API_KEY_FILE" ]; then
+    export InternalApi__Key="$(tr -d '\r\n' < "$INTERNAL_API_KEY_FILE")"
+fi
+
 exec dotnet "$@"

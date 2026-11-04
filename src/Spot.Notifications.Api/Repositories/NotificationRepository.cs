@@ -41,4 +41,19 @@ public sealed class NotificationRepository(NotificationsDbContext db) : INotific
         notification.IsRead = isRead;
         return db.SaveChangesAsync(ct);
     }
+
+    public Task AddRangeAsync(IReadOnlyList<Notification> notifications, CancellationToken ct = default)
+    {
+        db.Notifications.AddRange(notifications);
+        return db.SaveChangesAsync(ct);
+    }
+
+    public Task<bool> UserExistsAsync(Guid userId, CancellationToken ct = default) =>
+        db.Set<UserReference>().AnyAsync(x => x.Id == userId, ct);
+
+    public Task<Guid?> GetBusinessAccountIdAsync(Guid businessId, CancellationToken ct = default) =>
+        db.Set<BusinessReference>()
+            .Where(x => x.Id == businessId)
+            .Select(x => (Guid?)x.AccountId)
+            .FirstOrDefaultAsync(ct);
 }

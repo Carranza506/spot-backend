@@ -7,6 +7,7 @@ using Spot.Booking.Api.Auth;
 using Spot.Booking.Api.Data;
 using Spot.Shared.Auth;
 using Spot.Booking.Api.Models;
+using Spot.Booking.Api.Options;
 using Spot.Booking.Api.Repositories;
 using Spot.Booking.Api.Services;
 using Spot.Shared.Errors;
@@ -61,6 +62,10 @@ builder.Services.AddScoped<IAvailabilityRepository, AvailabilityRepository>();
 builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
 builder.Services.AddScoped<IBookingRepository, BookingRepository>();
 builder.Services.AddScoped<IBookingService, BookingService>();
+
+// Best-effort call to Spot.Notifications.Api after every status transition (#79).
+builder.Services.Configure<InternalApiOptions>(builder.Configuration.GetSection(InternalApiOptions.SectionName));
+builder.Services.AddHttpClient<IBookingStatusNotifier, BookingStatusNotifier>();
 
 // Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the "Jwt"
 // section — the same setup every microservice uses. See Spot.Shared.Auth. Needed since #67:

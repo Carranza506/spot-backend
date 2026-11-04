@@ -29,6 +29,15 @@ public class NotificationsDbContext(DbContextOptions<NotificationsDbContext> opt
             e.Property(x => x.Id).HasColumnName("id");
         });
 
+        // Owned and migrated by Spot.Business.Api; read-only here. See Models/BusinessReference.cs.
+        modelBuilder.Entity<BusinessReference>(e =>
+        {
+            e.ToTable("businesses", t => t.ExcludeFromMigrations());
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.AccountId).HasColumnName("account_id");
+        });
+
         modelBuilder.Entity<DeviceToken>(e =>
         {
             e.ToTable("device_tokens");

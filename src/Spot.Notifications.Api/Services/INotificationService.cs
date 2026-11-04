@@ -18,6 +18,20 @@ public interface INotificationService
     /// </summary>
     Task<NotificationUpdateResult> SetReadAsync(
         Guid userId, Guid notificationId, bool isRead, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stores one notification per recipient, then pushes to each: the client, plus the business
+    /// account on CANCELLED. Callers validate the request first: its status is never PENDING here.
+    /// </summary>
+    Task<BookingStatusNotificationResult> NotifyBookingStatusChangedAsync(
+        InternalBookingStatusNotificationRequest request, CancellationToken ct = default);
+}
+
+public enum BookingStatusNotificationResult
+{
+    Accepted,
+    UserNotFound,
+    BusinessNotFound,
 }
 
 public enum NotificationUpdateOutcome

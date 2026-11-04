@@ -14,9 +14,22 @@ public sealed class FakeNotificationRepository : INotificationRepository
 
     public IReadOnlyCollection<Notification> All => _notifications.Values;
 
-    public void Reset() => _notifications.Clear();
+    /// <summary>Stand-ins for the `users` and `businesses` rows the real repository reads.</summary>
+    public HashSet<Guid> Users { get; } = [];
+    public Dictionary<Guid, Guid> BusinessAccounts { get; } = [];
 
-    /// <summary>Seeds a notification directly — nothing in the API creates them yet.</summary>
+    /// <summary>The token the last AddRangeAsync got.</summary>
+    public CancellationToken LastAddToken { get; private set; }
+
+    public void Reset()
+    {
+        _notifications.Clear();
+        Users.Clear();
+        BusinessAccounts.Clear();
+        LastAddToken = default;
+    }
+
+    /// <summary>Seeds a notification directly, for tests that don't go through the internal endpoint.</summary>
     public Notification Seed(Notification notification)
     {
         if (notification.Id == Guid.Empty)
@@ -52,4 +65,20 @@ public sealed class FakeNotificationRepository : INotificationRepository
         _notifications[notification.Id] = notification;
         return Task.CompletedTask;
     }
+
+    public Task AddRangeAsync(IReadOnlyList<Notification> notifications, CancellationToken ct = default)
+    {
+        LastAddToken = ct;
+
+        foreach (var notification in notifications)
+            Seed(notification);
+
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> UserExistsAsync(Guid userId, CancellationToken ct = default) =>
+        Task.FromResult(Users.Contains(userId));
+
+    public Task<Guid?> GetBusinessAccountIdAsync(Guid businessId, CancellationToken ct = default) =>
+        Task.FromResult(BusinessAccounts.TryGetValue(businessId, out var accountId) ? accountId : (Guid?)null);
 }

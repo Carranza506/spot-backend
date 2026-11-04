@@ -19,4 +19,12 @@ public interface INotificationRepository
 
     /// <summary>Sets <paramref name="notification"/>'s read state and persists it.</summary>
     Task SetReadAsync(Notification notification, bool isRead, CancellationToken ct = default);
+
+    /// <summary>Stores all of <paramref name="notifications"/> in one transaction.</summary>
+    Task AddRangeAsync(IReadOnlyList<Notification> notifications, CancellationToken ct = default);
+
+    Task<bool> UserExistsAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>businesses.account_id of <paramref name="businessId"/>, or null if no such business exists.</summary>
+    Task<Guid?> GetBusinessAccountIdAsync(Guid businessId, CancellationToken ct = default);
 }

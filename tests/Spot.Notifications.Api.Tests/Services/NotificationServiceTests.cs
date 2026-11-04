@@ -1,15 +1,20 @@
+using Microsoft.Extensions.Logging;
+using Spot.Notifications.Api.DTOs;
 using Spot.Notifications.Api.Models;
 using Spot.Notifications.Api.Services;
 using Spot.Notifications.Api.Tests.Fakes;
+using Spot.Notifications.Api.Tests.TestSupport;
 
 namespace Spot.Notifications.Api.Tests.Services;
 
 public class NotificationServiceTests
 {
     private readonly FakeNotificationRepository _repository = new();
+    private readonly FakePushNotificationService _push = new();
+    private readonly CapturingLogger<NotificationService> _logger = new();
     private readonly NotificationService _service;
 
-    public NotificationServiceTests() => _service = new NotificationService(_repository);
+    public NotificationServiceTests() => _service = new NotificationService(_repository, _push, _logger);
 
     [Fact]
     public async Task ListAsync_MapsEveryFieldAndWrapsPaginationMetadata()
@@ -92,5 +97,32 @@ public class NotificationServiceTests
 
         Assert.Equal(NotificationUpdateOutcome.NotFound, result.Outcome);
         Assert.Null(result.Notification);
+    }
+
+    [Fact]
+    public async Task NotifyBookingStatusChangedAsync_PushThrows_LogsAWarningWithTheUserAndTheBooking()
+    {
+        var bookingId = Guid.NewGuid();
+        var businessId = Guid.NewGuid();
+        var clientId = Guid.NewGuid();
+        var businessAccountId = Guid.NewGuid();
+        _repository.Users.Add(clientId);
+        _repository.BusinessAccounts[businessId] = businessAccountId;
+        _push.FailFor.Add(clientId);
+
+        var result = await _service.NotifyBookingStatusChangedAsync(new InternalBookingStatusNotificationRequest
+        {
+            BookingId = bookingId,
+            BusinessId = businessId,
+            UserId = clientId,
+            Status = BookingStatus.CANCELLED,
+        });
+
+        Assert.Equal(BookingStatusNotificationResult.Accepted, result);
+        Assert.Equal(businessAccountId, Assert.Single(_push.Sent).UserId);
+
+        var warning = Assert.Single(_logger.Entries, entry => entry.Level == LogLevel.Warning);
+        Assert.Contains(clientId.ToString(), warning.Message);
+        Assert.Contains(bookingId.ToString(), warning.Message);
     }
 }
