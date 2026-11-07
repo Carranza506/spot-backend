@@ -165,6 +165,41 @@ dotnet user-secrets set "Gemini:ApiKey" "<your-gemini-api-key>"
 
 In production, set the `Gemini__ApiKey` environment variable instead.
 
+**Getting a key.** The team shares one key privately (ask a teammate), or create your own in
+[Google AI Studio](https://aistudio.google.com/apikey). Never commit it or post it in a PR or issue.
+
+**With Docker.** Put the key in `.env` at the repo root (copy `.env.example`; `.env` is
+git-ignored):
+
+```
+GEMINI_API_KEY=<your-gemini-api-key>
+```
+
+Then recreate the service so it picks the key up:
+
+```bash
+docker compose up -d --build --no-deps aisearch-api
+```
+
+**Without a key** the stack still boots: `docker-compose.yml` passes the placeholder
+`not-configured`, and only `POST /ai-search/query` fails, with a generic 500.
+
+**Checking the key and the model.** This must return 200 and list `gemini-3.6-flash` (the
+`Gemini:Model` default):
+
+```bash
+curl -H "x-goog-api-key: $GEMINI_API_KEY" \
+  "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000"
+```
+
+**Cost and latency.**
+
+- Every `POST /ai-search/query` is a billed Gemini call, and so is every page change (paging
+  re-sends the query). There is no rate limit yet, so don't loop it.
+- The first call after the container starts can take noticeably longer. If it goes past
+  `Gemini:TimeoutSeconds` (10 s), it returns a generic 500 stored as `TIMEOUT` in `ai_requests`;
+  just retry.
+
 ## Running a single microservice
 
 ```bash
