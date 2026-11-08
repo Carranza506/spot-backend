@@ -9,6 +9,12 @@ var internalPort = builder.Configuration.GetValue<int>("Gateway:InternalPort");
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 
+// Browser clients (e.g. Expo web on localhost:8081) need CORS; origins come from Cors:AllowedOrigins.
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+    ?? ["http://localhost:8081"];
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+    policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
+
 // Route definitions and downstream cluster addresses live in the "ReverseProxy" section of
 // appsettings.json (localhost ports for `dotnet run`) and are overridden by Jwt-style
 // double-underscore environment variables in docker-compose.yml (Compose service names on the
@@ -27,6 +33,8 @@ app.UseWhen(context => context.Connection.LocalPort != internalPort, branch => b
 
 // Gateway's own liveness — distinct from the per-service /health/<service> passthrough routes
 // mapped below via MapReverseProxy, which proxy to each downstream service's own /health.
+app.UseCors();
+
 app.MapHealthChecks("/health");
 
 app.MapReverseProxy(proxy =>
