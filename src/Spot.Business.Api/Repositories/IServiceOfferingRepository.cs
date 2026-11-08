@@ -14,7 +14,12 @@ public interface IServiceOfferingRepository
     /// database and populated on the entity afterwards. Callers are expected to have already
     /// checked the parent business exists and belongs to the caller.
     /// </summary>
-    Task CreateAsync(ServiceEntity service, CancellationToken ct = default);
+    /// <param name="maxActiveServices">
+    /// The most active services the business's plan allows, or null for no limit. Checked with the
+    /// business row locked, so two concurrent creates can't both take the last place.
+    /// </param>
+    /// <exception cref="ServiceLimitReachedException">The business already has that many active services.</exception>
+    Task CreateAsync(ServiceEntity service, int? maxActiveServices, CancellationToken ct = default);
 
     /// <summary>
     /// Loads a service by id as a <b>tracked</b> entity (unlike the read-only lookups), so a caller
@@ -27,6 +32,14 @@ public interface IServiceOfferingRepository
     /// refreshes it from the database afterwards (<c>updated_at</c> is set by a Postgres trigger).
     /// </summary>
     Task SaveChangesAsync(ServiceEntity service, CancellationToken ct = default);
+
+    /// <summary>
+    /// <see cref="SaveChangesAsync"/> for a change that reactivates an inactive service: like
+    /// <see cref="CreateAsync"/>, it first checks, with the business row locked, that the business
+    /// has fewer than <paramref name="maxActiveServices"/> active services.
+    /// </summary>
+    /// <exception cref="ServiceLimitReachedException">The business already has that many active services.</exception>
+    Task SaveReactivationAsync(ServiceEntity service, int maxActiveServices, CancellationToken ct = default);
 
     /// <summary>
     /// A page of <paramref name="businessId"/>'s services, ordered by name then id (a stable

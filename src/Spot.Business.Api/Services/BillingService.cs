@@ -25,10 +25,8 @@ public sealed class BillingService(
     {
         var current = await repository.GetCurrentSubscriptionAsync(accountId, ct);
 
-        // A subscription whose paid period is over counts as FREE even while its row still says
-        // ACTIVE/PAST_DUE (e.g. a missed webhook): it's never trusted past current_period_end.
-        if (current is not null && current.CurrentPeriodEnd > timeProvider.GetUtcNow())
-            return SubscriptionDto.FromEntity(current);
+        if (PlanFeatures.InEffect(current, timeProvider.GetUtcNow()) is { } paid)
+            return SubscriptionDto.FromEntity(paid);
 
         return SubscriptionDto.Free(await GetFreePlanAsync(ct));
     }

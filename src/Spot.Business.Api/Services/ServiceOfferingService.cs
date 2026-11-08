@@ -1,4 +1,5 @@
 using Spot.Business.Api.DTOs;
+using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using Spot.Shared.Pagination;
 using ServiceEntity = Spot.Business.Api.Models.Service;
@@ -6,8 +7,22 @@ using ServiceEntity = Spot.Business.Api.Models.Service;
 namespace Spot.Business.Api.Services;
 
 public sealed class ServiceOfferingService(
-    IServiceOfferingRepository repository, IBusinessRepository businessRepository) : IServiceOfferingService
+    IServiceOfferingRepository repository,
+    IBusinessRepository businessRepository,
+    IBillingRepository billingRepository,
+    TimeProvider timeProvider) : IServiceOfferingService
 {
+    /// <summary>
+    /// The most active services <paramref name="accountId"/>'s plan allows (null = no limit): the plan
+    /// of the subscription in effect, FREE without one (same rule as GET /business/billing/subscription).
+    /// </summary>
+    private async Task<int?> MaxActiveServicesAsync(Guid accountId, CancellationToken ct)
+    {
+        var current = await billingRepository.GetCurrentSubscriptionAsync(accountId, ct);
+        var plan = PlanFeatures.InEffect(current, timeProvider.GetUtcNow())?.Plan.Code ?? PlanCode.FREE;
+        return PlanFeatures.For(plan).MaxServices;
+    }
+
     public async Task<ServiceDto?> CreateAsync(
         Guid businessId, Guid callerId, ServiceCreateRequest request, CancellationToken ct = default)
     {
@@ -29,7 +44,8 @@ public sealed class ServiceOfferingService(
             IsActive = true,
         };
 
-        await repository.CreateAsync(service, ct);
+        // The caller is the owner here, so the limit is their plan's.
+        await repository.CreateAsync(service, await MaxActiveServicesAsync(callerId, ct), ct);
         return ServiceDto.FromEntity(service);
     }
 
@@ -62,10 +78,16 @@ public sealed class ServiceOfferingService(
         if (request.DurationMinutes.Value is { } duration)
             service.DurationMinutes = duration;
 
+        // Reactivating counts against the plan's limit like creating does; deactivating or editing never does.
+        var reactivating = request.IsActive.Value == true && !service.IsActive;
+
         if (request.IsActive.Value is { } isActive)
             service.IsActive = isActive;
 
-        await repository.SaveChangesAsync(service, ct);
+        if (reactivating && await MaxActiveServicesAsync(callerId, ct) is { } max)
+            await repository.SaveReactivationAsync(service, max, ct);
+        else
+            await repository.SaveChangesAsync(service, ct);
         return ServiceDto.FromEntity(service);
     }
 

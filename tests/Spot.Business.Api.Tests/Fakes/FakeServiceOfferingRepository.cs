@@ -16,8 +16,11 @@ public sealed class FakeServiceOfferingRepository : IServiceOfferingRepository
 
     public void Reset() => _services.Clear();
 
-    public Task CreateAsync(ServiceEntity service, CancellationToken ct = default)
+    public Task CreateAsync(ServiceEntity service, int? maxActiveServices, CancellationToken ct = default)
     {
+        if (maxActiveServices is { } max)
+            EnsureBelowLimit(service, max);
+
         service.Id = Guid.NewGuid();
         service.CreatedAt = DateTimeOffset.UtcNow;
         service.UpdatedAt = service.CreatedAt;
@@ -40,6 +43,23 @@ public sealed class FakeServiceOfferingRepository : IServiceOfferingRepository
 
     public Task<ServiceEntity?> GetTrackedByIdAsync(Guid serviceId, CancellationToken ct = default) =>
         Task.FromResult(_services.GetValueOrDefault(serviceId));
+
+    public Task SaveReactivationAsync(ServiceEntity service, int maxActiveServices, CancellationToken ct = default)
+    {
+        EnsureBelowLimit(service, maxActiveServices);
+        return SaveChangesAsync(service, ct);
+    }
+
+    /// <summary>
+    /// Mirrors ServiceOfferingRepository's limit check. The tracked entity here is the stored object
+    /// itself (already flipped to active), so it's left out of the count, as the stored row would be.
+    /// </summary>
+    private void EnsureBelowLimit(ServiceEntity service, int maxActiveServices)
+    {
+        var active = _services.Values.Count(s => s.BusinessId == service.BusinessId && s.IsActive && s.Id != service.Id);
+        if (active >= maxActiveServices)
+            throw new ServiceLimitReachedException(maxActiveServices);
+    }
 
     public Task SaveChangesAsync(ServiceEntity service, CancellationToken ct = default)
     {

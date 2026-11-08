@@ -6,11 +6,15 @@ namespace Spot.Business.Api.Repositories;
 
 public sealed class ServiceOfferingRepository(BusinessDbContext db) : IServiceOfferingRepository
 {
-    public async Task CreateAsync(ServiceEntity service, CancellationToken ct = default)
-    {
-        db.Services.Add(service);
-        await db.SaveChangesAsync(ct);
-    }
+    public Task CreateAsync(ServiceEntity service, int? maxActiveServices, CancellationToken ct = default) =>
+        InBusinessLockAsync(service.BusinessId, async () =>
+        {
+            if (maxActiveServices is { } max)
+                await EnsureBelowLimitAsync(service.BusinessId, max, ct);
+
+            db.Services.Add(service);
+            await db.SaveChangesAsync(ct);
+        }, ct);
 
     public Task<ServiceEntity?> GetTrackedByIdAsync(Guid serviceId, CancellationToken ct = default) =>
         db.Services.FirstOrDefaultAsync(s => s.Id == serviceId, ct);
@@ -19,6 +23,42 @@ public sealed class ServiceOfferingRepository(BusinessDbContext db) : IServiceOf
     {
         await db.SaveChangesAsync(ct);
         await db.Entry(service).ReloadAsync(ct);
+    }
+
+    public Task SaveReactivationAsync(ServiceEntity service, int maxActiveServices, CancellationToken ct = default) =>
+        InBusinessLockAsync(service.BusinessId, async () =>
+        {
+            // The count is a query, so it reads the stored rows, where this service is still inactive.
+            await EnsureBelowLimitAsync(service.BusinessId, maxActiveServices, ct);
+            await SaveChangesAsync(service, ct);
+        }, ct);
+
+    private async Task EnsureBelowLimitAsync(Guid businessId, int maxActiveServices, CancellationToken ct)
+    {
+        var active = await db.Services.CountAsync(s => s.BusinessId == businessId && s.IsActive, ct);
+        if (active >= maxActiveServices)
+            throw new ServiceLimitReachedException(maxActiveServices);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="write"/> in a transaction that first locks the business row, so concurrent
+    /// creates and reactivations for the same business count its active services one at a time (same
+    /// approach as PhotoRepository). The InMemory provider used by the unit tests has neither
+    /// transactions nor row locks, so there the write simply runs as is.
+    /// </summary>
+    private async Task InBusinessLockAsync(Guid businessId, Func<Task> write, CancellationToken ct)
+    {
+        if (!db.Database.IsRelational())
+        {
+            await write();
+            return;
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // Interpolated, so EF sends the id as a parameter, never as SQL text.
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM businesses WHERE id = {businessId} FOR UPDATE", ct);
+        await write();
+        await transaction.CommitAsync(ct);
     }
 
     public async Task<(IReadOnlyList<ServiceEntity> Items, int Total)> ListAsync(
