@@ -58,10 +58,15 @@ public sealed class BusinessRepository(BusinessDbContext db) : IBusinessReposito
         {
             // ILIKE is case-insensitive (decision: no accent handling). The term is a literal, so
             // escape LIKE's wildcards (% _) and the escape char itself, then wrap in %...%.
+            // Active services count too (#149): the AI search sends a service ("corte de cabello")
+            // as q. An EXISTS, not a join, so a business matching on several services appears once.
             var pattern = $"%{EscapeLikePattern(q.Trim())}%";
             query = query.Where(b =>
                 EF.Functions.ILike(b.Name, pattern, "\\")
-                || (b.Description != null && EF.Functions.ILike(b.Description, pattern, "\\")));
+                || (b.Description != null && EF.Functions.ILike(b.Description, pattern, "\\"))
+                || db.Services.Any(s => s.BusinessId == b.Id && s.IsActive
+                    && (EF.Functions.ILike(s.Name, pattern, "\\")
+                        || (s.Description != null && EF.Functions.ILike(s.Description, pattern, "\\")))));
         }
 
         if (categoryId is { } catId)

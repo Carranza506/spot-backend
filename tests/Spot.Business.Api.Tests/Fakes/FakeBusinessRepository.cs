@@ -23,6 +23,9 @@ public sealed class FakeBusinessRepository : IBusinessRepository
     private readonly List<FavoriteBusiness> _favorites = [];
     private readonly Dictionary<Guid, List<BusinessHours>> _businessHours = [];
 
+    /// <summary>Services the text search looks into (#149), as the real query reaches the services table.</summary>
+    private readonly List<Service> _services = [];
+
     /// <summary>Keyed by business id — simulates the unique business_locations.business_id.</summary>
     private readonly Dictionary<Guid, BusinessLocation> _locations = [];
 
@@ -43,7 +46,12 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         _businessCategories.Clear();
         _favorites.Clear();
         _businessHours.Clear();
+        _services.Clear();
     }
+
+    /// <summary>Seeds a service of a business, for the text search (#149).</summary>
+    public void SeedService(Guid businessId, string name, string? description = null, bool isActive = true) =>
+        _services.Add(new Service { Id = Guid.NewGuid(), BusinessId = businessId, Name = name, Description = description, IsActive = isActive });
 
     /// <summary>Seeds a business directly, bypassing CreateAsync — for test setup.</summary>
     public BusinessEntity Seed(BusinessEntity business)
@@ -151,9 +159,10 @@ public sealed class FakeBusinessRepository : IBusinessRepository
         if (!string.IsNullOrWhiteSpace(q))
         {
             var term = q.Trim();
+            bool Has(string? text) => text?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false;
             matches = matches.Where(b =>
-                b.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
-                || (b.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+                Has(b.Name) || Has(b.Description)
+                || _services.Any(s => s.BusinessId == b.Id && s.IsActive && (Has(s.Name) || Has(s.Description))));
         }
 
         if (categoryId is { } catId)

@@ -182,6 +182,33 @@ public sealed class BusinessServiceTests
     }
 
     [Fact]
+    public async Task SearchAsync_Q_MatchesActiveServiceNameOrDescription_OncePerBusiness()
+    {
+        var barber = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Barbería El Roble" });
+        _repository.SeedService(barber.Id, "Corte de cabello");
+        _repository.SeedService(barber.Id, "Corte + barba", "Incluye corte de cabello y arreglo de barba");
+        var spa = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Spa Luna" });
+        _repository.SeedService(spa.Id, "Masaje", "Termina con un CORTE DE CABELLO de regalo");
+
+        var result = await _service.SearchAsync(new BusinessSearchQuery { Q = "corte de cabello" });
+
+        // Two services of the barber match: it still counts once.
+        Assert.Equal(2, result.Pagination.Total);
+        Assert.Equal(["Barbería El Roble", "Spa Luna"], result.Data.Select(b => b.Name));
+    }
+
+    [Fact]
+    public async Task SearchAsync_Q_IgnoresInactiveServices()
+    {
+        var business = _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Estética Luna" });
+        _repository.SeedService(business.Id, "Tinte", isActive: false);
+
+        var result = await _service.SearchAsync(new BusinessSearchQuery { Q = "tinte" });
+
+        Assert.Empty(result.Data);
+    }
+
+    [Fact]
     public async Task SearchAsync_NoLocationFilter_IncludesBusinessWithoutLocation()
     {
         _repository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Sin ubicación" });
