@@ -6,11 +6,13 @@ namespace Spot.Booking.Api.DTOs;
 
 /// <summary>
 /// Matches the Booking schema in contracts/spot-api.yaml. Timestamps are UTC <see cref="DateTime"/>s,
-/// so they serialize with a "Z" suffix like the availability slots (#66).
+/// so they serialize with a "Z" suffix like the availability slots (#66). <see cref="ClientName"/> is
+/// read from users (#152), not stored on the booking: null when the account has no name.
 /// </summary>
 public sealed record BookingDto(
     Guid Id,
     Guid UserId,
+    string? ClientName,
     Guid BusinessId,
     Guid ServiceId,
     DateTime StartAt,
@@ -23,9 +25,10 @@ public sealed record BookingDto(
     DateTime CreatedAt,
     DateTime UpdatedAt)
 {
-    public static BookingDto FromEntity(BookingEntity booking) => new(
+    public static BookingDto FromEntity(BookingEntity booking, string? clientName) => new(
         booking.Id,
         booking.UserId,
+        clientName,
         booking.BusinessId,
         booking.ServiceId,
         booking.StartAt.UtcDateTime,

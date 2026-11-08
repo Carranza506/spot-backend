@@ -11,6 +11,7 @@ public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbCo
     public DbSet<BusinessHoursReference> BusinessHours => Set<BusinessHoursReference>();
     public DbSet<BusinessScheduleExceptionReference> BusinessScheduleExceptions => Set<BusinessScheduleExceptionReference>();
     public DbSet<ServiceReference> Services => Set<ServiceReference>();
+    public DbSet<UserReference> Users => Set<UserReference>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -22,6 +23,9 @@ public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbCo
         {
             e.ToTable("users", t => t.ExcludeFromMigrations());
             e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.FirstName).HasColumnName("first_name");
+            e.Property(x => x.LastName).HasColumnName("last_name");
         });
 
         // Owned and migrated by Spot.Business.Api; mapped read-only (only the columns availability

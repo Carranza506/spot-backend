@@ -3158,6 +3158,10 @@ components:
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
+        clientName:
+          type: [string, 'null']
+          readOnly: true
+          description: The client's first and last name (`users.first_name`, `users.last_name`), read when the booking is returned; `null` when the account has no name.
         businessId: { type: string, format: uuid }
         serviceId:
           type: string

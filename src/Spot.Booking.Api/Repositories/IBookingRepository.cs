@@ -18,6 +18,9 @@ public interface IBookingRepository
 
     Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default);
 
+    /// <summary>"First Last" of each of <paramref name="userIds"/> that has a name; users without one are left out.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> GetClientNamesAsync(IReadOnlyCollection<Guid> userIds, CancellationToken ct = default);
+
     /// <summary>
     /// Saves <paramref name="status"/> on <paramref name="booking"/>, only if its stored status is
     /// still the one <paramref name="booking"/> was read with, and refreshes the entity, so
