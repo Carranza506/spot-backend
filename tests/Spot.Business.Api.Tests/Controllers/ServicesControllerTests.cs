@@ -124,6 +124,52 @@ public class ServicesControllerTests(BusinessesApiFactory factory) : IClassFixtu
         Assert.Equal("NOT_FOUND", body.GetProperty("code").GetString());
     }
 
+    /// <summary>A business with the FREE plan's 5 active services, plus one inactive one.</summary>
+    private (BusinessEntity Business, ServiceEntity Inactive, HttpClient Client) SeedBusinessAtFreeLimit()
+    {
+        Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        for (var i = 0; i < 5; i++)
+        {
+            factory.ServiceRepository.Seed(new ServiceEntity
+            {
+                BusinessId = business.Id, Name = $"Servicio {i}", Price = 5000m, DurationMinutes = 30, IsActive = true,
+            });
+        }
+        var inactive = factory.ServiceRepository.Seed(new ServiceEntity
+        {
+            BusinessId = business.Id, Name = "Viejo", Price = 5000m, DurationMinutes = 30, IsActive = false,
+        });
+        return (business, inactive, CreateClient(accountId, "BUSINESS"));
+    }
+
+    [Fact]
+    public async Task CreateService_FreePlanAtTheLimit_Returns409ServiceLimitReached()
+    {
+        var (business, _, client) = SeedBusinessAtFreeLimit();
+
+        var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/services", ValidBody());
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("SERVICE_LIMIT_REACHED", body.GetProperty("code").GetString());
+        Assert.Contains("5 servicios activos", body.GetProperty("message").GetString());
+        Assert.Equal(6, factory.ServiceRepository.All.Count);
+    }
+
+    [Fact]
+    public async Task UpdateService_ReactivatingAtTheFreeLimit_Returns409ServiceLimitReached()
+    {
+        var (_, inactive, client) = SeedBusinessAtFreeLimit();
+
+        var response = await client.PatchAsJsonAsync($"/business/services/{inactive.Id}", new { isActive = true });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("SERVICE_LIMIT_REACHED", body.GetProperty("code").GetString());
+    }
+
     public static TheoryData<string> InvalidBodies => new()
     {
         """{ "price": 5000, "durationMinutes": 30 }""",

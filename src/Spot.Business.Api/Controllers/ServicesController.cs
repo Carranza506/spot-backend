@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Spot.Business.Api.DTOs;
+using Spot.Business.Api.Repositories;
 using Spot.Business.Api.Services;
 using Spot.Shared.Errors;
 using Spot.Shared.Pagination;
@@ -30,6 +31,7 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> CreateService(
         Guid businessId, [FromBody] ServiceCreateRequest request, CancellationToken ct)
     {
@@ -45,6 +47,10 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
         {
             return NotOwner();
         }
+        catch (ServiceLimitReachedException ex)
+        {
+            return LimitReached(ex);
+        }
     }
 
     /// <summary>
@@ -59,6 +65,7 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
     public async Task<IActionResult> UpdateService(
         Guid serviceId, [FromBody] ServiceUpdateRequest request, CancellationToken ct)
     {
@@ -73,6 +80,10 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
         catch (BusinessAccessDeniedException)
         {
             return NotOwner();
+        }
+        catch (ServiceLimitReachedException ex)
+        {
+            return LimitReached(ex);
         }
     }
 
@@ -143,6 +154,11 @@ public class ServicesController(IServiceOfferingService serviceOfferingService) 
 
     private NotFoundObjectResult ServiceNotFound() =>
         NotFound(new ApiError("NOT_FOUND", "El servicio indicado no existe."));
+
+    private ObjectResult LimitReached(ServiceLimitReachedException ex) =>
+        Conflict(new ApiError(
+            "SERVICE_LIMIT_REACHED",
+            $"Tu plan permite hasta {ex.MaxServices} servicios activos. Desactiva uno o cámbiate al plan Pro para agregar más."));
 
     private ObjectResult NotOwner() =>
         StatusCode(StatusCodes.Status403Forbidden, new ApiError("FORBIDDEN", "No tienes permiso para realizar esta acción."));

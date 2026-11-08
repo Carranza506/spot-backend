@@ -44,7 +44,7 @@ public sealed class ServiceOfferingRepositoryTests : IDisposable
             IsActive = true,
         };
 
-        await _repository.CreateAsync(service);
+        await _repository.CreateAsync(service, maxActiveServices: null);
 
         Assert.NotEqual(Guid.Empty, service.Id);
         await using var freshContext = new BusinessDbContext(_options);

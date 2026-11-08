@@ -1065,6 +1065,10 @@ paths:
       summary: Create a service for a business
       description: |-
         Required role: `BUSINESS` who owns the business.
+
+        The new service is active, so it counts against the plan's `features.maxServices`
+        (`GET /business/billing/plans`): on FREE a business can have at most 5 active services,
+        on PRO there's no limit. Inactive services don't count.
       requestBody:
         required: true
         content:
@@ -1087,6 +1091,15 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The business already has as many active services as its plan allows.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: SERVICE_LIMIT_REACHED
+                message: Tu plan permite hasta 5 servicios activos. Desactiva uno o cámbiate al plan Pro para agregar más.
+                timestamp: "2026-11-08T20:00:00Z"
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /business/services/{serviceId}:
@@ -1119,6 +1132,10 @@ paths:
       description: |-
         Required role: `BUSINESS` who owns the business the service
         belongs to.
+
+        Reactivating an inactive service (`isActive: true`) counts against the plan's
+        `features.maxServices`, the same as `createService`. Editing an active service or
+        deactivating one is never limited.
       requestBody:
         required: true
         content:
@@ -1136,6 +1153,15 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Reactivating it would exceed the active services the business's plan allows.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              example:
+                code: SERVICE_LIMIT_REACHED
+                message: Tu plan permite hasta 5 servicios activos. Desactiva uno o cámbiate al plan Pro para agregar más.
+                timestamp: "2026-11-08T20:00:00Z"
         '500': { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Business]
@@ -3026,9 +3052,11 @@ components:
     PlanFeatures:
       type: object
       description: |-
-        What a plan includes. Informational only: these limits are not enforced
-        yet. `null` means the plan sets no limit; the general limits of each
-        endpoint (for example, 20 photos per business) always apply.
+        What a plan includes. `maxServices` is enforced when a service is
+        created or reactivated (409 `SERVICE_LIMIT_REACHED`); the photo limits
+        are informational only for now. `null` means the plan sets no limit; the
+        general limits of each endpoint (for example, 20 photos per business)
+        always apply.
       required: [maxServices, maxPhotosPerBusiness, maxPhotosPerService]
       properties:
         maxServices:
