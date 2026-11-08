@@ -56,14 +56,14 @@ public sealed class BookingService(
         };
 
         await bookingRepository.CreateAsync(booking, ct);
-        return BookingDto.FromEntity(booking);
+        return await ToDtoAsync(booking, ct);
     }
 
     public async Task<PaginatedResponse<BookingDto>> ListOwnAsync(
         Guid userId, BookingStatus? status, int page, int pageSize, CancellationToken ct = default)
     {
         var (items, total) = await bookingRepository.ListByUserAsync(userId, status, page, pageSize, ct);
-        return ToPage(items, total, page, pageSize);
+        return await ToPageAsync(items, total, page, pageSize, ct);
     }
 
     public async Task<BookingDto> GetAsync(Guid bookingId, Guid callerId, bool callerIsSuperAdmin, CancellationToken ct = default)
@@ -71,14 +71,11 @@ public sealed class BookingService(
         var booking = await bookingRepository.GetByIdAsync(bookingId, ct)
                       ?? throw new BookingNotFoundException(bookingId);
 
-        if (callerIsSuperAdmin || booking.UserId == callerId)
-            return BookingDto.FromEntity(booking);
-
-        var business = await scheduleRepository.GetBusinessAsync(booking.BusinessId, ct);
-        if (business?.AccountId != callerId)
+        if (!callerIsSuperAdmin && booking.UserId != callerId
+            && (await scheduleRepository.GetBusinessAsync(booking.BusinessId, ct))?.AccountId != callerId)
             throw new BookingAccessDeniedException();
 
-        return BookingDto.FromEntity(booking);
+        return await ToDtoAsync(booking, ct);
     }
 
     public async Task<PaginatedResponse<BookingDto>> ListBusinessAsync(
@@ -101,7 +98,7 @@ public sealed class BookingService(
 
         var (items, total) = await bookingRepository.ListByBusinessAsync(
             businessId, status, fromUtc, toUtcExclusive, page, pageSize, ct);
-        return ToPage(items, total, page, pageSize);
+        return await ToPageAsync(items, total, page, pageSize, ct);
     }
 
     public Task<BookingDto> CancelAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
@@ -154,12 +151,25 @@ public sealed class BookingService(
 
         await statusNotifier.NotifyAsync(booking);
 
-        return BookingDto.FromEntity(booking);
+        return await ToDtoAsync(booking, ct);
     }
 
-    private static PaginatedResponse<BookingDto> ToPage(IReadOnlyList<BookingEntity> items, int total, int page, int pageSize) =>
-        new(items.Select(BookingDto.FromEntity).ToList(),
+    private async Task<BookingDto> ToDtoAsync(BookingEntity booking, CancellationToken ct)
+    {
+        var names = await bookingRepository.GetClientNamesAsync([booking.UserId], ct);
+        return BookingDto.FromEntity(booking, names.GetValueOrDefault(booking.UserId));
+    }
+
+    /// <summary>One names query for the whole page, not one per booking.</summary>
+    private async Task<PaginatedResponse<BookingDto>> ToPageAsync(
+        IReadOnlyList<BookingEntity> items, int total, int page, int pageSize, CancellationToken ct)
+    {
+        var names = items.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await bookingRepository.GetClientNamesAsync(items.Select(b => b.UserId).Distinct().ToList(), ct);
+        return new(items.Select(b => BookingDto.FromEntity(b, names.GetValueOrDefault(b.UserId))).ToList(),
             new PaginationMeta(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
+    }
 
     /// <summary>
     /// The whole [start, end) must fall within the opening hours of start's local date

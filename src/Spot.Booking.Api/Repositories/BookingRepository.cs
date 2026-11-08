@@ -33,6 +33,20 @@ public sealed class BookingRepository(BookingDbContext db) : IBookingRepository
     public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
         db.Bookings.AsNoTracking().FirstOrDefaultAsync(b => b.Id == bookingId, ct);
 
+    public async Task<IReadOnlyDictionary<Guid, string>> GetClientNamesAsync(
+        IReadOnlyCollection<Guid> userIds, CancellationToken ct = default)
+    {
+        var users = await db.Users.AsNoTracking()
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.FirstName, u.LastName })
+            .ToListAsync(ct);
+
+        return users
+            .Select(u => (u.Id, Name: $"{u.FirstName} {u.LastName}".Trim()))
+            .Where(u => u.Name.Length > 0)
+            .ToDictionary(u => u.Id, u => u.Name);
+    }
+
     public async Task<bool> UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
     {
         var from = booking.Status;

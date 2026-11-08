@@ -39,7 +39,7 @@ public class BookingReadsControllerTests(BookingsApiFactory factory) : IClassFix
         AssertPagination(body, page: 1, pageSize: 20, total: 2, totalPages: 1);
         var first = body.GetProperty("data")[0];
         Assert.Equal(
-            ["id", "userId", "businessId", "serviceId", "startAt", "endAt", "status", "serviceName",
+            ["id", "userId", "clientName", "businessId", "serviceId", "startAt", "endAt", "status", "serviceName",
              "servicePrice", "serviceDurationMinutes", "notes", "createdAt", "updatedAt"],
             first.EnumerateObject().Select(p => p.Name));
         Assert.Equal("2026-09-03T14:00:00Z", first.GetProperty("startAt").GetString());
@@ -206,6 +206,21 @@ public class BookingReadsControllerTests(BookingsApiFactory factory) : IClassFix
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal([earlier.Id, later.Id], Ids(body));
         AssertPagination(body, page: 1, pageSize: 20, total: 2, totalPages: 1);
+    }
+
+    [Fact]
+    public async Task ListBusiness_ReturnsEachClientsName_NullWithoutOne()
+    {
+        var businessId = SeedBusiness(_owner);
+        factory.BookingRepository.ClientNames[_client] = "María Rodríguez";
+        AddBooking(_client, businessId, "2026-09-01T14:00:00Z");
+        AddBooking(_otherClient, businessId, "2026-09-02T14:00:00Z");
+
+        var response = await Client(_owner, "BUSINESS").GetAsync($"/booking/businesses/{businessId}/bookings");
+
+        var data = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("data");
+        Assert.Equal("María Rodríguez", data[0].GetProperty("clientName").GetString());
+        Assert.Equal(JsonValueKind.Null, data[1].GetProperty("clientName").ValueKind);
     }
 
     [Fact]

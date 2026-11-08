@@ -16,7 +16,11 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
 {
     public List<BookingEntity> Created { get; } = [];
 
-    public void Reset() => Created.Clear();
+    public void Reset()
+    {
+        Created.Clear();
+        ClientNames.Clear();
+    }
 
     public Task CreateAsync(BookingEntity booking, CancellationToken ct = default)
     {
@@ -43,6 +47,14 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
     // A copy, like BookingRepository's AsNoTracking read: later changes to the stored booking don't reach it.
     public Task<BookingEntity?> GetByIdAsync(Guid bookingId, CancellationToken ct = default) =>
         Task.FromResult(Created.FirstOrDefault(b => b.Id == bookingId) is { } b ? Copy(b) : null);
+
+    /// <summary>Stands in for users.first_name / last_name (#152): only the users a test names.</summary>
+    public Dictionary<Guid, string> ClientNames { get; } = [];
+
+    public Task<IReadOnlyDictionary<Guid, string>> GetClientNamesAsync(
+        IReadOnlyCollection<Guid> userIds, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyDictionary<Guid, string>>(
+            ClientNames.Where(n => userIds.Contains(n.Key)).ToDictionary(n => n.Key, n => n.Value));
 
     public Task<bool> UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
     {

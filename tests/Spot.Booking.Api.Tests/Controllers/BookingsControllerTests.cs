@@ -21,6 +21,7 @@ public class BookingsControllerTests(BookingsApiFactory factory) : IClassFixture
     {
         var (businessId, serviceId) = Seed();
         var userId = Guid.NewGuid();
+        factory.BookingRepository.ClientNames[userId] = "María Rodríguez";
 
         var response = await Client(userId, "CLIENT").PostAsJsonAsync("/booking/bookings", new
         {
@@ -34,11 +35,12 @@ public class BookingsControllerTests(BookingsApiFactory factory) : IClassFixture
         Assert.Null(response.Headers.Location);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(
-            ["id", "userId", "businessId", "serviceId", "startAt", "endAt", "status", "serviceName",
+            ["id", "userId", "clientName", "businessId", "serviceId", "startAt", "endAt", "status", "serviceName",
              "servicePrice", "serviceDurationMinutes", "notes", "createdAt", "updatedAt"],
             body.EnumerateObject().Select(p => p.Name));
         Assert.NotEqual(Guid.Empty, body.GetProperty("id").GetGuid());
         Assert.Equal(userId, body.GetProperty("userId").GetGuid());
+        Assert.Equal("María Rodríguez", body.GetProperty("clientName").GetString());
         Assert.Equal(businessId, body.GetProperty("businessId").GetGuid());
         Assert.Equal(serviceId, body.GetProperty("serviceId").GetGuid());
         Assert.Equal("2026-09-01T14:00:00Z", body.GetProperty("startAt").GetString());

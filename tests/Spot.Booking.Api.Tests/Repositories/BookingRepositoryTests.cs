@@ -199,6 +199,24 @@ public sealed class BookingRepositoryTests
         Assert.Equal(2, businessTotal);
     }
 
+    [Fact]
+    public async Task GetClientNamesAsync_ReturnsFirstAndLastName_OnlyForRequestedUsersWithAName()
+    {
+        await using var db = NewContext();
+        var named = new UserReference { Id = Guid.NewGuid(), FirstName = "María", LastName = "Rodríguez" };
+        var firstOnly = new UserReference { Id = Guid.NewGuid(), FirstName = "Ana" };
+        var unnamed = new UserReference { Id = Guid.NewGuid() };
+        var notRequested = new UserReference { Id = Guid.NewGuid(), FirstName = "Luis", LastName = "Vega" };
+        db.Users.AddRange(named, firstOnly, unnamed, notRequested);
+        await db.SaveChangesAsync();
+
+        var names = await new BookingRepository(db).GetClientNamesAsync([named.Id, firstOnly.Id, unnamed.Id, Guid.NewGuid()]);
+
+        Assert.Equal(2, names.Count);
+        Assert.Equal("María Rodríguez", names[named.Id]);
+        Assert.Equal("Ana", names[firstOnly.Id]);
+    }
+
     private static async Task<BookingEntity> Insert(BookingDbContext db, BookingEntity booking)
     {
         await new BookingRepository(db).CreateAsync(booking);
