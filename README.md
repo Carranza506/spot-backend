@@ -201,7 +201,7 @@ these are read from disk at `docker compose up` time via Compose secrets, never 
 image).
 
 ```bash
-# Build images and start everything (Postgres -> migrations -> the 5 services -> Gateway, in order)
+# Build images and start everything (Postgres -> migrations -> demo data + the 5 services -> Gateway)
 docker compose up --build
 
 # Subsequent starts (no code changes) can skip --build
@@ -245,6 +245,35 @@ Each of the 5 services and the Gateway exposes a liveness probe at `/health` (us
 own `healthcheck:`), runs as the container's built-in non-root user, and logs structured JSON to
 stdout — check status with `docker compose ps` (look for `healthy`) or `docker compose logs
 <service>`.
+
+### Demo data
+
+After the migrations, the one-shot `seed` service applies `db/seed/demo-data.sql`, so a fresh stack
+already has accounts, businesses and bookings to try every flow. It's idempotent: every
+`docker compose up` runs it again without duplicating or overwriting anything.
+
+All demo accounts use the password **`Spot1234!`**:
+
+| Account | Role | Use it for |
+| --- | --- | --- |
+| `cliente@spot.test` | CLIENT | Mobile app: María Rodríguez, with pending, confirmed, completed (reviewed) and cancelled bookings at Barbería La U |
+| `negocio@spot.test` | BUSINESS | Web panel: **Barbería La U** (Belleza), with those bookings and the review |
+| `negocio2@spot.test` | BUSINESS | Web panel: Spa Bienestar Heredia (Salud) |
+| `negocio3@spot.test` | BUSINESS | Web panel: Gimnasio Fuerza Norte (Deportes) |
+| `admin@spot.test` | SUPERADMIN | Category management |
+
+The three businesses are in Heredia, within 1 km of the UNA campus (9.9990, -84.1110), with a
+location, a category, three services and hours Monday to Saturday 8:00–18:00. So search by
+category, province or city, "Cerca de mí" near the campus and the AI search all return them.
+
+Booking dates are relative to the day the seed first ran (the pending and confirmed ones are 1 and
+2 days later). Before a demo, reset the data so they're upcoming again:
+
+```bash
+docker compose down -v   # deletes the Postgres volume: all local data, not just the demo data
+docker compose up --build -d
+docker compose logs seed # COMMIT at the end means it was applied
+```
 
 ## Internal API key and internal Gateway port
 
