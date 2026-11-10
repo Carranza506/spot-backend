@@ -8,7 +8,7 @@ namespace Spot.Notifications.Api.DTOs;
 /// directly): the contract represents it as a string enum on the wire, and this service has no
 /// global <c>JsonStringEnumConverter</c> registered, so binding it as the C# enum type would
 /// require a JSON integer instead of "ANDROID"/"IOS"/"WEB". The controller parses and validates
-/// it explicitly, same pattern as DevController's role parsing in Spot.Auth.Api.
+/// it explicitly.
 /// </summary>
 public sealed class DeviceTokenRegisterRequest : IValidatableObject
 {

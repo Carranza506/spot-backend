@@ -25,14 +25,18 @@ Accept: application/json
 
 ###
 
-### Issue a dev SUPERADMIN token (Development only, from Spot.Auth.Api) — create/update/delete
-### below all require it. Business.Api itself has no /dev/token endpoint of its own.
-# @name issueDevToken
-POST {{Spot.Auth.Api_HostAddress}}/dev/token?role=SUPERADMIN
-Accept: application/json
+### Log in as the seeded SUPERADMIN (db/seed/demo-data.sql) — create/update/delete below all require it.
+# @name loginAdmin
+POST {{Spot.Auth.Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@spot.test",
+  "password": "Spot1234!"
+}
 
 ###
-@accessToken = {{issueDevToken.response.body.value}}
+@accessToken = {{loginAdmin.response.body.tokens.accessToken}}
 
 ### Create a root category -> 201
 # @name createRoot

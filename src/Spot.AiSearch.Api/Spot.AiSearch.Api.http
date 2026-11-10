@@ -2,8 +2,8 @@
 
 ### Token
 # AiSearch.Api only validates RS256 signatures issued by Spot.Auth.Api.
-# The DevController was removed: get a real JWT from the Spot.Auth.Api login
-# endpoint and paste it below.
+# Get a real JWT from the Spot.Auth.Api login endpoint (the seeded admin@spot.test /
+# Spot1234!, see db/seed/demo-data.sql) and paste it below.
 @token = REPLACE_WITH_RS256_SUPERADMIN_JWT
 
 ### 1. Audit list - no filters
