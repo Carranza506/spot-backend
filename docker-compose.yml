@@ -50,6 +50,22 @@ services:
     networks:
       - spot-network
 
+  # Demo accounts, businesses and bookings (#157), once the migrations created the tables.
+  # Idempotent (see db/seed/demo-data.sql), so it's safe on every `up`. One-shot, like the migrator.
+  seed:
+    image: postgis/postgis:18-3.6
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./db/seed:/seed:ro
+    entrypoint: ["psql", "-h", "postgres", "-U", "postgres", "-d", "spot_dev", "-v", "ON_ERROR_STOP=1", "-f", "/seed/demo-data.sql"]
+    restart: "no"
+    networks:
+      - spot-network
+
   auth-api:
     build:
       context: .

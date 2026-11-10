@@ -2,7 +2,77 @@
 
 Spot's backend: microservices architecture in .NET 10, coordinated through an API Gateway.
 
-## Prerequisites
+## Quick start (from a clean machine)
+
+The whole backend runs in Docker: no .NET SDK or local Postgres needed. This is part 1 of 2; the
+web panel and the mobile app come next, in the [spot-frontend README](https://github.com/Carranza506/spot-frontend#quick-start-end-to-end).
+
+**You need:** [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, and
+[Git](https://git-scm.com/) (on Windows, Git for Windows also brings Git Bash and OpenSSL; run
+the commands below in Git Bash).
+
+**1. Clone the repo**
+
+```bash
+git clone https://github.com/Carranza506/spot-backend.git
+cd spot-backend
+```
+
+**2. Generate the JWT key pair** (once; `*.pem` is git-ignored)
+
+```bash
+openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out jwt-private.pem
+openssl rsa -pubout -in jwt-private.pem -out jwt-public.pem
+```
+
+**3. Create `.env`** (git-ignored, never commit it)
+
+```bash
+cp .env.example .env
+```
+
+Everything works without changing it except two features, which need test keys the team hands out
+separately (never in the repo):
+
+| Variable | Enables | Without it |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | "Buscar con IA" | The rest works; the AI search answers with an error |
+| `STRIPE_SECRET_KEY`, `STRIPE_PRO_PRICE_ID` | Paying the Pro plan (Stripe test mode) | The rest works; checkout fails and `stripe-cli` keeps restarting |
+
+**4. Start everything**
+
+```bash
+docker compose up --build -d
+```
+
+The first build takes a few minutes. Postgres starts, the migrations run, the demo data is
+seeded, then the 5 services and the Gateway start.
+
+**5. Check it's up**
+
+```bash
+docker compose ps                    # every service "healthy"; migrator and seed "exited (0)"
+curl http://localhost:5195/health    # the Gateway: 200
+```
+
+The API is at **http://localhost:5195/api/v1** (the Gateway), as described in
+`contracts/spot-api.yaml`. If something isn't healthy, see "Running with Docker" below.
+
+**6. Use the demo accounts** — password `Spot1234!` for all of them (full list in
+[Demo data](#demo-data)):
+
+| Account | For |
+| --- | --- |
+| `negocio@spot.test` | Web panel (business: Barbería La U) |
+| `cliente@spot.test` | Mobile app (client) |
+| `admin@spot.test` | Category management (SUPERADMIN) |
+
+**Next:** run the web panel and the mobile app with the [spot-frontend quick start](https://github.com/Carranza506/spot-frontend#quick-start-end-to-end).
+
+The sections below are the detailed reference: running services without Docker, keys, Stripe,
+FCM and photo storage.
+
+## Prerequisites (running without Docker)
 
 - [.NET SDK 10](https://dotnet.microsoft.com/download) — verify with `dotnet --version`
 - [PostgreSQL 18](https://www.postgresql.org/download/) with the `postgis`, `btree_gist`, and `pgcrypto` extensions enabled
@@ -201,7 +271,7 @@ these are read from disk at `docker compose up` time via Compose secrets, never 
 image).
 
 ```bash
-# Build images and start everything (Postgres -> migrations -> the 5 services -> Gateway, in order)
+# Build images and start everything (Postgres -> migrations -> demo data + the 5 services -> Gateway)
 docker compose up --build
 
 # Subsequent starts (no code changes) can skip --build
@@ -245,6 +315,35 @@ Each of the 5 services and the Gateway exposes a liveness probe at `/health` (us
 own `healthcheck:`), runs as the container's built-in non-root user, and logs structured JSON to
 stdout — check status with `docker compose ps` (look for `healthy`) or `docker compose logs
 <service>`.
+
+### Demo data
+
+After the migrations, the one-shot `seed` service applies `db/seed/demo-data.sql`, so a fresh stack
+already has accounts, businesses and bookings to try every flow. It's idempotent: every
+`docker compose up` runs it again without duplicating or overwriting anything.
+
+All demo accounts use the password **`Spot1234!`**:
+
+| Account | Role | Use it for |
+| --- | --- | --- |
+| `cliente@spot.test` | CLIENT | Mobile app: María Rodríguez, with pending, confirmed, completed (reviewed) and cancelled bookings at Barbería La U |
+| `negocio@spot.test` | BUSINESS | Web panel: **Barbería La U** (Belleza), with those bookings and the review |
+| `negocio2@spot.test` | BUSINESS | Web panel: Spa Bienestar Heredia (Salud) |
+| `negocio3@spot.test` | BUSINESS | Web panel: Gimnasio Fuerza Norte (Deportes) |
+| `admin@spot.test` | SUPERADMIN | Category management |
+
+The three businesses are in Heredia, within 1 km of the UNA campus (9.9990, -84.1110), with a
+location, a category, three services and hours Monday to Saturday 8:00–18:00. So search by
+category, province or city, "Cerca de mí" near the campus and the AI search all return them.
+
+Booking dates are relative to the day the seed first ran (the pending and confirmed ones are 1 and
+2 days later). Before a demo, reset the data so they're upcoming again:
+
+```bash
+docker compose down -v   # deletes the Postgres volume: all local data, not just the demo data
+docker compose up --build -d
+docker compose logs seed # COMMIT at the end means it was applied
+```
 
 ## Internal API key and internal Gateway port
 
