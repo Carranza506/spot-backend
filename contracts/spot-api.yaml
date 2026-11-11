@@ -93,7 +93,8 @@ paths:
         directly. Any other value (including `SUPERADMIN`) is rejected with
         400 — elevated roles beyond these two are never self-service.
 
-        Access: public (no JWT required).
+        Access: public (no JWT required). Rate limited per client IP at
+        the Gateway, shared with `/auth/login` (429 past the limit).
       requestBody:
         required: true
         content:
@@ -116,6 +117,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /auth/login:
@@ -128,7 +130,8 @@ paths:
         Main login mechanism for the MVP. Validates credentials against
         `users.password_hash` and issues a JWT access token and a refresh token.
 
-        Access: public (no JWT required).
+        Access: public (no JWT required). Rate limited per client IP at
+        the Gateway, shared with `/auth/register` (429 past the limit).
       requestBody:
         required: true
         content:
@@ -147,6 +150,7 @@ paths:
                 $ref: '#/components/schemas/AuthResponse'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /auth/google:
@@ -2547,6 +2551,22 @@ components:
           example:
             code: BOOKING_OUTSIDE_BUSINESS_HOURS
             message: El negocio está cerrado en el horario seleccionado.
+            timestamp: "2026-08-30T20:00:00Z"
+    TooManyRequests:
+      description: |-
+        Too many requests from this client IP in the current window (the
+        Gateway's limit on login and register, 10 per minute by default). The
+        `Retry-After` header says how many seconds to wait.
+      headers:
+        Retry-After:
+          description: Seconds until the client can try again.
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            code: TOO_MANY_REQUESTS
+            message: Demasiados intentos. Esperá un momento y volvé a intentarlo.
             timestamp: "2026-08-30T20:00:00Z"
     InternalServerError:
       description: |-

@@ -76,16 +76,6 @@ Content-Type: application/json
 
 ###
 
-### Issue a dev access token for a role /auth/register can't produce, e.g. SUPERADMIN
-### (Development only) — also creates a matching row in `users`.
-POST {{Spot.Auth.Api_HostAddress}}/dev/token?role=SUPERADMIN
-Accept: application/json
-
-### Issue a dev access token (Development only) — also creates a matching row in `users`.
-# @name issueDevToken
-POST {{Spot.Auth.Api_HostAddress}}/dev/token?role=CLIENT
-Accept: application/json
-
 ### GET /auth/me
 GET {{Spot.Auth.Api_HostAddress}}/auth/me
 Authorization: Bearer {{accessToken}}
