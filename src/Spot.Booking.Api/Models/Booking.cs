@@ -13,6 +13,9 @@ public class Booking
     public decimal ServicePrice { get; set; }
     public int ServiceDurationMinutes { get; set; }
     public string? Notes { get; set; }
+
+    /// <summary>Why the booking was cancelled (#163): only set by a cancel that gave a reason.</summary>
+    public string? CancelReason { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }

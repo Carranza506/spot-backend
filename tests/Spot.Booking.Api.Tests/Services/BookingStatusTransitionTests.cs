@@ -37,6 +37,30 @@ public class BookingStatusTransitionTests
     }
 
     [Fact]
+    public async Task Cancel_WithAReason_StoresIt_BeforeNotifying()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+        _bookings.BeforeUpdate = () => Assert.Empty(_notifier.Notified);
+
+        var result = await _service.CancelAsync(booking.Id, ClientId, "No puedo asistir");
+
+        Assert.Equal("No puedo asistir", result.CancelReason);
+        Assert.Equal("No puedo asistir", booking.CancelReason);
+        Assert.Equal([(booking.Id, BookingStatus.CANCELLED)], _notifier.Notified);
+    }
+
+    [Fact]
+    public async Task Cancel_FromAnInvalidStatus_DoesNotStoreTheReason()
+    {
+        var booking = await SeedAsync(BookingStatus.COMPLETED);
+
+        await Assert.ThrowsAsync<BookingRuleViolationException>(
+            () => _service.CancelAsync(booking.Id, ClientId, "No puedo asistir"));
+
+        Assert.Null(booking.CancelReason);
+    }
+
+    [Fact]
     public async Task Complete_NotifiesTheNewStatus()
     {
         var booking = await SeedAsync(BookingStatus.CONFIRMED);

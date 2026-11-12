@@ -101,10 +101,10 @@ public sealed class BookingService(
         return await ToPageAsync(items, total, page, pageSize, ct);
     }
 
-    public Task<BookingDto> CancelAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
+    public Task<BookingDto> CancelAsync(Guid bookingId, Guid callerId, string? reason = null, CancellationToken ct = default) =>
         ChangeStatusAsync(bookingId, callerId, clientAllowed: true, onlyOnceStarted: false,
             [BookingStatus.PENDING, BookingStatus.CONFIRMED], BookingStatus.CANCELLED,
-            "Solo se puede cancelar una reservación pendiente o confirmada.", ct);
+            "Solo se puede cancelar una reservación pendiente o confirmada.", ct, cancelReason: reason);
 
     public Task<BookingDto> ConfirmAsync(Guid bookingId, Guid callerId, CancellationToken ct = default) =>
         ChangeStatusAsync(bookingId, callerId, clientAllowed: false, onlyOnceStarted: false,
@@ -127,7 +127,7 @@ public sealed class BookingService(
     /// </summary>
     private async Task<BookingDto> ChangeStatusAsync(
         Guid bookingId, Guid callerId, bool clientAllowed, bool onlyOnceStarted, BookingStatus[] validFrom,
-        BookingStatus to, string invalidMessage, CancellationToken ct)
+        BookingStatus to, string invalidMessage, CancellationToken ct, string? cancelReason = null)
     {
         var booking = await bookingRepository.GetByIdAsync(bookingId, ct)
                       ?? throw new BookingNotFoundException(bookingId);
@@ -144,7 +144,7 @@ public sealed class BookingService(
                 BookingRuleViolationException.NotStarted, "Esta acción solo se puede realizar cuando ya llegó la hora de la reservación.");
 
         // Lost a race with another transition, or a delete, after the read above.
-        if (!await bookingRepository.UpdateStatusAsync(booking, to, ct))
+        if (!await bookingRepository.UpdateStatusAsync(booking, to, cancelReason, ct))
             throw await bookingRepository.GetByIdAsync(bookingId, ct) is null
                 ? new BookingNotFoundException(bookingId)
                 : new BookingRuleViolationException(BookingRuleViolationException.InvalidStatusTransition, invalidMessage);

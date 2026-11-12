@@ -56,7 +56,8 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
         Task.FromResult<IReadOnlyDictionary<Guid, string>>(
             ClientNames.Where(n => userIds.Contains(n.Key)).ToDictionary(n => n.Key, n => n.Value));
 
-    public Task<bool> UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
+    public Task<bool> UpdateStatusAsync(
+        BookingEntity booking, BookingStatus status, string? cancelReason = null, CancellationToken ct = default)
     {
         BeforeUpdate?.Invoke();
 
@@ -73,6 +74,7 @@ public sealed class FakeBookingRepository(FakeAvailabilityRepository schedule) :
             schedule.Bookings[i] = (stored.BusinessId, schedule.Bookings[i].Booking with { Status = status });
 
         stored.Status = booking.Status = status;
+        stored.CancelReason = booking.CancelReason = cancelReason;
         stored.UpdatedAt = booking.UpdatedAt = DateTimeOffset.UtcNow;
         return Task.FromResult(true);
     }

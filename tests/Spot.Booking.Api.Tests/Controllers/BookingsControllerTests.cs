@@ -36,7 +36,7 @@ public class BookingsControllerTests(BookingsApiFactory factory) : IClassFixture
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(
             ["id", "userId", "clientName", "businessId", "serviceId", "startAt", "endAt", "status", "serviceName",
-             "servicePrice", "serviceDurationMinutes", "notes", "createdAt", "updatedAt"],
+             "servicePrice", "serviceDurationMinutes", "notes", "cancelReason", "createdAt", "updatedAt"],
             body.EnumerateObject().Select(p => p.Name));
         Assert.NotEqual(Guid.Empty, body.GetProperty("id").GetGuid());
         Assert.Equal(userId, body.GetProperty("userId").GetGuid());

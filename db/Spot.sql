@@ -126,6 +126,7 @@ CREATE TABLE bookings (
     service_price NUMERIC(10,2) NOT NULL,
     service_duration_minutes INTEGER NOT NULL,
     notes TEXT,
+    cancel_reason VARCHAR(255),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT chk_booking_dates

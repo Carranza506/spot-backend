@@ -103,6 +103,7 @@ public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbCo
             e.Property(x => x.ServicePrice).HasColumnName("service_price").HasColumnType("numeric(10,2)");
             e.Property(x => x.ServiceDurationMinutes).HasColumnName("service_duration_minutes");
             e.Property(x => x.Notes).HasColumnName("notes");
+            e.Property(x => x.CancelReason).HasColumnName("cancel_reason").HasMaxLength(255);
             e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
             e.HasIndex(x => new { x.UserId, x.StartAt }).HasDatabaseName("idx_bookings_user_start");

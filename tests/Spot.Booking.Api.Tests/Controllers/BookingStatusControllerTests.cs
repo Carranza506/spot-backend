@@ -46,6 +46,99 @@ public class BookingStatusControllerTests(BookingsApiFactory factory) : IClassFi
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    // ---------- cancel reason (#163) ----------
+
+    [Theory]
+    [InlineData("CLIENT")]
+    [InlineData("BUSINESS")]
+    public async Task Cancel_WithAReason_StoresItTrimmed_AndReturnsIt(string role)
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+        var caller = Client(role == "CLIENT" ? ClientId : OwnerId, role);
+
+        var response = await caller.PostAsJsonAsync(
+            $"/booking/bookings/{booking.Id}/cancel", new { reason = "  Me surgió un imprevisto  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Me surgió un imprevisto", body.GetProperty("cancelReason").GetString());
+        Assert.Equal("Me surgió un imprevisto", booking.CancelReason);
+
+        // And every later read returns it.
+        var read = await caller.GetFromJsonAsync<JsonElement>($"/booking/bookings/{booking.Id}");
+        Assert.Equal("Me surgió un imprevisto", read.GetProperty("cancelReason").GetString());
+    }
+
+    [Fact]
+    public async Task Cancel_WithoutABody_CancelsWithANullReason()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(ClientId, "CLIENT").PostAsync($"/booking/bookings/{booking.Id}/cancel", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CANCELLED", body.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("cancelReason").ValueKind);
+        Assert.Null(booking.CancelReason);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"reason\":null}")]
+    [InlineData("{\"reason\":\"\"}")]
+    [InlineData("{\"reason\":\"   \"}")]
+    public async Task Cancel_WithAMissingOrBlankReason_StoresNull(string json)
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(ClientId, "CLIENT").PostAsync(
+            $"/booking/bookings/{booking.Id}/cancel", new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("cancelReason").ValueKind);
+        Assert.Equal(BookingStatus.CANCELLED, booking.Status);
+        Assert.Null(booking.CancelReason);
+    }
+
+    [Fact]
+    public async Task Cancel_WithA255CharacterReasonAfterTrimming_Returns200()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+        var reason = new string('a', 255);
+
+        var response = await Client(ClientId, "CLIENT")
+            .PostAsJsonAsync($"/booking/bookings/{booking.Id}/cancel", new { reason = $"  {reason}  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(reason, booking.CancelReason);
+    }
+
+    [Fact]
+    public async Task Cancel_WithAReasonOver255Characters_Returns400_AndDoesNotCancel()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        var response = await Client(ClientId, "CLIENT")
+            .PostAsJsonAsync($"/booking/bookings/{booking.Id}/cancel", new { reason = new string('a', 256) });
+
+        await AssertError(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
+        Assert.Equal(BookingStatus.CONFIRMED, booking.Status);
+        Assert.Null(booking.CancelReason);
+    }
+
+    [Fact]
+    public async Task OtherTransitions_ReturnANullCancelReason()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("cancelReason").ValueKind);
+    }
+
     [Theory]
     [InlineData("cancel", BookingStatus.COMPLETED)]
     [InlineData("complete", BookingStatus.PENDING)]

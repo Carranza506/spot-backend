@@ -103,6 +103,24 @@ public class BookingStatusNotifierTests
         Assert.Equal(1, logger.Warnings);
     }
 
+    [Fact]
+    public async Task ACancelWithAReason_SendsItInTheMessage()
+    {
+        string? body = null;
+        var notifier = CreateNotifier(async (request, ct) =>
+        {
+            body = await request.Content!.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
+        }, new CapturingLogger());
+        var booking = NewBooking(BookingStatus.CANCELLED);
+        booking.CancelReason = "Me surgió un imprevisto";
+
+        await notifier.NotifyAsync(booking);
+
+        var json = JsonDocument.Parse(body!).RootElement;
+        Assert.Equal("La reservación fue cancelada. Motivo: Me surgió un imprevisto", json.GetProperty("message").GetString());
+    }
+
     [Theory]
     [MemberData(nameof(FailureCases))]
     public async Task TheTransitionStillSucceeds_AndIsCommitted_WhenTheNotificationFails(int failure)

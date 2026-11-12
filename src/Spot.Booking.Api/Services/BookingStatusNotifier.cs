@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using Microsoft.Extensions.Options;
 using Spot.Booking.Api.DTOs;
+using Spot.Booking.Api.Models;
 using Spot.Booking.Api.Options;
 using BookingEntity = Spot.Booking.Api.Models.Booking;
 
@@ -28,7 +29,7 @@ public sealed class BookingStatusNotifier(
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.GatewayBaseUrl.TrimEnd('/')}/{EndpointPath}")
             {
                 Content = JsonContent.Create(new InternalBookingStatusNotificationRequest(
-                    booking.Id, booking.BusinessId, booking.UserId, booking.Status)),
+                    booking.Id, booking.BusinessId, booking.UserId, booking.Status, MessageFor(booking))),
             };
             request.Headers.Add(ApiKeyHeader, settings.Key);
 
@@ -48,4 +49,13 @@ public sealed class BookingStatusNotifier(
                 booking.Id, booking.Status, ex.GetType().Name);
         }
     }
+
+    /// <summary>
+    /// A cancel with a reason (#163) tells both parties why: Notifications' own default text for
+    /// CANCELLED, plus the reason. Null otherwise, so Notifications keeps its default.
+    /// </summary>
+    private static string? MessageFor(BookingEntity booking) =>
+        booking is { Status: BookingStatus.CANCELLED, CancelReason: { } reason }
+            ? $"La reservación fue cancelada. Motivo: {reason}"
+            : null;
 }
