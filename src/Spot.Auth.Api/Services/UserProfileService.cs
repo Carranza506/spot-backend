@@ -1,6 +1,7 @@
 using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Repositories;
+using Spot.Shared.Validation;
 
 namespace Spot.Auth.Api.Services;
 
@@ -40,7 +41,7 @@ public sealed class UserProfileService(IUserRepository userRepository) : IUserPr
             user.LastName = request.LastName.Value!.Trim();
 
         if (request.Phone.IsSet)
-            user.Phone = string.IsNullOrWhiteSpace(request.Phone.Value) ? null : request.Phone.Value.Trim();
+            user.Phone = PhoneNumberRules.ToE164(request.Phone.Value);
 
         if (request.ProfilePhotoUrl.IsSet)
             user.ProfilePhotoUrl = request.ProfilePhotoUrl.Value;

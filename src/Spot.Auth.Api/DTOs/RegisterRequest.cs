@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using Spot.Auth.Api.Models;
+using Spot.Shared.Validation;
 
 namespace Spot.Auth.Api.DTOs;
 
@@ -25,6 +26,7 @@ public sealed class RegisterRequest : IValidatableObject
     [MaxLength(100)]
     public string? LastName { get; set; }
 
+    /// <summary>Optional; international format, valid for its country (see <see cref="PhoneNumberRules"/>).</summary>
     [MaxLength(30)]
     public string? Phone { get; set; }
 
@@ -38,6 +40,9 @@ public sealed class RegisterRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        if (!PhoneNumberRules.IsBlankOrValid(Phone))
+            yield return new ValidationResult(PhoneNumberRules.InvalidMessage("phone"), [nameof(Phone)]);
+
         if (Role is not (null or UserRole.CLIENT or UserRole.BUSINESS))
         {
             yield return new ValidationResult("role debe ser CLIENT o BUSINESS.", [nameof(Role)]);

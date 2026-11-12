@@ -131,7 +131,7 @@ public sealed class UserProfileServiceTests : IDisposable
         var profile = await _service.UpdateProfileAsync(user.Id, request);
 
         Assert.NotNull(profile);
-        Assert.Equal("+506 8888-1234", profile!.Phone);
+        Assert.Equal("+50688881234", profile!.Phone);
         Assert.Null(profile.FirstName);
         Assert.Null(profile.LastName);
     }
@@ -159,7 +159,7 @@ public sealed class UserProfileServiceTests : IDisposable
         var profile = await _service.UpdateProfileAsync(user.Id, request);
 
         Assert.Equal("María José", profile!.FirstName);
-        Assert.Equal("+506 8888-1234", profile.Phone);
+        Assert.Equal("+50688881234", profile.Phone);
     }
 
     private async Task<User> SeedUserAsync(string? phone = null, UserRole role = UserRole.CLIENT)

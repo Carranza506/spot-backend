@@ -108,7 +108,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("WHATSAPP", body.GetProperty("type").GetString());
-        Assert.Equal("+506 8888-3344", body.GetProperty("value").GetString());
+        Assert.Equal("+50688883344", body.GetProperty("value").GetString());
         Assert.False(body.GetProperty("isPrimary").GetBoolean());
         Assert.Equal(business.Id, body.GetProperty("businessId").GetGuid());
     }
@@ -139,7 +139,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(ownerId, "BUSINESS");
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
@@ -151,7 +151,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(Guid.NewGuid(), "BUSINESS");
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -168,7 +168,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(Guid.NewGuid(), role);
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Empty(factory.ContactRepository.All);
@@ -181,7 +181,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -193,7 +193,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(Guid.NewGuid(), "BUSINESS");
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{Guid.NewGuid()}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -204,6 +204,8 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
     [InlineData("{\"type\":\"PHONE\",\"value\":\"   \"}")]
     [InlineData("{\"type\":\"FAX\",\"value\":\"2222\"}")]
     [InlineData("{\"type\":1,\"value\":\"2222\"}")]
+    [InlineData("{\"type\":\"PHONE\",\"value\":\"abc\"}")]
+    [InlineData("{\"type\":\"WHATSAPP\",\"value\":\"8888-1234\"}")] // no country code
     public async Task CreateContact_InvalidBody_Returns400(string json)
     {
         var (business, ownerId) = Reset();

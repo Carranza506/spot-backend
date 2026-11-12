@@ -44,12 +44,12 @@ public sealed class BusinessServiceTests
         {
             Name = "  Bella  ",
             Description = "   ",
-            Phone = " 2222-3344 ",
+            Phone = " +506 2222-3344 ",
         });
 
         Assert.Equal("Bella", result.Name);
         Assert.Null(result.Description);
-        Assert.Equal("2222-3344", result.Phone);
+        Assert.Equal("+50622223344", result.Phone);
     }
 
     [Fact]

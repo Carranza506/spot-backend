@@ -14,10 +14,10 @@ BEGIN;
 -- ---------- Accounts ----------
 INSERT INTO users (email, password_hash, first_name, last_name, phone, role)
 VALUES
-  ('cliente@spot.test',   'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', 'María', 'Rodríguez', '+506 8888-1234', 'client'),
-  ('negocio@spot.test',   'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', NULL, NULL, '+506 2260-1000', 'business'),
-  ('negocio2@spot.test',  'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', NULL, NULL, '+506 2260-2000', 'business'),
-  ('negocio3@spot.test',  'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', NULL, NULL, '+506 2260-3000', 'business'),
+  ('cliente@spot.test',   'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', 'María', 'Rodríguez', '+50688881234', 'client'),
+  ('negocio@spot.test',   'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', NULL, NULL, '+50622601000', 'business'),
+  ('negocio2@spot.test',  'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', NULL, NULL, '+50622602000', 'business'),
+  ('negocio3@spot.test',  'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', NULL, NULL, '+50622603000', 'business'),
   ('admin@spot.test',     'AQAAAAIAAYagAAAAECuBFkArhltaMFHCda6E5HWbr8y3El5oDMjOsiE75b5zdl8F5KgXoSntVXn4UM4WAg==', 'Admin', 'Spot', NULL, 'superadmin')
 ON CONFLICT (email) DO NOTHING;
 
@@ -27,13 +27,13 @@ CREATE TEMP TABLE demo_business (owner text, slug text, name text, description t
   category text, address text, lat double precision, lng double precision) ON COMMIT DROP;
 INSERT INTO demo_business VALUES
   ('negocio@spot.test',  'barberia-la-u', 'Barbería La U',
-   'Cortes clásicos y modernos, arreglo de barba y tratamientos capilares a pasos de la UNA.', '+506 2260-1000',
+   'Cortes clásicos y modernos, arreglo de barba y tratamientos capilares a pasos de la UNA.', '+50622601000',
    'Belleza', '100 m norte de la entrada principal de la UNA', 9.9996, -84.1103),
   ('negocio2@spot.test', 'spa-bienestar-heredia', 'Spa Bienestar Heredia',
-   'Masajes relajantes y terapéuticos, faciales y tratamientos de bienestar.', '+506 2260-2000',
+   'Masajes relajantes y terapéuticos, faciales y tratamientos de bienestar.', '+50622602000',
    'Salud', 'Costado sur del Parque Central de Heredia', 9.9980, -84.1172),
   ('negocio3@spot.test', 'gimnasio-fuerza-norte', 'Gimnasio Fuerza Norte',
-   'Entrenamiento funcional, clases grupales y entrenamiento personalizado.', '+506 2260-3000',
+   'Entrenamiento funcional, clases grupales y entrenamiento personalizado.', '+50622603000',
    'Deportes', '300 m este del Mall Paseo de las Flores', 10.0021, -84.1150);
 
 INSERT INTO businesses (account_id, name, slug, description, email, phone)

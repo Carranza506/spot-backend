@@ -3,6 +3,7 @@ using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
+using Spot.Shared.Validation;
 
 namespace Spot.Business.Api.Services;
 
@@ -34,7 +35,7 @@ public sealed class BusinessContactService(
         {
             BusinessId = businessId,
             Type = request.Type!.Value,
-            Value = request.Value.Trim(),
+            Value = BusinessContactCreateRequest.IsPhone(request.Type) ? PhoneNumberRules.ToE164(request.Value)! : request.Value.Trim(),
             IsPrimary = request.IsPrimary,
         };
 

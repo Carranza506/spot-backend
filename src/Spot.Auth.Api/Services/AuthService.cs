@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Spot.Auth.Api.DTOs;
 using Spot.Auth.Api.Models;
 using Spot.Auth.Api.Repositories;
+using Spot.Shared.Validation;
 
 namespace Spot.Auth.Api.Services;
 
@@ -24,7 +25,7 @@ public sealed class AuthService(
             // it never forbids them for BUSINESS, so this is what actually enforces "null names").
             FirstName = role == UserRole.CLIENT ? request.FirstName!.Trim() : null,
             LastName = role == UserRole.CLIENT ? request.LastName!.Trim() : null,
-            Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
+            Phone = PhoneNumberRules.ToE164(request.Phone),
             Role = role,
         };
         // Hashed before the entity is ever tracked/persisted — the plain-text password never
