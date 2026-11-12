@@ -2673,7 +2673,10 @@ components:
           type: [string, 'null']
           maxLength: 100
           description: Null for a BUSINESS account — its name is `businesses.name` instead.
-        phone: { type: [string, 'null'], maxLength: 30 }
+        phone:
+          type: [string, 'null']
+          maxLength: 30
+          description: E.164 ("+50688881234"). Phones saved before BUG-09 may keep the format they were typed in.
         profilePhotoUrl: { type: [string, 'null'], format: uri }
         role: { $ref: '#/components/schemas/UserRole' }
         isActive: { type: boolean }
@@ -2700,7 +2703,10 @@ components:
           type: string
           maxLength: 100
           description: Required when role is CLIENT (the default). Ignored for BUSINESS — a business account has no person name.
-        phone: { type: string, maxLength: 30 }
+        phone:
+          type: string
+          maxLength: 30
+          description: International format with the country code ("+506 8888 1234"), valid for that country (libphonenumber). Stored and returned as E.164 ("+50688881234"); blank means no phone. 400 otherwise.
         role:
           type: string
           enum: [CLIENT, BUSINESS]
@@ -2753,7 +2759,10 @@ components:
           description: >-
             CLIENT only: cannot be cleared to null or empty (400). Rejected outright (400) for a
             BUSINESS account — its name is edited via PATCH /business/businesses/me instead.
-        phone: { type: [string, 'null'], maxLength: 30 }
+        phone:
+          type: [string, 'null']
+          maxLength: 30
+          description: International format with the country code ("+506 8888 1234"), valid for that country (libphonenumber). Stored and returned as E.164 ("+50688881234"); blank means no phone. 400 otherwise.
         profilePhotoUrl: { type: [string, 'null'], format: uri }
 
     AuthTokens:
@@ -2824,7 +2833,10 @@ components:
         description: { type: [string, 'null'] }
         legalName: { type: [string, 'null'], maxLength: 200 }
         email: { type: [string, 'null'], format: email }
-        phone: { type: [string, 'null'], maxLength: 30 }
+        phone:
+          type: [string, 'null']
+          maxLength: 30
+          description: E.164 ("+50688881234"). Phones saved before BUG-09 may keep the format they were typed in.
         website: { type: [string, 'null'], format: uri }
         logoUrl: { type: [string, 'null'], format: uri }
         isActive: { type: boolean }
@@ -2839,7 +2851,10 @@ components:
         description: { type: string }
         legalName: { type: string, maxLength: 200 }
         email: { type: string, format: email }
-        phone: { type: string, maxLength: 30 }
+        phone:
+          type: string
+          maxLength: 30
+          description: International format with the country code ("+506 8888 1234"), valid for that country (libphonenumber). Stored and returned as E.164 ("+50688881234"); blank means no phone. 400 otherwise.
         website: { type: string, format: uri }
         logoUrl: { type: string, format: uri }
 
@@ -2850,7 +2865,10 @@ components:
         description: { type: [string, 'null'] }
         legalName: { type: [string, 'null'], maxLength: 200 }
         email: { type: [string, 'null'], format: email }
-        phone: { type: [string, 'null'], maxLength: 30 }
+        phone:
+          type: [string, 'null']
+          maxLength: 30
+          description: International format with the country code ("+506 8888 1234"), valid for that country (libphonenumber). Stored and returned as E.164 ("+50688881234"); blank means no phone. 400 otherwise.
         website: { type: [string, 'null'], format: uri }
         logoUrl: { type: [string, 'null'], format: uri }
         isActive: { type: boolean }
@@ -2897,7 +2915,9 @@ components:
         id: { type: string, format: uuid }
         businessId: { type: string, format: uuid }
         type: { $ref: '#/components/schemas/ContactType' }
-        value: { type: string }
+        value:
+          type: string
+          description: For PHONE and WHATSAPP, E.164 ("+50688881234").
         isPrimary: { type: boolean }
         createdAt: { type: string, format: date-time }
 
@@ -2906,7 +2926,9 @@ components:
       required: [type, value]
       properties:
         type: { $ref: '#/components/schemas/ContactType' }
-        value: { type: string }
+        value:
+          type: string
+          description: For PHONE and WHATSAPP, a phone in international format valid for its country ("+506 8888 1234"), stored as E.164; 400 otherwise. Free text for the other types.
         isPrimary: { type: boolean, default: false }
 
     PaginatedBusinessContacts:
