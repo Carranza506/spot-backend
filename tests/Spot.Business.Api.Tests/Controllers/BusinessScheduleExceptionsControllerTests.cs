@@ -445,6 +445,121 @@ public class BusinessScheduleExceptionsControllerTests(BusinessesApiFactory fact
         Assert.Empty(factory.ScheduleExceptionRepository.All);
     }
 
+    // ---------- PUT /business/businesses/{businessId}/schedule-exceptions/{exceptionId} ----------
+
+    [Fact]
+    public async Task UpdateException_Owner_Returns200AndKeepsTheId()
+    {
+        var (business, ownerId) = Reset();
+        var exception = SeedException(business.Id, "2026-12-24");
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/schedule-exceptions/{exception.Id}",
+            new { exceptionDate = "2026-12-26", isClosed = false, openTime = "09:00:00", closeTime = "13:00:00", reason = "  Medio día  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(exception.Id, body.GetProperty("id").GetGuid());
+        Assert.Equal("2026-12-26", body.GetProperty("exceptionDate").GetString());
+        Assert.False(body.GetProperty("isClosed").GetBoolean());
+        Assert.Equal("09:00:00", body.GetProperty("openTime").GetString());
+        Assert.Equal("Medio día", body.GetProperty("reason").GetString());
+
+        var stored = Assert.Single(factory.ScheduleExceptionRepository.All);
+        Assert.Equal(new DateOnly(2026, 12, 26), stored.ExceptionDate);
+        Assert.Equal(new TimeOnly(13, 0), stored.CloseTime);
+    }
+
+    [Fact]
+    public async Task UpdateException_KeepingItsOwnDate_Returns200()
+    {
+        var (business, ownerId) = Reset();
+        var exception = SeedException(business.Id, "2026-12-24");
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/schedule-exceptions/{exception.Id}",
+            new { exceptionDate = "2026-12-24", isClosed = true, reason = "Nochebuena" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("Nochebuena", Assert.Single(factory.ScheduleExceptionRepository.All).Reason);
+    }
+
+    [Fact]
+    public async Task UpdateException_OntoAnotherExceptionsDate_Returns409AndChangesNothing()
+    {
+        var (business, ownerId) = Reset();
+        var target = SeedException(business.Id, "2026-12-24");
+        SeedException(business.Id, "2026-12-25");
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/schedule-exceptions/{target.Id}",
+            new { exceptionDate = "2026-12-25", isClosed = true });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("SCHEDULE_EXCEPTION_ALREADY_EXISTS", body.GetProperty("code").GetString());
+        Assert.Equal(new DateOnly(2026, 12, 24),
+            factory.ScheduleExceptionRepository.All.Single(e => e.Id == target.Id).ExceptionDate);
+    }
+
+    [Fact]
+    public async Task UpdateException_BrokenOpeningHoursRule_Returns422AndChangesNothing()
+    {
+        var (business, ownerId) = Reset();
+        var exception = SeedException(business.Id, "2026-12-24");
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/schedule-exceptions/{exception.Id}",
+            new { exceptionDate = "2026-12-24", isClosed = false, openTime = "18:00:00", closeTime = "09:00:00" });
+
+        Assert.Equal((HttpStatusCode)422, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("INVALID_TIME_RANGE", body.GetProperty("code").GetString());
+        Assert.True(Assert.Single(factory.ScheduleExceptionRepository.All).IsClosed);
+    }
+
+    [Fact]
+    public async Task UpdateException_InvalidBody_Returns400()
+    {
+        var (business, ownerId) = Reset();
+        var exception = SeedException(business.Id, "2026-12-24");
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/schedule-exceptions/{exception.Id}",
+            new { isClosed = true });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateException_NonOwnerBusinessAccount_Returns403()
+    {
+        var (business, _) = Reset();
+        var exception = SeedException(business.Id, "2026-12-24");
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/schedule-exceptions/{exception.Id}",
+            new { exceptionDate = "2026-12-26", isClosed = true });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(new DateOnly(2026, 12, 24), Assert.Single(factory.ScheduleExceptionRepository.All).ExceptionDate);
+    }
+
+    [Fact]
+    public async Task UpdateException_ExceptionOfAnotherBusiness_Returns404()
+    {
+        var (business, ownerId) = Reset();
+        var other = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Otro" });
+        var foreign = SeedException(other.Id, "2026-12-24");
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/schedule-exceptions/{foreign.Id}",
+            new { exceptionDate = "2026-12-26", isClosed = true });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(new DateOnly(2026, 12, 24), Assert.Single(factory.ScheduleExceptionRepository.All).ExceptionDate);
+    }
+
     // ---------- DELETE /business/businesses/{businessId}/schedule-exceptions/{exceptionId} ----------
 
     [Fact]

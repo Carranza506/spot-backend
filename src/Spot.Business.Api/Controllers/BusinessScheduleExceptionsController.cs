@@ -91,6 +91,52 @@ public class BusinessScheduleExceptionsController(IBusinessScheduleExceptionServ
     /// BUSINESS account that owns the business. Hard delete. An exception of a different business
     /// is reported as 404.
     /// </summary>
+    /// <summary>
+    /// PUT /business/businesses/{businessId}/schedule-exceptions/{exceptionId} (FALT-10): same body,
+    /// rules and owner check as create; replaces the exception. An exception of a different business
+    /// is reported as 404.
+    /// </summary>
+    [HttpPut("{exceptionId:guid}")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(BusinessScheduleExceptionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
+    public async Task<IActionResult> UpdateBusinessScheduleException(
+        Guid businessId, Guid exceptionId, [FromBody] BusinessScheduleExceptionCreateRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var result = await exceptionService.UpdateAsync(businessId, exceptionId, callerId, request, ct);
+            return result is null
+                ? NotFound(new ApiError("NOT_FOUND", "La excepción de horario indicada no existe."))
+                : Ok(result);
+        }
+        catch (BusinessNotFoundException)
+        {
+            return BusinessNotFound();
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+        catch (InvalidBusinessHoursException ex)
+        {
+            return UnprocessableEntity(new ApiError(ex.Code, ex.Message));
+        }
+        catch (ScheduleExceptionAlreadyExistsException)
+        {
+            return Conflict(new ApiError(
+                "SCHEDULE_EXCEPTION_ALREADY_EXISTS", "El negocio ya tiene una excepción de horario para esa fecha."));
+        }
+    }
+
     [HttpDelete("{exceptionId:guid}")]
     [Authorize(Roles = "BUSINESS")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

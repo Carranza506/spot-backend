@@ -25,6 +25,16 @@ public interface IBusinessScheduleExceptionRepository
     /// </exception>
     Task CreateAsync(BusinessScheduleException exception, CancellationToken ct = default);
 
+    /// <summary>
+    /// Saves the changes made to the tracked <paramref name="exception"/>, then refreshes it from the
+    /// database (<c>updated_at</c> is set by a Postgres trigger).
+    /// </summary>
+    /// <exception cref="ScheduleExceptionAlreadyExistsException">
+    /// Another exception of the business already has the new date, including when it's inserted
+    /// concurrently (SQLSTATE 23505). Nothing is saved.
+    /// </exception>
+    Task UpdateAsync(BusinessScheduleException exception, CancellationToken ct = default);
+
     /// <summary>Hard delete — the row is removed permanently.</summary>
     Task DeleteAsync(BusinessScheduleException exception, CancellationToken ct = default);
 }

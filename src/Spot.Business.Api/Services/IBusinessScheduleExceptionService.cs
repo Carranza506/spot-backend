@@ -21,6 +21,16 @@ public interface IBusinessScheduleExceptionService
     Task<BusinessScheduleExceptionDto> CreateAsync(
         Guid businessId, Guid callerId, BusinessScheduleExceptionCreateRequest request, CancellationToken ct = default);
 
+    /// <summary>Replaces the exception's fields with the same rules as create, keeping its id.</summary>
+    /// <returns>Null if the exception doesn't exist or belongs to a different business.</returns>
+    /// <exception cref="BusinessNotFoundException">The business doesn't exist.</exception>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    /// <exception cref="InvalidBusinessHoursException">MISSING_OPENING_HOURS or INVALID_TIME_RANGE.</exception>
+    /// <exception cref="ScheduleExceptionAlreadyExistsException">Another exception of the business is on the new date.</exception>
+    Task<BusinessScheduleExceptionDto?> UpdateAsync(
+        Guid businessId, Guid exceptionId, Guid callerId, BusinessScheduleExceptionCreateRequest request,
+        CancellationToken ct = default);
+
     /// <summary>Hard delete. Works on an inactive business too.</summary>
     /// <returns>False if the exception doesn't exist or belongs to a different business.</returns>
     /// <exception cref="BusinessNotFoundException">The business doesn't exist.</exception>

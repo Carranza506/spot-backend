@@ -66,6 +66,40 @@ public class BusinessContactsController(IBusinessContactService contactService) 
     }
 
     /// <summary>
+    /// PUT /business/businesses/{businessId}/contacts/{contactId} (FALT-10): same body and owner
+    /// check as create; replaces the contact. A contact of a different business is reported as 404.
+    /// </summary>
+    [HttpPut("{contactId:guid}")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(BusinessContactDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateBusinessContact(
+        Guid businessId, Guid contactId, [FromBody] BusinessContactCreateRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var result = await contactService.UpdateAsync(businessId, contactId, callerId, request, ct);
+            return result is null
+                ? NotFound(new ApiError("NOT_FOUND", "El contacto indicado no existe."))
+                : Ok(result);
+        }
+        catch (BusinessNotFoundException)
+        {
+            return BusinessNotFound();
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+    }
+
+    /// <summary>
     /// DELETE /business/businesses/{businessId}/contacts/{contactId}: requires the BUSINESS account
     /// that owns the business. Hard delete. A contact of a different business is reported as 404.
     /// </summary>

@@ -42,6 +42,24 @@ public sealed class BusinessContactService(
         return BusinessContactDto.FromEntity(contact);
     }
 
+    public async Task<BusinessContactDto?> UpdateAsync(
+        Guid businessId, Guid contactId, Guid callerId, BusinessContactCreateRequest request, CancellationToken ct = default)
+    {
+        await RequireOwnedAsync(businessId, callerId, ct);
+
+        var contact = await contactRepository.GetByIdAsync(businessId, contactId, ct);
+        if (contact is null)
+            return null;
+
+        contact.Type = request.Type!.Value;
+        contact.Value = request.Value.Trim();
+        contact.IsPrimary = request.IsPrimary;
+
+        await contactRepository.UpdateAsync(contact, ct);
+
+        return BusinessContactDto.FromEntity(contact);
+    }
+
     public async Task<bool> DeleteAsync(Guid businessId, Guid contactId, Guid callerId, CancellationToken ct = default)
     {
         await RequireOwnedAsync(businessId, callerId, ct);
