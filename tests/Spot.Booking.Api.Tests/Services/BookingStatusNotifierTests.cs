@@ -51,7 +51,7 @@ public class BookingStatusNotifierTests
         }, new CapturingLogger());
         var booking = NewBooking(BookingStatus.CANCELLED);
 
-        await notifier.NotifyAsync(booking);
+        await notifier.NotifyAsync(booking, "Barbería La U");
 
         Assert.Equal(HttpMethod.Post, sent!.Method);
         Assert.Equal(
@@ -61,12 +61,13 @@ public class BookingStatusNotifierTests
 
         var json = JsonDocument.Parse(body!).RootElement;
         Assert.Equal(
-            ["bookingId", "businessId", "userId", "status"],
+            ["bookingId", "businessId", "userId", "status", "message"],
             json.EnumerateObject().Select(p => p.Name));
         Assert.Equal(booking.Id, json.GetProperty("bookingId").GetGuid());
         Assert.Equal(booking.BusinessId, json.GetProperty("businessId").GetGuid());
         Assert.Equal(booking.UserId, json.GetProperty("userId").GetGuid());
         Assert.Equal("CANCELLED", json.GetProperty("status").GetString());
+        Assert.Equal(BookingNotificationText.For(booking, "Barbería La U"), json.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -75,7 +76,7 @@ public class BookingStatusNotifierTests
         var logger = new CapturingLogger();
         var notifier = CreateNotifier((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Accepted)), logger);
 
-        await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED));
+        await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED), "Barbería La U");
 
         Assert.Equal(0, logger.Warnings);
     }
@@ -87,7 +88,7 @@ public class BookingStatusNotifierTests
         var logger = new CapturingLogger();
         var notifier = CreateNotifier(Failures[failure], logger);
 
-        await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED));
+        await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED), "Barbería La U");
 
         Assert.Equal(1, logger.Warnings);
     }
@@ -98,7 +99,7 @@ public class BookingStatusNotifierTests
         var logger = new CapturingLogger();
         var notifier = new BookingStatusNotifier(new HttpClient(), Microsoft.Extensions.Options.Options.Create(new InternalApiOptions()), logger);
 
-        await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED));
+        await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED), "Barbería La U");
 
         Assert.Equal(1, logger.Warnings);
     }
@@ -115,10 +116,10 @@ public class BookingStatusNotifierTests
         var booking = NewBooking(BookingStatus.CANCELLED);
         booking.CancelReason = "Me surgió un imprevisto";
 
-        await notifier.NotifyAsync(booking);
+        await notifier.NotifyAsync(booking, "Barbería La U");
 
         var json = JsonDocument.Parse(body!).RootElement;
-        Assert.Equal("La reservación fue cancelada. Motivo: Me surgió un imprevisto", json.GetProperty("message").GetString());
+        Assert.EndsWith(" Motivo: Me surgió un imprevisto", json.GetProperty("message").GetString());
     }
 
     [Theory]
@@ -162,6 +163,8 @@ public class BookingStatusNotifierTests
         UserId = ClientId,
         BusinessId = Guid.NewGuid(),
         Status = status,
+        ServiceName = "Corte de cabello",
+        StartAt = new DateTimeOffset(2026, 11, 13, 21, 0, 0, TimeSpan.Zero),
     };
 
     private sealed class FakeHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler

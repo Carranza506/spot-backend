@@ -37,6 +37,27 @@ public class BookingStatusTransitionTests
     }
 
     [Fact]
+    public async Task Cancel_ByTheClient_PassesTheBusinessName_ForTheNotificationText()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        await _service.CancelAsync(booking.Id, ClientId);
+
+        Assert.Equal("Barbería La U", _notifier.LastBusinessName);
+    }
+
+    [Fact]
+    public async Task Cancel_ByTheClient_OfABookingWhoseBusinessIsGone_StillNotifies_WithoutAName()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED, withBusiness: false);
+
+        await _service.CancelAsync(booking.Id, ClientId);
+
+        Assert.Equal([(booking.Id, BookingStatus.CANCELLED)], _notifier.Notified);
+        Assert.Null(_notifier.LastBusinessName);
+    }
+
+    [Fact]
     public async Task Cancel_WithAReason_StoresIt_BeforeNotifying()
     {
         var booking = await SeedAsync(BookingStatus.CONFIRMED);
@@ -407,7 +428,7 @@ public class BookingStatusTransitionTests
 
     private async Task<BookingEntity> SeedAsync(BookingStatus status, bool withBusiness = true, DateTimeOffset? startAt = null)
     {
-        var business = new BusinessReference { Id = Guid.NewGuid(), AccountId = OwnerId, IsActive = true };
+        var business = new BusinessReference { Id = Guid.NewGuid(), AccountId = OwnerId, IsActive = true, Name = "Barbería La U" };
         if (withBusiness)
             _schedule.Businesses.Add(business);
 

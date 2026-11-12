@@ -8,7 +8,8 @@ public interface IBookingStatusNotifier
     /// <summary>
     /// Best-effort: never throws, and a failure is only logged. Takes no CancellationToken on
     /// purpose: it runs after the transition is committed, so a client disconnecting must not
-    /// cancel it. Its own short timeout bounds the wait.
+    /// cancel it. Its own short timeout bounds the wait. <paramref name="businessName"/> goes into
+    /// the notification's text (#173); null if the business wasn't found.
     /// </summary>
-    Task NotifyAsync(BookingEntity booking);
+    Task NotifyAsync(BookingEntity booking, string? businessName);
 }
