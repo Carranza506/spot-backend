@@ -60,27 +60,56 @@ public class BookingsControllerTests(BookingsApiFactory factory) : IClassFixture
     }
 
     [Fact]
-    public async Task Create_StartWithOffsetOffTheSlotGrid_IsConvertedToUtc()
+    public async Task Create_StartWithOffset_IsConvertedToUtc()
     {
         var (businessId, serviceId) = Seed();
 
-        var response = await Post(Body(businessId, serviceId, "2026-09-01T08:10:00-06:00"));
+        var response = await Post(Body(businessId, serviceId, "2026-09-01T08:45:00-06:00"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("2026-09-01T14:10:00Z", body.GetProperty("startAt").GetString());
-        Assert.Equal("2026-09-01T14:55:00Z", body.GetProperty("endAt").GetString());
+        Assert.Equal("2026-09-01T14:45:00Z", body.GetProperty("startAt").GetString());
+        Assert.Equal("2026-09-01T15:30:00Z", body.GetProperty("endAt").GetString());
         Assert.Equal(JsonValueKind.Null, body.GetProperty("notes").ValueKind);
     }
 
-    [Fact]
-    public async Task Create_EndingExactlyAtClosing_Returns201()
+    [Theory]
+    [InlineData("2026-09-01T14:10:00Z")]
+    [InlineData("2026-09-01T15:15:00Z")] // ends exactly at closing, but off the 45-minute grid
+    [InlineData("2026-09-01T14:45:30Z")]
+    public async Task Create_OffTheSlotGrid_Returns422(string startAt)
     {
         var (businessId, serviceId) = Seed();
 
-        var response = await Post(Body(businessId, serviceId, "2026-09-01T15:15:00Z"));
+        var response = await Post(Body(businessId, serviceId, startAt));
 
-        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal((HttpStatusCode)422, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BOOKING_NOT_ON_SLOT", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Create_MoreThan60DaysAhead_Returns422()
+    {
+        var (businessId, serviceId) = Seed();
+
+        // The clock is 2026-08-31; 2026-10-31 is 61 days later.
+        var response = await Post(Body(businessId, serviceId, "2026-10-31T14:00:00Z"));
+
+        Assert.Equal((HttpStatusCode)422, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BOOKING_TOO_FAR_AHEAD", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task Create_NotifiesTheNewPendingBooking()
+    {
+        var (businessId, serviceId) = Seed();
+
+        var response = await Post(Body(businessId, serviceId, "2026-09-01T14:00:00Z"));
+
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        Assert.Contains((id, BookingStatus.PENDING), factory.StatusNotifier.Notified);
     }
 
     [Fact]
@@ -244,7 +273,7 @@ public class BookingsControllerTests(BookingsApiFactory factory) : IClassFixture
     public async Task Create_UsesTheLocalDateOfStartAt_NotItsUtcDate()
     {
         var (businessId, serviceId) = Seed();
-        // Monday evening hours. 2026-08-31 20:00 local is already Tuesday 02:00 in UTC, when the
+        // Monday evening hours. 2026-08-31 20:15 local (a 45-minute slot from 18:00) is already Tuesday 02:15 in UTC, when the
         // business (open Tuesdays 08:00–10:00 local) would be closed.
         factory.ScheduleRepository.Hours.Add(new BusinessHoursReference
         {
@@ -252,7 +281,7 @@ public class BookingsControllerTests(BookingsApiFactory factory) : IClassFixture
             OpenTime = new TimeOnly(18, 0), CloseTime = new TimeOnly(23, 0),
         });
 
-        var response = await Post(Body(businessId, serviceId, "2026-09-01T02:00:00Z"));
+        var response = await Post(Body(businessId, serviceId, "2026-09-01T02:15:00Z"));
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }

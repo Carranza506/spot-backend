@@ -18,5 +18,11 @@ public sealed class BookingRuleViolationException(string code, string message) :
     /// <summary>Complete or no-show before the booking's start time; agreed for #146.</summary>
     public const string NotStarted = "BOOKING_NOT_STARTED";
 
+    /// <summary>A start that isn't on availability's slot grid for the service (BUG-11).</summary>
+    public const string NotOnSlot = "BOOKING_NOT_ON_SLOT";
+
+    /// <summary>A start more than BookingService.MaxDaysAhead days after today (BUG-11).</summary>
+    public const string TooFarAhead = "BOOKING_TOO_FAR_AHEAD";
+
     public string Code { get; } = code;
 }

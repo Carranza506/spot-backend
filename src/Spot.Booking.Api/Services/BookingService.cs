@@ -16,6 +16,9 @@ public sealed class BookingService(
     TimeProvider timeProvider,
     IBookingStatusNotifier statusNotifier) : IBookingService
 {
+    /// <summary>How many local calendar days after today a booking may start.</summary>
+    public const int MaxDaysAhead = 60;
+
     public async Task<BookingDto> CreateAsync(Guid userId, BookingCreateRequest request, CancellationToken ct = default)
     {
         var businessId = request.BusinessId!.Value;
@@ -35,11 +38,16 @@ public sealed class BookingService(
         start = start.AddTicks(-(start.Ticks % 10));
         var end = start.AddMinutes(service.DurationMinutes);
 
-        if (start < timeProvider.GetUtcNow())
+        var now = timeProvider.GetUtcNow();
+        if (start < now)
             throw new BookingRuleViolationException(
                 BookingRuleViolationException.StartInPast, "No se puede reservar en un horario que ya pasó.");
 
-        await EnsureWithinOpeningHoursAsync(businessId, start, end, ct);
+        if (LocalDate(start).DayNumber - LocalDate(now).DayNumber > MaxDaysAhead)
+            throw new BookingRuleViolationException(
+                BookingRuleViolationException.TooFarAhead, $"Solo se puede reservar hasta {MaxDaysAhead} días hacia adelante.");
+
+        await EnsureWithinOpeningHoursAsync(businessId, start, end, service.DurationMinutes, ct);
 
         var booking = new BookingEntity
         {
@@ -56,6 +64,10 @@ public sealed class BookingService(
         };
 
         await bookingRepository.CreateAsync(booking, ct);
+
+        // A new PENDING booking goes to the business account, so it knows there's one to confirm.
+        await statusNotifier.NotifyAsync(booking);
+
         return await ToDtoAsync(booking, ct);
     }
 
@@ -171,15 +183,20 @@ public sealed class BookingService(
             new PaginationMeta(page, pageSize, total, (int)Math.Ceiling(total / (double)pageSize)));
     }
 
+    private static DateOnly LocalDate(DateTimeOffset instant) =>
+        DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, BusinessTimeZone.Instance).DateTime);
+
     /// <summary>
     /// The whole [start, end) must fall within the opening hours of start's local date
-    /// (America/Costa_Rica), resolved exactly as availability does (<see cref="OpeningHoursResolver"/>).
-    /// It doesn't have to line up with availability's slot grid.
+    /// (America/Costa_Rica), resolved exactly as availability does (<see cref="OpeningHoursResolver"/>),
+    /// and start must be on the slot grid availability offers for the service: opening time plus a
+    /// whole number of <paramref name="slotMinutes"/>.
     /// </summary>
-    private async Task EnsureWithinOpeningHoursAsync(Guid businessId, DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+    private async Task EnsureWithinOpeningHoursAsync(
+        Guid businessId, DateTimeOffset start, DateTimeOffset end, int slotMinutes, CancellationToken ct)
     {
         var timeZone = BusinessTimeZone.Instance;
-        var localDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(start, timeZone).DateTime);
+        var localDate = LocalDate(start);
 
         // Sequential on purpose: these share one DbContext, which doesn't allow concurrent queries.
         var weeklyHours = await scheduleRepository.GetWeeklyHoursAsync(businessId, ct);
@@ -193,5 +210,10 @@ public sealed class BookingService(
             || end.UtcDateTime > AvailabilityCalculator.ToUtc(localDate, open.Close, timeZone))
             throw new BookingRuleViolationException(
                 BookingRuleViolationException.OutsideBusinessHours, "El negocio está cerrado en el horario seleccionado.");
+
+        if ((start.UtcDateTime - AvailabilityCalculator.ToUtc(localDate, open.Open, timeZone)).Ticks
+            % TimeSpan.FromMinutes(slotMinutes).Ticks != 0)
+            throw new BookingRuleViolationException(
+                BookingRuleViolationException.NotOnSlot, "El horario seleccionado no coincide con los horarios disponibles.");
     }
 }
