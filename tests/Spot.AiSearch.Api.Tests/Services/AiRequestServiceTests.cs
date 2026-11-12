@@ -8,7 +8,6 @@ using Spot.AiSearch.Api.Options;
 using Spot.AiSearch.Api.Services;
 using Spot.AiSearch.Api.Services.Gemini;
 using Spot.AiSearch.Api.Tests.Fakes;
-using Spot.AiSearch.Api.Tests.TestSupport;
 
 namespace Spot.AiSearch.Api.Tests.Services;
 

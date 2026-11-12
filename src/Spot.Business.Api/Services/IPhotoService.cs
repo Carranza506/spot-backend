@@ -1,4 +1,5 @@
 using Spot.Business.Api.DTOs;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Services;

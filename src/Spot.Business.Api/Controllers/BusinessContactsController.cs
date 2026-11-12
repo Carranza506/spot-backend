@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Services;
 using Spot.Shared.Errors;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Controllers;

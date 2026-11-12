@@ -3,7 +3,6 @@ using Spot.Notifications.Api.DTOs;
 using Spot.Notifications.Api.Models;
 using Spot.Notifications.Api.Services;
 using Spot.Notifications.Api.Tests.Fakes;
-using Spot.Notifications.Api.Tests.TestSupport;
 
 namespace Spot.Notifications.Api.Tests.Services;
 

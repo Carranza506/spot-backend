@@ -4,6 +4,7 @@ using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Repositories;
 using Spot.Business.Api.Services;
 using Spot.Shared.Errors;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Controllers;
@@ -45,7 +46,7 @@ public class ReviewsController(IReviewService reviewService) : ControllerBase
         {
             return NotFound(new ApiError("NOT_FOUND", "La reservación indicada no existe."));
         }
-        catch (BookingAccessDeniedException)
+        catch (NotBookingClientException)
         {
             return StatusCode(StatusCodes.Status403Forbidden,
                 new ApiError("FORBIDDEN", "No tienes permiso para realizar esta acción."));

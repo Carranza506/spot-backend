@@ -11,7 +11,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Spot.AiSearch.Api.Services.Gemini;
 using Spot.AiSearch.Api.Tests.Fakes;
-using Spot.AiSearch.Api.Tests.TestSupport;
 
 namespace Spot.AiSearch.Api.Tests.Controllers;
 

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Spot.Booking.Api.DTOs;
 using Spot.Booking.Api.Services;
 using Spot.Shared.Errors;
+using Spot.Shared.Exceptions;
 
 namespace Spot.Booking.Api.Controllers;
 

@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using Spot.AiSearch.Api.Models;
 using Spot.AiSearch.Api.Options;
 using Spot.AiSearch.Api.Services.Gemini;
-using Spot.AiSearch.Api.Tests.TestSupport;
 
 namespace Spot.AiSearch.Api.Tests.Services.Gemini;
 
