@@ -28,10 +28,12 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="Spot.TestSupport" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Spot.Booking.Api\Spot.Booking.Api.csproj" />
+    <ProjectReference Include="..\Spot.TestSupport\Spot.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

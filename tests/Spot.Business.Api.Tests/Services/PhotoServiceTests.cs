@@ -8,6 +8,7 @@ using Spot.Business.Api.Services;
 using Spot.Business.Api.Storage;
 using Spot.Business.Api.Tests.Fakes;
 using Spot.Business.Api.Tests.Photos;
+using Spot.Shared.Exceptions;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 using ServiceEntity = Spot.Business.Api.Models.Service;
 

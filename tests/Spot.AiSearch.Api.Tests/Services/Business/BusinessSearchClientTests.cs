@@ -4,7 +4,6 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Spot.AiSearch.Api.Options;
 using Spot.AiSearch.Api.Services.Business;
-using Spot.AiSearch.Api.Tests.TestSupport;
 
 namespace Spot.AiSearch.Api.Tests.Services.Business;
 

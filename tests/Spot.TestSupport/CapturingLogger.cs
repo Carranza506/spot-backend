@@ -1,10 +1,10 @@
 using Microsoft.Extensions.Logging;
 
-namespace Spot.Notifications.Api.Tests.TestSupport;
+namespace Spot.TestSupport;
 
 /// <summary>
-/// Keeps every log entry in memory so tests can assert what was logged (and that secrets weren't).
-/// Same as Spot.AiSearch.Api.Tests' CapturingLogger.
+/// Keeps every log entry in memory so tests can assert what was logged, at which level, and that
+/// secrets weren't.
 /// </summary>
 public sealed class CapturingLogger<T> : ILogger<T>
 {

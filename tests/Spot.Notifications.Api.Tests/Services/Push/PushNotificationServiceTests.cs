@@ -1,7 +1,6 @@
 using Spot.Notifications.Api.Models;
 using Spot.Notifications.Api.Services.Push;
 using Spot.Notifications.Api.Tests.Fakes;
-using Spot.Notifications.Api.Tests.TestSupport;
 
 namespace Spot.Notifications.Api.Tests.Services.Push;
 

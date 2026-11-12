@@ -5,6 +5,7 @@ using Spot.Business.Api.Options;
 using Spot.Business.Api.Photos;
 using Spot.Business.Api.Repositories;
 using Spot.Business.Api.Storage;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 using ServiceEntity = Spot.Business.Api.Models.Service;
 

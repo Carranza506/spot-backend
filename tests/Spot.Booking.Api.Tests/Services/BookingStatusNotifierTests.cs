@@ -48,7 +48,7 @@ public class BookingStatusNotifierTests
             sent = request;
             body = await request.Content!.ReadAsStringAsync(ct);
             return new HttpResponseMessage(HttpStatusCode.Accepted);
-        }, new CapturingLogger());
+        }, new CapturingLogger<BookingStatusNotifier>());
         var booking = NewBooking(BookingStatus.CANCELLED);
 
         await notifier.NotifyAsync(booking);
@@ -72,35 +72,35 @@ public class BookingStatusNotifierTests
     [Fact]
     public async Task Success_LogsNoWarning()
     {
-        var logger = new CapturingLogger();
+        var logger = new CapturingLogger<BookingStatusNotifier>();
         var notifier = CreateNotifier((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.Accepted)), logger);
 
         await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED));
 
-        Assert.Equal(0, logger.Warnings);
+        Assert.Equal(0, Warnings(logger));
     }
 
     [Theory]
     [MemberData(nameof(FailureCases))]
     public async Task AnyFailure_IsLoggedAsAWarning_AndNeverThrown(int failure)
     {
-        var logger = new CapturingLogger();
+        var logger = new CapturingLogger<BookingStatusNotifier>();
         var notifier = CreateNotifier(Failures[failure], logger);
 
         await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED));
 
-        Assert.Equal(1, logger.Warnings);
+        Assert.Equal(1, Warnings(logger));
     }
 
     [Fact]
     public async Task MissingConfiguration_IsLoggedAsAWarning_AndNeverThrown()
     {
-        var logger = new CapturingLogger();
+        var logger = new CapturingLogger<BookingStatusNotifier>();
         var notifier = new BookingStatusNotifier(new HttpClient(), Microsoft.Extensions.Options.Options.Create(new InternalApiOptions()), logger);
 
         await notifier.NotifyAsync(NewBooking(BookingStatus.CANCELLED));
 
-        Assert.Equal(1, logger.Warnings);
+        Assert.Equal(1, Warnings(logger));
     }
 
     [Theory]
@@ -109,7 +109,7 @@ public class BookingStatusNotifierTests
     {
         var schedule = new FakeAvailabilityRepository();
         var bookings = new FakeBookingRepository(schedule);
-        var notifier = CreateNotifier(Failures[failure], new CapturingLogger());
+        var notifier = CreateNotifier(Failures[failure], new CapturingLogger<BookingStatusNotifier>());
         var service = new BookingService(schedule, bookings, TimeProvider.System, notifier);
 
         var businessId = Guid.NewGuid();
@@ -136,7 +136,7 @@ public class BookingStatusNotifierTests
 
     private static BookingStatusNotifier CreateNotifier(
         Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send, ILogger<BookingStatusNotifier> logger) =>
-        new(new HttpClient(new FakeHandler(send)), Microsoft.Extensions.Options.Options.Create(Settings), logger);
+        new(new HttpClient(new FakeHttpMessageHandler(send)), Microsoft.Extensions.Options.Options.Create(Settings), logger);
 
     private static BookingEntity NewBooking(BookingStatus status) => new()
     {
@@ -146,25 +146,6 @@ public class BookingStatusNotifierTests
         Status = status,
     };
 
-    private sealed class FakeHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            send(request, cancellationToken);
-    }
-
-    private sealed class CapturingLogger : ILogger<BookingStatusNotifier>
-    {
-        public int Warnings { get; private set; }
-
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => NullLogger.Instance.BeginScope(state);
-
-        public bool IsEnabled(LogLevel logLevel) => true;
-
-        public void Log<TState>(
-            LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            if (logLevel == LogLevel.Warning)
-                Warnings++;
-        }
-    }
+    private static int Warnings(CapturingLogger<BookingStatusNotifier> logger) =>
+        logger.Entries.Count(e => e.Level == LogLevel.Warning);
 }

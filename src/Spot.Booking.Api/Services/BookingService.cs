@@ -1,6 +1,7 @@
 using Spot.Booking.Api.DTOs;
 using Spot.Booking.Api.Models;
 using Spot.Booking.Api.Repositories;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 using BookingEntity = Spot.Booking.Api.Models.Booking;
 
