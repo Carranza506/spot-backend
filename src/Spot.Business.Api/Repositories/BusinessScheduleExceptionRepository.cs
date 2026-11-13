@@ -57,6 +57,25 @@ public sealed class BusinessScheduleExceptionRepository(BusinessDbContext db) : 
         }
     }
 
+    public async Task UpdateAsync(BusinessScheduleException exception, CancellationToken ct = default)
+    {
+        // Same up-front check as create, excluding the exception itself; the catch is the race-proof fallback.
+        if (await db.BusinessScheduleExceptions.AnyAsync(
+                e => e.BusinessId == exception.BusinessId && e.ExceptionDate == exception.ExceptionDate && e.Id != exception.Id, ct))
+            throw new ScheduleExceptionAlreadyExistsException(exception.BusinessId, exception.ExceptionDate);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            throw new ScheduleExceptionAlreadyExistsException(exception.BusinessId, exception.ExceptionDate);
+        }
+
+        await db.Entry(exception).ReloadAsync(ct);
+    }
+
     public async Task DeleteAsync(BusinessScheduleException exception, CancellationToken ct = default)
     {
         db.BusinessScheduleExceptions.Remove(exception);

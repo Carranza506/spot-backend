@@ -221,6 +221,120 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
 
     // ---------- DELETE /business/businesses/{businessId}/contacts/{contactId} ----------
 
+    // ---------- PUT /business/businesses/{businessId}/contacts/{contactId} ----------
+
+    [Fact]
+    public async Task UpdateContact_Owner_Returns200AndKeepsTheId()
+    {
+        var (business, ownerId) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
+            new { type = "EMAIL", value = "  hola@bella.cr  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(contact.Id, body.GetProperty("id").GetGuid());
+        Assert.Equal("EMAIL", body.GetProperty("type").GetString());
+        Assert.Equal("hola@bella.cr", body.GetProperty("value").GetString());
+        var stored = Assert.Single(factory.ContactRepository.All);
+        Assert.Equal(ContactType.EMAIL, stored.Type);
+        Assert.Equal("hola@bella.cr", stored.Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_MadePrimary_IsTheBusinessesOnlyPrimary()
+    {
+        var (business, ownerId) = Reset();
+        var other = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Otro" });
+        var oldPrimary = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222", IsPrimary = true });
+        var otherPrimary = factory.ContactRepository.Seed(new BusinessContact { BusinessId = other.Id, Type = ContactType.PHONE, Value = "3333", IsPrimary = true });
+        var target = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.EMAIL, Value = "a@b.cr" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{target.Id}",
+            new { type = "EMAIL", value = "a@b.cr", isPrimary = true });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(target.IsPrimary);
+        Assert.False(oldPrimary.IsPrimary);
+        Assert.True(otherPrimary.IsPrimary);
+    }
+
+    [Fact]
+    public async Task UpdateContact_PrimaryStaysPrimary()
+    {
+        var (business, ownerId) = Reset();
+        var primary = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222", IsPrimary = true });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{primary.Id}",
+            new { type = "PHONE", value = "2223", isPrimary = true });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(primary.IsPrimary);
+    }
+
+    [Theory]
+    [InlineData("""{ "value": "2222" }""")]
+    [InlineData("""{ "type": "PHONE", "value": "   " }""")]
+    [InlineData("""{ "type": "FAX", "value": "2222" }""")]
+    public async Task UpdateContact_InvalidBody_Returns400AndKeepsTheContact(string json)
+    {
+        var (business, ownerId) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("2222", Assert.Single(factory.ContactRepository.All).Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_NonOwnerBusinessAccount_Returns403()
+    {
+        var (business, _) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222" });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
+            new { type = "PHONE", value = "9999" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("2222", contact.Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_ContactOfAnotherBusiness_Returns404AndKeepsIt()
+    {
+        var (business, ownerId) = Reset();
+        var other = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Otro" });
+        var foreign = factory.ContactRepository.Seed(new BusinessContact { BusinessId = other.Id, Type = ContactType.PHONE, Value = "3333" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{foreign.Id}",
+            new { type = "PHONE", value = "9999" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("3333", foreign.Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_NoToken_Returns401()
+    {
+        var (business, _) = Reset();
+
+        var response = await factory.CreateClient().PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/contacts/{Guid.NewGuid()}", new { type = "PHONE", value = "9999" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    // ---------- DELETE /business/businesses/{businessId}/contacts/{contactId} ----------
+
     [Fact]
     public async Task DeleteContact_Owner_Returns204AndRemovesOnlyThatContact()
     {

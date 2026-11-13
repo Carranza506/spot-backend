@@ -768,6 +768,38 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    put:
+      tags: [Business]
+      operationId: updateBusinessContact
+      summary: Edit a business's contact
+      description: |-
+        Replaces the contact's `type`, `value` and `isPrimary` with the same
+        body and rules as `createBusinessContact`, keeping its id. Making it
+        primary clears the business's other primary contact. A contact of a
+        different business responds `404`.
+        Required role: `BUSINESS` who owns the business.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessContactCreateRequest'
+            example:
+              type: PHONE
+              value: "+506 2222-3344"
+              isPrimary: false
+      responses:
+        '200':
+          description: Contact updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessContact'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Business]
       operationId: deleteBusinessContact
@@ -937,6 +969,43 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    put:
+      tags: [Business]
+      operationId: updateBusinessScheduleException
+      summary: Edit a schedule exception
+      description: |-
+        Replaces the exception with the same body and rules as
+        `createBusinessScheduleException`, keeping its id. Moving it to a date
+        that already has another exception of the business responds `409`; if
+        `isClosed=false`, requires `openTime < closeTime` (`422`). An exception
+        of a different business responds `404`.
+        Required role: `BUSINESS` who owns the business.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessScheduleExceptionCreateRequest'
+            example:
+              exceptionDate: "2026-12-24"
+              isClosed: false
+              openTime: "09:00:00"
+              closeTime: "13:00:00"
+              reason: Nochebuena, medio día
+      responses:
+        '200':
+          description: Exception updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessScheduleException'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Business]
       operationId: deleteBusinessScheduleException

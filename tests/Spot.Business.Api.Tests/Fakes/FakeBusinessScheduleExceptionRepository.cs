@@ -42,8 +42,19 @@ public sealed class FakeBusinessScheduleExceptionRepository : IBusinessScheduleE
         return Task.FromResult(((IReadOnlyList<BusinessScheduleException>)pageItems, all.Count));
     }
 
+    /// <summary>
+    /// Returns a copy, like a fresh DbContext would: edits only reach the store through UpdateAsync,
+    /// so a failed update leaves the stored exception unchanged.
+    /// </summary>
     public Task<BusinessScheduleException?> GetByIdAsync(Guid businessId, Guid exceptionId, CancellationToken ct = default) =>
-        Task.FromResult(_exceptions.TryGetValue(exceptionId, out var e) && e.BusinessId == businessId ? e : null);
+        Task.FromResult(_exceptions.TryGetValue(exceptionId, out var e) && e.BusinessId == businessId
+            ? new BusinessScheduleException
+            {
+                Id = e.Id, BusinessId = e.BusinessId, ExceptionDate = e.ExceptionDate, IsClosed = e.IsClosed,
+                OpenTime = e.OpenTime, CloseTime = e.CloseTime, Reason = e.Reason,
+                CreatedAt = e.CreatedAt, UpdatedAt = e.UpdatedAt,
+            }
+            : null);
 
     public Task CreateAsync(BusinessScheduleException exception, CancellationToken ct = default)
     {
@@ -52,6 +63,17 @@ public sealed class FakeBusinessScheduleExceptionRepository : IBusinessScheduleE
 
         exception.Id = Guid.NewGuid();
         Seed(exception);
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateAsync(BusinessScheduleException exception, CancellationToken ct = default)
+    {
+        if (_exceptions.Values.Any(e => e.BusinessId == exception.BusinessId
+                                        && e.ExceptionDate == exception.ExceptionDate && e.Id != exception.Id))
+            throw new ScheduleExceptionAlreadyExistsException(exception.BusinessId, exception.ExceptionDate);
+
+        exception.UpdatedAt = DateTimeOffset.UtcNow;
+        _exceptions[exception.Id] = exception;
         return Task.CompletedTask;
     }
 

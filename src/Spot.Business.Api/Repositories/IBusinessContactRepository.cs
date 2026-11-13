@@ -24,6 +24,12 @@ public interface IBusinessContactRepository
     /// </summary>
     Task CreateAsync(BusinessContact contact, CancellationToken ct = default);
 
+    /// <summary>
+    /// Saves the changes made to the tracked <paramref name="contact"/>. If it's primary, every other
+    /// contact of the same business loses its primary flag in the same SaveChanges, as on create.
+    /// </summary>
+    Task UpdateAsync(BusinessContact contact, CancellationToken ct = default);
+
     /// <summary>Hard delete — the row is removed permanently.</summary>
     Task DeleteAsync(BusinessContact contact, CancellationToken ct = default);
 }

@@ -29,18 +29,28 @@ public sealed class BusinessContactRepository(BusinessDbContext db) : IBusinessC
 
     public async Task CreateAsync(BusinessContact contact, CancellationToken ct = default)
     {
-        if (contact.IsPrimary)
-        {
-            var currentPrimaries = await db.BusinessContacts
-                .Where(c => c.BusinessId == contact.BusinessId && c.IsPrimary)
-                .ToListAsync(ct);
-
-            foreach (var other in currentPrimaries)
-                other.IsPrimary = false;
-        }
-
+        await ClearOtherPrimariesAsync(contact, ct);
         db.BusinessContacts.Add(contact);
         await db.SaveChangesAsync(ct);
+    }
+
+    public async Task UpdateAsync(BusinessContact contact, CancellationToken ct = default)
+    {
+        await ClearOtherPrimariesAsync(contact, ct);
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task ClearOtherPrimariesAsync(BusinessContact contact, CancellationToken ct)
+    {
+        if (!contact.IsPrimary)
+            return;
+
+        var currentPrimaries = await db.BusinessContacts
+            .Where(c => c.BusinessId == contact.BusinessId && c.IsPrimary && c.Id != contact.Id)
+            .ToListAsync(ct);
+
+        foreach (var other in currentPrimaries)
+            other.IsPrimary = false;
     }
 
     public async Task DeleteAsync(BusinessContact contact, CancellationToken ct = default)
