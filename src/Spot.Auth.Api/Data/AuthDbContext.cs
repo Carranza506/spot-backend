@@ -1,0 +1,78 @@
+using Microsoft.EntityFrameworkCore;
+using Spot.Auth.Api.Models;
+
+namespace Spot.Auth.Api.Data;
+
+public class AuthDbContext(DbContextOptions<AuthDbContext> options) : DbContext(options)
+{
+    public DbSet<User> Users => Set<User>();
+    public DbSet<UserAuthProvider> UserAuthProviders => Set<UserAuthProvider>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.HasPostgresEnum<UserRole>();
+        modelBuilder.HasPostgresEnum<AuthProvider>();
+
+        modelBuilder.Entity<User>(e =>
+        {
+            e.ToTable("users");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.Email).HasColumnName("email").HasMaxLength(255).IsRequired();
+            e.Property(x => x.PasswordHash).HasColumnName("password_hash");
+            // Nullable: a BUSINESS account has no person name (see ck_users_client_names in the
+            // RenameBusinessRoleAndNullableUserNames migration, which requires both only for CLIENT).
+            e.Property(x => x.FirstName).HasColumnName("first_name").HasMaxLength(100);
+            e.Property(x => x.LastName).HasColumnName("last_name").HasMaxLength(100);
+            e.Property(x => x.Phone).HasColumnName("phone").HasMaxLength(30);
+            e.Property(x => x.ProfilePhotoUrl).HasColumnName("profile_photo_url");
+            // Not HasDefaultValue(UserRole.CLIENT): for a native Postgres enum column, EF/Npgsql
+            // renders that as a bare "DEFAULT 0" (the enum's underlying int), which Postgres
+            // rejects for an enum-typed column ("default expression is of type integer").
+            // HasDefaultValueSql with an explicit cast is required instead. The label is
+            // lowercase ("client") to match what HasPostgresEnum<UserRole>()'s naming convention
+            // actually creates the user_role type with (see also AiSearchDbContext.cs's note on
+            // the same lowercase-vs-uppercase-Spot.sql-labels discrepancy).
+            e.Property(x => x.Role).HasColumnName("role").HasColumnType("user_role").HasDefaultValueSql("'client'::user_role");
+            e.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            e.HasIndex(x => x.Email).IsUnique();
+            e.HasIndex(x => x.Role).HasDatabaseName("idx_users_role");
+        });
+
+        modelBuilder.Entity<UserAuthProvider>(e =>
+        {
+            e.ToTable("user_auth_providers");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.Provider).HasColumnName("provider").HasColumnType("auth_provider");
+            e.Property(x => x.ProviderUserId).HasColumnName("provider_user_id").HasMaxLength(255).IsRequired();
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            e.HasIndex(x => new { x.Provider, x.ProviderUserId }).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.Provider }).IsUnique();
+            e.HasIndex(x => x.UserId).HasDatabaseName("idx_auth_providers_user");
+            e.HasOne(x => x.User).WithMany(u => u.AuthProviders).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RefreshToken>(e =>
+        {
+            e.ToTable("refresh_tokens");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.TokenHash).HasColumnName("token_hash").IsRequired();
+            e.Property(x => x.ExpiresAt).HasColumnName("expires_at");
+            // A concurrency token (not just a plain column): RefreshTokenRepository.RevokeAsync
+            // relies on this so its UPDATE's WHERE clause includes the RevokedAt value it
+            // originally read, making the revoke conditional/atomic — see that method's remarks.
+            e.Property(x => x.RevokedAt).HasColumnName("revoked_at").IsConcurrencyToken();
+            e.Property(x => x.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP");
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => x.UserId).HasDatabaseName("idx_refresh_tokens_user");
+            e.HasOne(x => x.User).WithMany(u => u.RefreshTokens).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+}

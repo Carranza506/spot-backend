@@ -6,6 +6,22 @@
 # dotenv files
 .env
 
+# Local RSA key material for JWT signing/validation (see README.md > "RSA keys for JWT").
+# Real keys belong in user-secrets (dev) or environment variables (prod), never in the repo.
+*.pem
+*.key
+/keys/
+
+# Firebase/Google service account keys for FCM push (#80): they belong outside the repo (see
+# .env.example > FCM_CREDENTIALS_FILE). The committed fcm-credentials.placeholder.json ({}) stays.
+fcm-credentials.json
+*-firebase-adminsdk-*.json
+service-account*.json
+
+# Photos uploaded while running Spot.Business.Api locally (PhotoStorage:RootPath). User content,
+# never part of the repo.
+**/App_Data/
+
 # User-specific files
 *.rsuser
 *.suo
@@ -480,3 +496,9 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local dev settings (contain credentials)
+**/appsettings.Development.json
+
+# Local sample image used by Spot.Business.Api.http's photo upload requests.
+src/Spot.Business.Api/sample-photo.*

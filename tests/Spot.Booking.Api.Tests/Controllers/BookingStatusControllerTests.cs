@@ -1,0 +1,386 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Spot.Booking.Api.Models;
+using BookingEntity = Spot.Booking.Api.Models.Booking;
+
+namespace Spot.Booking.Api.Tests.Controllers;
+
+/// <summary>
+/// The HTTP side of cancel / complete / no-show (#69): routes, roles and error mapping. The
+/// transition rules themselves are covered by Services/BookingStatusTransitionTests.
+/// </summary>
+[Collection(ApiFactoryCollection.Name)]
+public class BookingStatusControllerTests(BookingsApiFactory factory) : IClassFixture<BookingsApiFactory>
+{
+    private static readonly Guid ClientId = Guid.NewGuid();
+    private static readonly Guid OwnerId = Guid.NewGuid();
+
+    [Theory]
+    [InlineData("cancel", "CLIENT", "CANCELLED")]
+    [InlineData("cancel", "BUSINESS", "CANCELLED")]
+    [InlineData("complete", "BUSINESS", "COMPLETED")]
+    [InlineData("no-show", "BUSINESS", "NO_SHOW")]
+    public async Task Transition_AllowedCaller_Returns200WithTheUpdatedBooking(string action, string role, string expected)
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+        var callerId = role == "CLIENT" ? ClientId : OwnerId;
+
+        var response = await Client(callerId, role).PostAsync($"/booking/bookings/{booking.Id}/{action}", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(booking.Id, body.GetProperty("id").GetGuid());
+        Assert.Equal(expected, body.GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public async Task Cancel_WithAReasonBody_Returns200()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(ClientId, "CLIENT")
+            .PostAsJsonAsync($"/booking/bookings/{booking.Id}/cancel", new { reason = "No puedo asistir." });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    // ---------- cancel reason (#163) ----------
+
+    [Theory]
+    [InlineData("CLIENT")]
+    [InlineData("BUSINESS")]
+    public async Task Cancel_WithAReason_StoresItTrimmed_AndReturnsIt(string role)
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+        var caller = Client(role == "CLIENT" ? ClientId : OwnerId, role);
+
+        var response = await caller.PostAsJsonAsync(
+            $"/booking/bookings/{booking.Id}/cancel", new { reason = "  Me surgió un imprevisto  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Me surgió un imprevisto", body.GetProperty("cancelReason").GetString());
+        Assert.Equal("Me surgió un imprevisto", booking.CancelReason);
+
+        // And every later read returns it.
+        var read = await caller.GetFromJsonAsync<JsonElement>($"/booking/bookings/{booking.Id}");
+        Assert.Equal("Me surgió un imprevisto", read.GetProperty("cancelReason").GetString());
+    }
+
+    [Fact]
+    public async Task Cancel_WithoutABody_CancelsWithANullReason()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(ClientId, "CLIENT").PostAsync($"/booking/bookings/{booking.Id}/cancel", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("CANCELLED", body.GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("cancelReason").ValueKind);
+        Assert.Null(booking.CancelReason);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"reason\":null}")]
+    [InlineData("{\"reason\":\"\"}")]
+    [InlineData("{\"reason\":\"   \"}")]
+    [InlineData("{\"reason\":\"\\u0000 \\u0000\"}")] // only NUL and spaces: blank once NUL is replaced
+    public async Task Cancel_WithAMissingOrBlankReason_StoresNull(string json)
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(ClientId, "CLIENT").PostAsync(
+            $"/booking/bookings/{booking.Id}/cancel", new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("cancelReason").ValueKind);
+        Assert.Equal(BookingStatus.CANCELLED, booking.Status);
+        Assert.Null(booking.CancelReason);
+    }
+
+    [Fact]
+    public async Task Cancel_WithANulInTheReason_StoresItAsASpace()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(ClientId, "CLIENT").PostAsync(
+            $"/booking/bookings/{booking.Id}/cancel",
+            new StringContent("{\"reason\":\"\\u0000Me surgió\\u0000un imprevisto\\u0000\"}", System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Me surgió un imprevisto", body.GetProperty("cancelReason").GetString());
+        Assert.Equal("Me surgió un imprevisto", booking.CancelReason);
+    }
+
+    [Fact]
+    public async Task Cancel_WithA255CharacterReasonAfterTrimming_Returns200()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+        var reason = new string('a', 255);
+
+        var response = await Client(ClientId, "CLIENT")
+            .PostAsJsonAsync($"/booking/bookings/{booking.Id}/cancel", new { reason = $"  {reason}  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(reason, booking.CancelReason);
+    }
+
+    [Fact]
+    public async Task Cancel_WithAReasonOver255Characters_Returns400_AndDoesNotCancel()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        var response = await Client(ClientId, "CLIENT")
+            .PostAsJsonAsync($"/booking/bookings/{booking.Id}/cancel", new { reason = new string('a', 256) });
+
+        await AssertError(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
+        Assert.Equal(BookingStatus.CONFIRMED, booking.Status);
+        Assert.Null(booking.CancelReason);
+    }
+
+    [Fact]
+    public async Task OtherTransitions_ReturnANullCancelReason()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("cancelReason").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("cancel", BookingStatus.COMPLETED)]
+    [InlineData("complete", BookingStatus.PENDING)]
+    [InlineData("no-show", BookingStatus.CANCELLED)]
+    public async Task Transition_FromAnInvalidStatus_Returns422(string action, BookingStatus from)
+    {
+        var booking = await SeedAsync(from);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/{action}", null);
+
+        await AssertError(response, HttpStatusCode.UnprocessableEntity, "BOOKING_INVALID_STATUS_TRANSITION");
+    }
+
+    [Theory]
+    [InlineData("complete")]
+    [InlineData("no-show")]
+    public async Task CompleteOrNoShow_ClientToken_Returns403(string action)
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        var response = await Client(ClientId, "CLIENT").PostAsync($"/booking/bookings/{booking.Id}/{action}", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+    }
+
+    [Theory]
+    [InlineData("cancel", "CLIENT")]
+    [InlineData("cancel", "BUSINESS")]
+    [InlineData("complete", "BUSINESS")]
+    public async Task Transition_SomeoneElsesBooking_Returns403(string action, string role)
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        var response = await Client(Guid.NewGuid(), role).PostAsync($"/booking/bookings/{booking.Id}/{action}", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+        Assert.Equal(BookingStatus.CONFIRMED, booking.Status);
+    }
+
+    [Fact]
+    public async Task Cancel_SuperadminToken_Returns403()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        var response = await Client(Guid.NewGuid(), "SUPERADMIN").PostAsync($"/booking/bookings/{booking.Id}/cancel", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+    }
+
+    [Fact]
+    public async Task Transition_UnknownBooking_Returns404()
+    {
+        await SeedAsync(BookingStatus.CONFIRMED);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{Guid.NewGuid()}/cancel", null);
+
+        await AssertError(response, HttpStatusCode.NotFound, "NOT_FOUND");
+    }
+
+    [Fact]
+    public async Task Transition_WithoutToken_Returns401()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED);
+
+        var response = await factory.CreateClient().PostAsync($"/booking/bookings/{booking.Id}/cancel", null);
+
+        await AssertError(response, HttpStatusCode.Unauthorized, "UNAUTHORIZED");
+    }
+
+    // ---------- confirm (#146) ----------
+
+    [Fact]
+    public async Task Confirm_ByTheOwner_FromPending_Returns200WithTheConfirmedBooking()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(booking.Id, body.GetProperty("id").GetGuid());
+        Assert.Equal("CONFIRMED", body.GetProperty("status").GetString());
+        Assert.Equal(BookingStatus.CONFIRMED, booking.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_WithoutToken_Returns401()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await factory.CreateClient().PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.Unauthorized, "UNAUTHORIZED");
+        Assert.Equal(BookingStatus.PENDING, booking.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_AnotherBusiness_Returns403AndKeepsItPending()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(Guid.NewGuid(), "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+        Assert.Equal(BookingStatus.PENDING, booking.Status);
+    }
+
+    [Theory]
+    [InlineData("CLIENT")]
+    [InlineData("SUPERADMIN")]
+    public async Task Confirm_NonBusinessRole_Returns403AndKeepsItPending(string role)
+    {
+        // CLIENT is the booking's own client: it may cancel its booking, never confirm it.
+        var booking = await SeedAsync(BookingStatus.PENDING);
+        var callerId = role == "CLIENT" ? ClientId : Guid.NewGuid();
+
+        var response = await Client(callerId, role).PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+        Assert.Equal(BookingStatus.PENDING, booking.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_OwnersAccountIdWithAClientToken_Returns403()
+    {
+        // The service would let this id through as the owner: only the endpoint's BUSINESS role stops it.
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(OwnerId, "CLIENT").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.Forbidden, "FORBIDDEN");
+        Assert.Equal(BookingStatus.PENDING, booking.Status);
+    }
+
+    [Fact]
+    public async Task Confirm_UnknownBooking_Returns404()
+    {
+        await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{Guid.NewGuid()}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.NotFound, "NOT_FOUND");
+    }
+
+    [Theory]
+    [InlineData(BookingStatus.CONFIRMED)]
+    [InlineData(BookingStatus.COMPLETED)]
+    [InlineData(BookingStatus.CANCELLED)]
+    [InlineData(BookingStatus.NO_SHOW)]
+    public async Task Confirm_FromAnythingButPending_Returns422AndKeepsTheStatus(BookingStatus from)
+    {
+        var booking = await SeedAsync(from);
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/confirm", null);
+
+        await AssertError(response, HttpStatusCode.UnprocessableEntity, "BOOKING_INVALID_STATUS_TRANSITION");
+        Assert.Equal(from, booking.Status);
+    }
+
+    // ---------- complete / no-show before the start time (#146) ----------
+
+    [Theory]
+    [InlineData("complete")]
+    [InlineData("no-show")]
+    public async Task CompleteOrNoShow_BeforeTheStartTime_Returns422AndKeepsItConfirmed(string action)
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED, BookingsApiFactory.Now.AddMinutes(1));
+
+        var response = await Client(OwnerId, "BUSINESS").PostAsync($"/booking/bookings/{booking.Id}/{action}", null);
+
+        await AssertError(response, HttpStatusCode.UnprocessableEntity, "BOOKING_NOT_STARTED");
+        Assert.Equal(BookingStatus.CONFIRMED, booking.Status);
+    }
+
+    [Fact]
+    public async Task Cancel_BeforeTheStartTime_Returns200()
+    {
+        var booking = await SeedAsync(BookingStatus.CONFIRMED, BookingsApiFactory.Now.AddDays(1));
+
+        var response = await Client(ClientId, "CLIENT").PostAsync($"/booking/bookings/{booking.Id}/cancel", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// Resets the fakes, then seeds one booking of <see cref="ClientId"/> at a business owned by
+    /// <see cref="OwnerId"/>, starting at <paramref name="startAt"/> (by default, before the frozen clock).
+    /// </summary>
+    private async Task<BookingEntity> SeedAsync(BookingStatus status, DateTimeOffset? startAt = null)
+    {
+        factory.ScheduleRepository.Reset();
+        factory.BookingRepository.Reset();
+
+        var businessId = Guid.NewGuid();
+        factory.ScheduleRepository.Businesses.Add(new BusinessReference { Id = businessId, AccountId = OwnerId, IsActive = true });
+
+        var start = startAt ?? BookingsApiFactory.Now.AddDays(-1);
+        var booking = new BookingEntity
+        {
+            UserId = ClientId,
+            BusinessId = businessId,
+            ServiceId = Guid.NewGuid(),
+            StartAt = start,
+            EndAt = start.AddMinutes(45),
+            Status = status,
+            ServiceName = "Corte de cabello",
+            ServicePrice = 12000.50m,
+            ServiceDurationMinutes = 45,
+        };
+        await factory.BookingRepository.CreateAsync(booking);
+        return booking;
+    }
+
+    private HttpClient Client(Guid userId, string role)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", factory.IssueAccessToken(userId, role));
+        return client;
+    }
+
+    private static async Task AssertError(HttpResponseMessage response, HttpStatusCode status, string code)
+    {
+        Assert.Equal(status, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(code, body.GetProperty("code").GetString());
+        Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("message").GetString()));
+    }
+}

@@ -1,41 +1,88 @@
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
+using Npgsql.NameTranslation;
+using Spot.Notifications.Api.Configuration;
+using Spot.Notifications.Api.Data;
+using Spot.Notifications.Api.Models;
+using Spot.Notifications.Api.Options;
+using Spot.Notifications.Api.Repositories;
+using Spot.Notifications.Api.Services;
+using Spot.Notifications.Api.Services.Push;
+using Spot.Shared.Auth;
+using Spot.Shared.Errors;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddControllers().ConfigureSpotApiErrorShape();
 builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
+
+// Same reasoning as Spot.Auth.Api's Program.cs: modelBuilder.HasPostgresEnum<T>() only teaches
+// EF's migrations about the native Postgres enum type — it does NOT teach Npgsql's ADO.NET layer
+// how to read/write it. Without registering it here via NpgsqlDataSourceBuilder, any INSERT/
+// UPDATE/SELECT that touches the `platform` column throws "Reading and writing unmapped enums
+// requires an explicit opt-in" the moment Npgsql tries to read the value back from Postgres — the
+// exact 500 a previous PR hit by skipping this step. The snake-case translator is a single shared
+// instance, same as Spot.Business.Api's Program.cs: the AddDbContext lambda below runs per request,
+// and a new translator there each time makes EF Core build a new internal service provider per
+// request — past twenty it throws ManyServiceProvidersCreatedWarning and every request is a 500.
+var nameTranslator = new NpgsqlSnakeCaseNameTranslator();
+// notification_type's labels are UPPERCASE (db/Spot.sql), matching the C# member names as-is, so
+// it gets a translator that leaves them untouched — the snake-case one would write "general".
+// Shared instance for the same service-provider-cache reason as above.
+var keepLabelsTranslator = new NpgsqlNullNameTranslator();
+var npgsqlDataSource = new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("DefaultConnection"))
+    .MapEnum<DevicePlatform>(nameTranslator: nameTranslator)
+    .MapEnum<NotificationType>("notification_type", keepLabelsTranslator)
+    .Build();
+
+builder.Services.AddDbContext<NotificationsDbContext>(options =>
+    options.UseNpgsql(npgsqlDataSource,
+        npgsql => npgsql
+            .MigrationsHistoryTable("__EFMigrationsHistory_notifications")
+            // The NpgsqlDataSourceBuilder.MapEnum<T>() call above only teaches the raw ADO.NET
+            // connection how to read/write this enum — EF Core's own compiled materializers (used
+            // to read RETURNING values after INSERT/UPDATE) need it registered here too, on the
+            // EF-specific options builder, or they still read the column as a plain int and blow
+            // up with the same "unmapped enums" error.
+            .MapEnum<DevicePlatform>(nameTranslator: nameTranslator)
+            .MapEnum<NotificationType>("notification_type", nameTranslator: keepLabelsTranslator)));
+
+builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
+builder.Services.AddScoped<IDeviceTokenService, DeviceTokenService>();
+builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
+
+// Push delivery through FCM HTTP v1 (#80). Optional: without Fcm settings the service still boots
+// and sending reports "not configured". See PushServiceCollectionExtensions.
+builder.Services.AddFcmPush(builder.Configuration);
+
+// The key checked on /notifications/internal/* (#79). See InternalApiKeyFilter.
+builder.Services.Configure<InternalApiOptions>(builder.Configuration.GetSection(InternalApiOptions.SectionName));
+
+// Validates incoming access tokens (public key only) for [Authorize] endpoints — every action
+// under /notifications/device-tokens requires one. Same shared setup every other microservice
+// uses. See Spot.Shared.Auth.
+builder.Services.AddSpotJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
-}
+
+app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    await context.Response.WriteAsJsonAsync(
+        new ApiError("INTERNAL_ERROR", "Ocurrió un error inesperado. Por favor intenta de nuevo más tarde."));
+}));
 
 app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+public partial class Program;

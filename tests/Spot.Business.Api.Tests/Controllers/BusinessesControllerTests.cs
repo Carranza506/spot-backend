@@ -1,0 +1,895 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Spot.Business.Api.Models;
+using BusinessEntity = Spot.Business.Api.Models.Business;
+
+namespace Spot.Business.Api.Tests.Controllers;
+
+[Collection(ApiFactoryCollection.Name)]
+public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFixture<BusinessesApiFactory>
+{
+    // ---------- POST /business/businesses ----------
+
+    [Fact]
+    public async Task CreateBusiness_BusinessAccount_Returns201WithGeneratedSlugAndAccountFromToken()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var client = CreateClient(accountId, "BUSINESS");
+
+        // accountId in the body must be ignored in favour of the JWT sub.
+        var response = await client.PostAsJsonAsync("/business/businesses",
+            new { name = "Salón Bella Vista", email = "contacto@bellavista.cr", accountId = Guid.NewGuid() });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("salon-bella-vista", body.GetProperty("slug").GetString());
+        Assert.True(body.GetProperty("isActive").GetBoolean());
+        Assert.False(body.TryGetProperty("accountId", out _));
+        Assert.Equal(accountId, factory.BusinessRepository.All.Single().AccountId);
+    }
+
+    [Fact]
+    public async Task CreateBusiness_SecondCreateBySameAccount_Returns409()
+    {
+        factory.BusinessRepository.Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+        await client.PostAsJsonAsync("/business/businesses", new { name = "Primero" });
+
+        var response = await client.PostAsJsonAsync("/business/businesses", new { name = "Segundo" });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BUSINESS_ALREADY_EXISTS", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task CreateBusiness_AccountWithDeactivatedBusiness_Returns409()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Viejo", IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PostAsJsonAsync("/business/businesses", new { name = "Nuevo" });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("CLIENT")]
+    [InlineData("SUPERADMIN")]
+    public async Task CreateBusiness_NonBusinessRole_Returns403(string role)
+    {
+        factory.BusinessRepository.Reset();
+        var client = CreateClient(Guid.NewGuid(), role);
+
+        var response = await client.PostAsJsonAsync("/business/businesses", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(factory.BusinessRepository.All);
+    }
+
+    [Fact]
+    public async Task CreateBusiness_NoToken_Returns401()
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/business/businesses", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"name\":\"   \"}")]
+    [InlineData("{\"name\":\"Ok\",\"email\":\"not-an-email\"}")]
+    [InlineData("{\"name\":\"Ok\",\"website\":\"not a url\"}")]
+    [InlineData("{\"name\":\"Ok\",\"phone\":\"1234567890123456789012345678901\"}")]
+    [InlineData("{\"name\":\"Ok\",\"phone\":\"abc\"}")]
+    [InlineData("{\"name\":\"Ok\",\"phone\":\"2222-3344\"}")] // no country code
+    public async Task CreateBusiness_InvalidBody_Returns400(string json)
+    {
+        factory.BusinessRepository.Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PostAsync("/business/businesses",
+            new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    // ---------- GET /business/businesses/{businessId} ----------
+
+    [Fact]
+    public async Task GetBusiness_ActiveBusiness_Returns200WithoutToken()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{business.Id}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(business.Id, body.GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task GetBusiness_UnknownId_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("NOT_FOUND", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task GetBusiness_InactiveBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(
+            new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Cerrado", IsActive = false });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{business.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetBusiness_NonGuidId_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/business/businesses/not-a-guid");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // ---------- PATCH /business/businesses/{businessId} ----------
+
+    [Fact]
+    public async Task UpdateBusiness_Owner_Returns200AndKeepsSlugOnRename()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity
+        {
+            AccountId = accountId, Name = "Bella", Slug = "bella", Phone = "2222-3344", Description = "Salón",
+        });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/businesses/{business.Id}",
+            new { name = "Bella Renovada", description = (string?)null });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Bella Renovada", body.GetProperty("name").GetString());
+        Assert.Equal("bella", body.GetProperty("slug").GetString());
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("description").ValueKind);
+        Assert.Equal("2222-3344", body.GetProperty("phone").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateBusiness_OwnerReactivatesInactiveBusiness_Returns200()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "B", IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/businesses/{business.Id}", new { isActive = true });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(business.IsActive);
+    }
+
+    [Fact]
+    public async Task UpdateBusiness_NonOwnerBusinessAccount_Returns403()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/businesses/{business.Id}", new { name = "Robado" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("FORBIDDEN", body.GetProperty("code").GetString());
+        Assert.Equal("Bella", business.Name);
+    }
+
+    [Theory]
+    [InlineData("CLIENT")]
+    [InlineData("SUPERADMIN")]
+    public async Task UpdateBusiness_NonBusinessRole_Returns403(string role)
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = CreateClient(Guid.NewGuid(), role);
+
+        var response = await client.PatchAsJsonAsync($"/business/businesses/{business.Id}", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateBusiness_UnknownId_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync($"/business/businesses/{Guid.NewGuid()}", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // ---------- DELETE /business/businesses/{businessId} ----------
+
+    [Fact]
+    public async Task DeactivateBusiness_Owner_Returns204AndSoftDeletes()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/businesses/{business.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        var stored = Assert.Single(factory.BusinessRepository.All);
+        Assert.Equal(business.Id, stored.Id);
+        Assert.False(stored.IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateBusiness_AlreadyInactive_Returns204()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "B", IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/businesses/{business.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeactivateBusiness_NonOwnerBusinessAccount_Returns403AndLeavesItActive()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/businesses/{business.Id}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(business.IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateBusiness_Superadmin_Returns403()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = CreateClient(Guid.NewGuid(), "SUPERADMIN");
+
+        var response = await client.DeleteAsync($"/business/businesses/{business.Id}");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.True(business.IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivateBusiness_UnknownId_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.DeleteAsync($"/business/businesses/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // ---------- GET / PATCH /business/businesses/me ----------
+
+    [Fact]
+    public async Task GetOwnBusiness_WithBusiness_Returns200()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Mío" });
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Ajeno" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.GetAsync("/business/businesses/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(business.Id, body.GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task GetOwnBusiness_InactiveBusiness_Returns200()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Mío", IsActive = false });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.GetAsync("/business/businesses/me");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(body.GetProperty("isActive").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetOwnBusiness_WithoutBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.GetAsync("/business/businesses/me");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("NOT_FOUND", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task GetOwnBusiness_ClientRole_Returns403()
+    {
+        factory.BusinessRepository.Reset();
+        var client = CreateClient(Guid.NewGuid(), "CLIENT");
+
+        var response = await client.GetAsync("/business/businesses/me");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateOwnBusiness_WithBusiness_Returns200()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Mío" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync("/business/businesses/me",
+            new { phone = "+506 8888-0000", website = "https://mio.cr" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("+50688880000", body.GetProperty("phone").GetString());
+        Assert.Equal("https://mio.cr", body.GetProperty("website").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateOwnBusiness_WithoutBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync("/business/businesses/me", new { name = "X" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateOwnBusiness_InvalidEmail_Returns400()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Mío" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync("/business/businesses/me", new { email = "nope" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateOwnBusiness_InvalidPhone_Returns400PointingAtPhone()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Mío" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync("/business/businesses/me", new { phone = "+506 1234-5678" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("phone", body.GetProperty("details").GetProperty("field").GetString(), ignoreCase: true);
+    }
+
+    // ---------- GET /business/businesses/{businessId}/categories ----------
+
+    [Fact]
+    public async Task ListBusinessCategories_BusinessWithCategories_Returns200WithoutToken()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var belleza = factory.CategoryRepository.Seed(new Category { Name = "Belleza" });
+        var salud = factory.CategoryRepository.Seed(new Category { Name = "Salud" });
+        factory.BusinessRepository.SeedBusinessCategories(business.Id, belleza, salud);
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{business.Id}/categories");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, body.GetProperty("pagination").GetProperty("total").GetInt32());
+        Assert.Equal(
+            ["Belleza", "Salud"],
+            body.GetProperty("data").EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+    }
+
+    [Fact]
+    public async Task ListBusinessCategories_BusinessWithoutCategories_Returns200WithEmptyData()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{business.Id}/categories");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Empty(body.GetProperty("data").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task ListBusinessCategories_UnknownBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses/{Guid.NewGuid()}/categories");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    // ---------- PUT /business/businesses/{businessId}/categories ----------
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_Owner_Returns200WithTheNewSet()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var nueva = factory.CategoryRepository.Seed(new Category { Name = "Nueva" });
+        factory.BusinessRepository.SeedCategory(nueva);
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = new[] { nueva.Id } });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(
+            ["Nueva"], body.GetProperty("data").EnumerateArray().Select(c => c.GetProperty("name").GetString()));
+        Assert.False(body.TryGetProperty("pagination", out _));
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_NonOwnerBusinessAccount_Returns403()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var category = factory.CategoryRepository.Seed(new Category { Name = "Belleza" });
+        factory.BusinessRepository.SeedCategory(category);
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = new[] { category.Id } });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_NoToken_Returns401()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = new[] { Guid.NewGuid() } });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_UnknownBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var category = factory.CategoryRepository.Seed(new Category { Name = "Belleza" });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{Guid.NewGuid()}/categories", new { categoryIds = new[] { category.Id } });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_UnknownCategoryId_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = new[] { Guid.NewGuid() } });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task ReplaceBusinessCategories_EmptyCategoryIds_Returns400()
+    {
+        factory.BusinessRepository.Reset();
+        factory.CategoryRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/categories", new { categoryIds = Array.Empty<Guid>() });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    // ---------- GET /business/businesses (search, public) ----------
+
+    [Fact]
+    public async Task SearchBusinesses_NoToken_Returns200()
+    {
+        factory.BusinessRepository.Reset();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/business/businesses");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, body.GetProperty("pagination").GetProperty("total").GetInt32());
+    }
+
+    [Fact]
+    public async Task SearchBusinesses_FiltersByQ_Returns200WithMatches()
+    {
+        factory.BusinessRepository.Reset();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Salón Bella" });
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Ferretería" });
+        var client = factory.CreateClient();
+
+        // q=BELLA matches "Salón Bella" case-insensitively (no accent in the term, by design).
+        var response = await client.GetAsync("/business/businesses?q=BELLA");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(
+            ["Salón Bella"], body.GetProperty("data").EnumerateArray().Select(b => b.GetProperty("name").GetString()));
+    }
+
+    [Fact]
+    public async Task SearchBusinesses_CompleteProximityTrio_Returns200()
+    {
+        // A complete, in-range trio is honored (not a 400). Whether the distance actually filters
+        // is PostGIS behavior (ST_DWithin) verified by the Docker e2e, not asserted here — the fake
+        // doesn't filter by distance on purpose, so this only proves the trio is accepted.
+        factory.BusinessRepository.Reset();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/business/businesses?lat=9.9&lng=-84.1&radiusKm=5");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("?lat=9.9")]
+    [InlineData("?lng=-84.1")]
+    [InlineData("?radiusKm=5")]
+    [InlineData("?lat=9.9&lng=-84.1")]
+    [InlineData("?lat=9.9&radiusKm=5")]
+    [InlineData("?lng=-84.1&radiusKm=5")]
+    public async Task SearchBusinesses_PartialProximityTrio_Returns400(string queryString)
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses{queryString}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData(0d)]
+    [InlineData(0.05d)]
+    [InlineData(100.1d)]
+    public async Task SearchBusinesses_RadiusKmOutOfRange_Returns400(double radiusKm)
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync(
+            $"/business/businesses?lat=9.9&lng=-84.1&radiusKm={radiusKm.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData("?lat=91&lng=-84.1&radiusKm=5")]
+    [InlineData("?lat=9.9&lng=-181&radiusKm=5")]
+    public async Task SearchBusinesses_CoordinateOutOfRange_Returns400(string queryString)
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses{queryString}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task SearchBusinesses_NoProximityParams_BehavesLikeBefore()
+    {
+        // Regression: without lat/lng/radiusKm the endpoint works exactly as in #118.
+        factory.BusinessRepository.Reset();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Ferretería" });
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/business/businesses");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, body.GetProperty("pagination").GetProperty("total").GetInt32());
+    }
+
+    [Theory]
+    [InlineData("?page=0")]
+    [InlineData("?pageSize=0")]
+    [InlineData("?pageSize=101")]
+    public async Task SearchBusinesses_InvalidPagination_Returns400(string queryString)
+    {
+        factory.BusinessRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.GetAsync($"/business/businesses{queryString}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    // ---------- GET /business/businesses/{businessId}/location ----------
+
+    [Fact]
+    public async Task GetBusinessLocation_WithLocation_Returns200WithoutToken()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        await CreateClient(accountId, "BUSINESS").PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+
+        var response = await factory.CreateClient().GetAsync(LocationUrl(business.Id));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(business.Id, body.GetProperty("businessId").GetGuid());
+        Assert.Equal("200 metros norte de la iglesia católica", body.GetProperty("address").GetString());
+        Assert.Equal(9.9325, body.GetProperty("location").GetProperty("latitude").GetDouble());
+        Assert.Equal(-84.0795, body.GetProperty("location").GetProperty("longitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task GetBusinessLocation_BusinessWithoutLocation_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+
+        var response = await factory.CreateClient().GetAsync(LocationUrl(business.Id));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("NOT_FOUND", body.GetProperty("code").GetString());
+        // Not the unknown-business message: the client can tell "no location yet" apart.
+        Assert.Equal("El negocio todavía no tiene una ubicación registrada.", body.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task GetBusinessLocation_UnknownBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+
+        var response = await factory.CreateClient().GetAsync(LocationUrl(Guid.NewGuid()));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("NOT_FOUND", body.GetProperty("code").GetString());
+        Assert.Equal("El negocio indicado no existe.", body.GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task GetBusinessLocation_InactiveBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        await CreateClient(accountId, "BUSINESS").PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+        business.IsActive = false;
+
+        var response = await factory.CreateClient().GetAsync(LocationUrl(business.Id));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("El negocio indicado no existe.", body.GetProperty("message").GetString());
+    }
+
+    // ---------- PUT /business/businesses/{businessId}/location ----------
+
+    [Fact]
+    public async Task UpsertBusinessLocation_Owner_CreatesThenReplacesKeepingTheSameIdAndCreatedAt()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var created = await client.PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+        var replaced = await client.PutAsJsonAsync(LocationUrl(business.Id),
+            new { address = "Nuevo local", location = new { latitude = 9.9981, longitude = -84.1165 } });
+
+        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, replaced.StatusCode);
+        var createdBody = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var replacedBody = await replaced.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(createdBody.GetProperty("id").GetGuid(), replacedBody.GetProperty("id").GetGuid());
+        Assert.Equal(createdBody.GetProperty("createdAt").GetDateTimeOffset(), replacedBody.GetProperty("createdAt").GetDateTimeOffset());
+        Assert.Equal("Nuevo local", replacedBody.GetProperty("address").GetString());
+        Assert.Equal("Costa Rica", replacedBody.GetProperty("country").GetString());
+        Assert.Equal(9.9981, replacedBody.GetProperty("location").GetProperty("latitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task UpsertBusinessLocation_NoToken_Returns401()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+
+        var response = await factory.CreateClient().PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("CLIENT")]
+    [InlineData("SUPERADMIN")]
+    public async Task UpsertBusinessLocation_NonBusinessRole_Returns403(string role)
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+
+        var response = await CreateClient(accountId, role).PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Null(await factory.BusinessRepository.GetLocationAsync(business.Id));
+    }
+
+    [Fact]
+    public async Task UpsertBusinessLocation_NonOwnerBusinessAccount_Returns403()
+    {
+        factory.BusinessRepository.Reset();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Bella" });
+
+        var response = await CreateClient(Guid.NewGuid(), "BUSINESS").PutAsJsonAsync(LocationUrl(business.Id), ValidLocationBody());
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("FORBIDDEN", body.GetProperty("code").GetString());
+        Assert.Null(await factory.BusinessRepository.GetLocationAsync(business.Id));
+    }
+
+    [Fact]
+    public async Task UpsertBusinessLocation_UnknownBusiness_Returns404()
+    {
+        factory.BusinessRepository.Reset();
+
+        var response = await CreateClient(Guid.NewGuid(), "BUSINESS").PutAsJsonAsync(LocationUrl(Guid.NewGuid()), ValidLocationBody());
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("{\"address\":\"Ok\"}", "Location")]
+    [InlineData("{\"location\":{\"latitude\":0,\"longitude\":0}}", "Address")]
+    [InlineData("{\"address\":\"   \",\"location\":{\"latitude\":0,\"longitude\":0}}", "Address")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":90.0001,\"longitude\":0}}", "Location.Latitude")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":-90.0001,\"longitude\":0}}", "Location.Latitude")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":0,\"longitude\":180.0001}}", "Location.Longitude")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":0,\"longitude\":-180.0001}}", "Location.Longitude")]
+    [InlineData("{\"address\":\"Ok\",\"location\":{\"latitude\":0}}", "Location.Longitude")]
+    [InlineData("{\"address\":\"Ok\",\"postalCode\":\"123456789012345678901\",\"location\":{\"latitude\":0,\"longitude\":0}}", "PostalCode")]
+    public async Task UpsertBusinessLocation_InvalidBody_Returns400WithTheField(string json, string field)
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+
+        var response = await CreateClient(accountId, "BUSINESS").PutAsync(LocationUrl(business.Id),
+            new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+        Assert.Equal(field, body.GetProperty("details").GetProperty("field").GetString());
+        Assert.Null(await factory.BusinessRepository.GetLocationAsync(business.Id));
+    }
+
+    [Theory]
+    [InlineData(90, 180)]
+    [InlineData(-90, -180)]
+    public async Task UpsertBusinessLocation_CoordinatesOnTheBoundaries_Returns200(double latitude, double longitude)
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        var business = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Bella" });
+
+        var response = await CreateClient(accountId, "BUSINESS").PutAsJsonAsync(LocationUrl(business.Id),
+            new { address = "Ok", location = new { latitude, longitude } });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    private static string LocationUrl(Guid businessId) => $"/business/businesses/{businessId}/location";
+
+    private static object ValidLocationBody() => new
+    {
+        address = "200 metros norte de la iglesia católica",
+        city = "San José",
+        province = "San José",
+        postalCode = "10101",
+        location = new { latitude = 9.9325, longitude = -84.0795 },
+    };
+
+    private HttpClient CreateClient(Guid userId, string role)
+    {
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", factory.IssueAccessToken(userId, role));
+        return client;
+    }
+}

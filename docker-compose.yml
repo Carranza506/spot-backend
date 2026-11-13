@@ -1,0 +1,362 @@
+services:
+  postgres:
+    image: postgis/postgis:18-3.6
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: spot_dev
+    volumes:
+      # postgres:18+ images moved PGDATA to a versioned subdir and now VOLUME the whole
+      # /var/lib/postgresql directory (not /var/lib/postgresql/data like 12-17 images did).
+      - postgres_data:/var/lib/postgresql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d spot_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    mem_limit: 1g
+    mem_reservation: 512m
+    cpus: "1.0"
+    networks:
+      - spot-network
+
+  migrator:
+    build:
+      context: .
+      dockerfile: docker/migrator/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      # See migrate.sh: needed only because AiSearch.Api's Program.cs validates the JWT public
+      # key eagerly at startup, and `dotnet ef` runs that same Program.cs to find the DbContext.
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # Same root cause as above: AiSearch.Api's Program.cs also validates Gemini:ApiKey eagerly.
+      # The migrator never calls Gemini, so any non-empty placeholder is enough (see migrate.sh).
+      Gemini__ApiKey: not-used-by-migrations
+    secrets:
+      - jwt_public_key
+    # Intentionally NOT unless-stopped/always: this is a one-shot job that must exit (0 on
+    # success, non-zero on failure) so the 5 services' `service_completed_successfully` gate
+    # actually fires — a restart policy here would fight that and loop the container forever.
+    restart: "no"
+    mem_limit: 768m
+    mem_reservation: 256m
+    cpus: "1.0"
+    networks:
+      - spot-network
+
+  # Demo accounts, businesses and bookings (#157), once the migrations created the tables.
+  # Idempotent (see db/seed/demo-data.sql), so it's safe on every `up`. One-shot, like the migrator.
+  seed:
+    image: postgis/postgis:18-3.6
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./db/seed:/seed:ro
+    entrypoint: ["psql", "-h", "postgres", "-U", "postgres", "-d", "spot_dev", "-v", "ON_ERROR_STOP=1", "-f", "/seed/demo-data.sql"]
+    restart: "no"
+    networks:
+      - spot-network
+
+  auth-api:
+    build:
+      context: .
+      dockerfile: src/Spot.Auth.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
+      # Needed since #51: Auth.Api now also validates incoming access tokens (AddSpotJwtAuthentication,
+      # e.g. for POST /auth/logout), not just signs new ones, so it needs the public key too.
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # Structured (JSON) console logs are easier for `docker compose logs` / any log
+      # collector to parse than the default human-oriented multi-line format. Set only via
+      # env, so it doesn't affect `dotnet run` on the host (appsettings.json is untouched).
+      Logging__Console__FormatterName: json
+    secrets:
+      - jwt_private_key
+      - jwt_public_key
+    ports:
+      - "5228:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  business-api:
+    build:
+      context: .
+      dockerfile: src/Spot.Business.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      Logging__Console__FormatterName: json
+      # Photo URLs as clients see them: through the Gateway's published port (see gateway below).
+      PhotoStorage__PublicBaseUrl: http://localhost:5195/api/v1/business/media/photos
+      # Stripe test mode (#138). The key and price come from the git-ignored .env next to this file
+      # (copy .env.example); they are never committed. Without them the stack still boots, and only
+      # the billing calls that need Stripe fail.
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY}
+      Stripe__ProPriceId: ${STRIPE_PRO_PRICE_ID}
+      # Written by the stripe-cli service below on every start, and read on every webhook.
+      Stripe__WebhookSecretFile: /run/stripe/webhook-secret
+      # Where Checkout returns the user: the Vite dev server by default (spot-frontend #44).
+      Stripe__SuccessUrl: ${STRIPE_SUCCESS_URL:-http://localhost:5173/billing/success?session_id={CHECKOUT_SESSION_ID}}
+      Stripe__CancelUrl: ${STRIPE_CANCEL_URL:-http://localhost:5173/billing/cancel}
+    secrets:
+      - jwt_public_key
+    volumes:
+      # Uploaded photos (#65). Named volume, so they survive `docker compose down` and image
+      # rebuilds (`down -v` deletes them). The path matches PhotoStorage__RootPath in the Dockerfile.
+      - business_photos:/var/lib/spot/photos
+      # The webhook signing secret written by stripe-cli (read-only here).
+      - stripe_cli:/run/stripe:ro
+    ports:
+      - "5151:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  booking-api:
+    build:
+      context: .
+      dockerfile: src/Spot.Booking.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # Status notifications (#79) go through the gateway's internal port, which is not published.
+      # Deliberately no depends_on on the gateway: it already depends on this service, and the call
+      # is best-effort anyway.
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+      InternalApi__GatewayBaseUrl: http://gateway:8081
+      Logging__Console__FormatterName: json
+    secrets:
+      - jwt_public_key
+      - internal_api_key
+    ports:
+      - "5197:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  aisearch-api:
+    build:
+      context: .
+      dockerfile: src/Spot.AiSearch.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # AiSearch.Api refuses to start without a non-empty Gemini:ApiKey. Set GEMINI_API_KEY in
+      # your shell or in a git-ignored .env file next to this compose file to use the real
+      # Gemini API; otherwise this placeholder lets the stack boot, and only requests that
+      # actually call Gemini fail.
+      Gemini__ApiKey: ${GEMINI_API_KEY:-not-configured}
+      # POST /ai-search/query delegates the business search to Business.Api (#73), service to service.
+      BusinessApi__BaseUrl: http://business-api:8080
+      Logging__Console__FormatterName: json
+    secrets:
+      - jwt_public_key
+    ports:
+      - "5050:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  notifications-api:
+    build:
+      context: .
+      dockerfile: src/Spot.Notifications.Api/Dockerfile
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=spot_dev;Username=postgres;Password=postgres
+      # Needed since #77: every /notifications/device-tokens action requires a valid access
+      # token (AddSpotJwtAuthentication), so this service only ever needs the public key.
+      JWT_PUBLIC_KEY_FILE: /run/secrets/jwt_public_key
+      # Push delivery through FCM (#80), optional: without FCM_PROJECT_ID in .env the service still
+      # boots and sending reports "not configured". The service account key is the fcm_credentials
+      # secret below (read-only, never in the repo or the image).
+      Fcm__ProjectId: ${FCM_PROJECT_ID:-}
+      Fcm__CredentialsFile: /run/secrets/fcm_credentials
+      Fcm__ValidateOnly: ${FCM_VALIDATE_ONLY:-false}
+      # Checked on /notifications/internal/* (#79).
+      INTERNAL_API_KEY_FILE: /run/secrets/internal_api_key
+      Logging__Console__FormatterName: json
+    secrets:
+      - jwt_public_key
+      - fcm_credentials
+      - internal_api_key
+    ports:
+      - "5102:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  gateway:
+    build:
+      context: .
+      dockerfile: src/Spot.Gateway/Dockerfile
+    depends_on:
+      auth-api:
+        condition: service_healthy
+      business-api:
+        condition: service_healthy
+      booking-api:
+        condition: service_healthy
+      aisearch-api:
+        condition: service_healthy
+      notifications-api:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Overrides the localhost-based defaults in appsettings.json with the Compose service
+      # names, on the internal port 8080 every other Dockerfile in this repo exposes.
+      ReverseProxy__Clusters__auth__Destinations__destination1__Address: http://auth-api:8080/
+      ReverseProxy__Clusters__business__Destinations__destination1__Address: http://business-api:8080/
+      ReverseProxy__Clusters__booking__Destinations__destination1__Address: http://booking-api:8080/
+      ReverseProxy__Clusters__aisearch__Destinations__destination1__Address: http://aisearch-api:8080/
+      ReverseProxy__Clusters__notifications__Destinations__destination1__Address: http://notifications-api:8080/
+      Logging__Console__FormatterName: json
+    ports:
+      - "5195:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    mem_limit: 512m
+    mem_reservation: 128m
+    cpus: "0.5"
+    networks:
+      - spot-network
+
+  # Forwards Stripe test-mode webhooks to business-api through the gateway (#138), so nobody needs a
+  # public URL or `stripe login`: it authenticates with the API key from .env. `stripe listen`'s
+  # signing secret can change between runs, so on every start it is written to the stripe_cli volume
+  # (shared read-only with business-api, which reads it on every webhook) before forwarding begins.
+  # The image is Alpine-based, so /bin/sh is available to run both steps. `$$` is a literal `$` for
+  # the shell, not a compose variable.
+  stripe-cli:
+    image: stripe/stripe-cli:v1.53.0
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      STRIPE_API_KEY: ${STRIPE_SECRET_KEY}
+      # Avoids an intermittent telemetry panic on start ("WaitGroup is reused before previous Wait").
+      STRIPE_CLI_TELEMETRY_OPTOUT: "1"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        stripe listen --api-key "$$STRIPE_API_KEY" --print-secret > /run/stripe/webhook-secret.tmp
+        grep -q '^whsec_' /run/stripe/webhook-secret.tmp
+        chmod 644 /run/stripe/webhook-secret.tmp
+        mv /run/stripe/webhook-secret.tmp /run/stripe/webhook-secret
+        echo "Webhook signing secret written; forwarding to the gateway."
+        exec stripe listen --api-key "$$STRIPE_API_KEY" --events checkout.session.completed,invoice.paid,invoice.payment_failed,customer.subscription.updated,customer.subscription.deleted --forward-to http://gateway:8080/api/v1/business/billing/webhooks/stripe
+    volumes:
+      - stripe_cli:/run/stripe
+    restart: unless-stopped
+    mem_limit: 128m
+    mem_reservation: 32m
+    cpus: "0.25"
+    networks:
+      - spot-network
+
+volumes:
+  postgres_data:
+  business_photos:
+  stripe_cli:
+
+networks:
+  spot-network:
+    driver: bridge
+
+secrets:
+  # Read directly from the local key files at compose-up time; never baked into any image.
+  # See README.md > "RSA keys for JWT" for how to generate them if they don't exist yet.
+  jwt_private_key:
+    file: ./jwt-private.pem
+  jwt_public_key:
+    file: ./jwt-public.pem
+  # FCM service account key (#80): the file FCM_CREDENTIALS_FILE in .env points to, kept outside the
+  # repo. Without it, the committed placeholder (an empty {}, not a key) keeps `docker compose up`
+  # working for everyone; push delivery then stays "not configured".
+  fcm_credentials:
+    file: ${FCM_CREDENTIALS_FILE:-./fcm-credentials.placeholder.json}
+  # Shared key for internal service-to-service calls (#79). The committed placeholder is a dev-only
+  # value so `docker compose up` works for everyone; INTERNAL_API_KEY_FILE in .env overrides it.
+  internal_api_key:
+    file: ${INTERNAL_API_KEY_FILE:-./internal-api-key.placeholder.txt}

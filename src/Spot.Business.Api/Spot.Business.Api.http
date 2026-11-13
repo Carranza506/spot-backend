@@ -1,6 +1,372 @@
 @Spot.Business.Api_HostAddress = http://localhost:5151
+@Spot.Auth.Api_HostAddress = http://localhost:5228
 
-GET {{Spot.Business.Api_HostAddress}}/weatherforecast/
+### List categories - all (any level, paginated)
+GET {{Spot.Business.Api_HostAddress}}/business/categories?page=1&pageSize=20
 Accept: application/json
+
+###
+
+### List categories - root only
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=null
+Accept: application/json
+
+###
+
+### List categories - subcategories of a specific parent
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=6228d226-c50a-43af-bbae-835a224f0335
+Accept: application/json
+
+###
+
+### List categories - malformed parentCategoryId -> 400 (Error schema)
+GET {{Spot.Business.Api_HostAddress}}/business/categories?parentCategoryId=not-a-guid
+Accept: application/json
+
+###
+
+### Log in as the seeded SUPERADMIN (db/seed/demo-data.sql) — create/update/delete below all require it.
+# @name loginAdmin
+POST {{Spot.Auth.Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@spot.test",
+  "password": "Spot1234!"
+}
+
+###
+@accessToken = {{loginAdmin.response.body.tokens.accessToken}}
+
+### Create a root category -> 201
+# @name createRoot
+POST {{Spot.Business.Api_HostAddress}}/business/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Salud",
+  "description": "Servicios relacionados con salud y bienestar"
+}
+
+###
+@rootId = {{createRoot.response.body.id}}
+
+### Create a subcategory under the root above -> 201
+POST {{Spot.Business.Api_HostAddress}}/business/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Farmacia",
+  "parentCategoryId": "{{rootId}}"
+}
+
+###
+
+### Create - duplicate (parentCategoryId, name) -> 409
+POST {{Spot.Business.Api_HostAddress}}/business/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Salud"
+}
+
+###
+
+### Create - nonexistent parent -> 404
+POST {{Spot.Business.Api_HostAddress}}/business/categories
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Huerfana",
+  "parentCategoryId": "00000000-0000-0000-0000-000000000000"
+}
+
+###
+
+### Update - rename -> 200
+PATCH {{Spot.Business.Api_HostAddress}}/business/categories/{{rootId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "name": "Salud y Bienestar"
+}
+
+###
+
+### Update - promote a subcategory back to root via explicit null -> 200
+PATCH {{Spot.Business.Api_HostAddress}}/business/categories/{{rootId}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "parentCategoryId": null
+}
+
+###
+
+### Delete - category with subcategories -> 409 (never cascades)
+DELETE {{Spot.Business.Api_HostAddress}}/business/categories/{{rootId}}
+Authorization: Bearer {{accessToken}}
+
+###
+
+### Delete - nonexistent category -> 404
+DELETE {{Spot.Business.Api_HostAddress}}/business/categories/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{accessToken}}
+
+###
+
+# ============================================================
+# BUSINESS - Services (create, #113)
+# Create requires a BUSINESS account that OWNS the business, so the flow below
+# registers a BUSINESS, logs in, creates its business, then creates a service.
+# ============================================================
+
+### Register a BUSINESS account (change the email on re-runs; a repeat -> 409)
+POST {{Spot.Auth.Api_HostAddress}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "servicios.http@spot.test",
+  "password": "Prueba123!",
+  "role": "BUSINESS"
+}
+
+###
+
+### Log in -> capture the BUSINESS access token (nested under tokens)
+# @name svcLogin
+POST {{Spot.Auth.Api_HostAddress}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "servicios.http@spot.test",
+  "password": "Prueba123!"
+}
+
+###
+@businessToken = {{svcLogin.response.body.tokens.accessToken}}
+
+### Create the business for that account -> capture its id
+# @name svcCreateBiz
+POST {{Spot.Business.Api_HostAddress}}/business/businesses
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Barberia HTTP"
+}
+
+###
+@svcBusinessId = {{svcCreateBiz.response.body.id}}
+
+### Create a service (owner) -> 201
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Corte y peinado",
+  "description": "Corte con lavado y peinado incluido.",
+  "price": 12000.00,
+  "durationMinutes": 45
+}
+
+###
+
+### Create a service - no token -> 401
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Content-Type: application/json
+
+{
+  "name": "Corte",
+  "price": 5000,
+  "durationMinutes": 30
+}
+
+###
+
+### Create a service - nonexistent business -> 404
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/00000000-0000-0000-0000-000000000000/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Corte",
+  "price": 5000,
+  "durationMinutes": 30
+}
+
+###
+
+### Create a service - blank name -> 400
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "   ",
+  "price": 5000,
+  "durationMinutes": 30
+}
+
+###
+
+### Create a service - negative price -> 400
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Corte",
+  "price": -1,
+  "durationMinutes": 30
+}
+
+###
+
+# ============================================================
+# Photos (#65): business and service photos, and the public file endpoint.
+# Reuses {{businessToken}} and {{svcBusinessId}} from the "services" requests above, so run those
+# first. The uploads read ./sample-photo.jpg next to this file: put any JPEG, PNG or WebP of up
+# to 5 MB there (it's not committed). The format is detected from the file's content.
+# ============================================================
+
+### Upload a business photo (owner) as the primary one -> 201, capture its id and url
+# @name uploadBizPhoto
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos
+Authorization: Bearer {{businessToken}}
+Content-Type: multipart/form-data; boundary=SpotPhotoBoundary
+
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="file"; filename="sample-photo.jpg"
+Content-Type: image/jpeg
+
+< ./sample-photo.jpg
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="isPrimary"
+
+true
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="displayOrder"
+
+0
+--SpotPhotoBoundary--
+
+###
+@bizPhotoId = {{uploadBizPhoto.response.body.id}}
+@bizPhotoUrl = {{uploadBizPhoto.response.body.url}}
+
+### List the business's photos (public, no token) -> 200
+GET {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos?page=1&pageSize=20
+Accept: application/json
+
+###
+
+### Download a photo through the URL it was returned with -> 200 image, with nosniff/CSP headers
+# Photo.url points at the Gateway (http://localhost:5195/api/v1/...). Without the Gateway
+# running, call Business.Api directly: {{Spot.Business.Api_HostAddress}}/business/media/photos/<fileName>
+GET {{bizPhotoUrl}}
+
+###
+
+### Download a photo - not a valid file name (traversal attempt) -> 404
+GET {{Spot.Business.Api_HostAddress}}/business/media/photos/..%2F..%2Fappsettings.json
+
+###
+
+### Upload a business photo - not multipart -> 400
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "file": "not-an-upload"
+}
+
+###
+
+### Upload a business photo - text pretending to be a JPEG -> 400 "La foto debe ser JPG, PNG o WebP."
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos
+Authorization: Bearer {{businessToken}}
+Content-Type: multipart/form-data; boundary=SpotPhotoBoundary
+
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="file"; filename="evil.jpg"
+Content-Type: image/jpeg
+
+<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>
+--SpotPhotoBoundary--
+
+###
+
+### Upload a business photo - no token -> 401
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos
+Content-Type: multipart/form-data; boundary=SpotPhotoBoundary
+
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="file"; filename="sample-photo.jpg"
+Content-Type: image/jpeg
+
+< ./sample-photo.jpg
+--SpotPhotoBoundary--
+
+###
+
+### Delete the business photo (owner) -> 204; its file URL returns 404 afterwards
+DELETE {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/photos/{{bizPhotoId}}
+Authorization: Bearer {{businessToken}}
+
+###
+
+### Create a service for the service-photo requests -> capture its id
+# @name photoSvc
+POST {{Spot.Business.Api_HostAddress}}/business/businesses/{{svcBusinessId}}/services
+Authorization: Bearer {{businessToken}}
+Content-Type: application/json
+
+{
+  "name": "Manicure",
+  "price": 8000,
+  "durationMinutes": 40
+}
+
+###
+@photoServiceId = {{photoSvc.response.body.id}}
+
+### Upload a service photo (owner) -> 201 (no isPrimary for service photos)
+# @name uploadSvcPhoto
+POST {{Spot.Business.Api_HostAddress}}/business/services/{{photoServiceId}}/photos
+Authorization: Bearer {{businessToken}}
+Content-Type: multipart/form-data; boundary=SpotPhotoBoundary
+
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="file"; filename="sample-photo.jpg"
+Content-Type: image/jpeg
+
+< ./sample-photo.jpg
+--SpotPhotoBoundary
+Content-Disposition: form-data; name="displayOrder"
+
+1
+--SpotPhotoBoundary--
+
+###
+@svcPhotoId = {{uploadSvcPhoto.response.body.id}}
+
+### List the service's photos (public, no token) -> 200
+GET {{Spot.Business.Api_HostAddress}}/business/services/{{photoServiceId}}/photos
+Accept: application/json
+
+###
+
+### Delete the service photo (owner) -> 204
+DELETE {{Spot.Business.Api_HostAddress}}/business/services/{{photoServiceId}}/photos/{{svcPhotoId}}
+Authorization: Bearer {{businessToken}}
 
 ###

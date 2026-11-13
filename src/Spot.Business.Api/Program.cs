@@ -1,41 +1,127 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Npgsql;
+using Npgsql.NameTranslation;
+using Spot.Business.Api.Billing;
+using Spot.Business.Api.Data;
+using Spot.Business.Api.Models;
+using Spot.Business.Api.Options;
+using Spot.Business.Api.Photos;
+using Spot.Business.Api.Repositories;
+using Spot.Business.Api.Services;
+using Spot.Business.Api.Storage;
+using Spot.Shared.Auth;
+using Spot.Shared.Errors;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddControllers()
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // Same convention as every other microservice: a malformed query value or request body
+        // fails model binding before the action runs. Without this, [ApiController] would answer
+        // with ASP.NET Core's default ValidationProblemDetails instead of the { code, message,
+        // timestamp } Error shape defined in contracts/spot-api.yaml.
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var invalidField = context.ModelState
+                .FirstOrDefault(entry => entry.Value?.Errors.Count > 0).Key;
+
+            var error = new ApiError(
+                "BAD_REQUEST",
+                "Uno o más parámetros de la petición no son válidos.",
+                string.IsNullOrEmpty(invalidField) ? null : new { field = invalidField });
+
+            return new BadRequestObjectResult(error);
+        };
+    });
+
 builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
+
+// Same setup as Spot.Auth.Api's Program.cs (see the full explanation there): HasPostgresEnum<T>()
+// in BusinessDbContext only teaches migrations about the native "contact_type" enum, so without
+// these MapEnum<T>() registrations any read/write of business_contacts.type fails with
+// "Reading and writing unmapped enums requires an explicit opt-in". The snake-case translator
+// matches the lowercase labels the migration actually created ("whatsapp", not "WHATSAPP"), and
+// is a single shared instance so EF Core doesn't build a new internal service provider per request.
+var nameTranslator = new NpgsqlSnakeCaseNameTranslator();
+// Billing's enums (#138) keep their UPPERCASE labels, same as Spot.AiSearch.Api's: the null
+// translator leaves the C# names as they are ("PAST_DUE"). Shared instance for the same reason.
+var keepLabelsTranslator = new NpgsqlNullNameTranslator();
+var npgsqlDataSource = new NpgsqlDataSourceBuilder(builder.Configuration.GetConnectionString("DefaultConnection"))
+    .MapEnum<ContactType>(nameTranslator: nameTranslator)
+    .MapEnum<SubscriptionStatus>("subscription_status", nameTranslator: keepLabelsTranslator)
+    .MapEnum<SubscriptionPaymentStatus>("subscription_payment_status", nameTranslator: keepLabelsTranslator)
+    .UseNetTopologySuite()
+    .Build();
+
+builder.Services.AddDbContext<BusinessDbContext>(options =>
+    options.UseNpgsql(npgsqlDataSource,
+        npgsql => npgsql
+            .MigrationsHistoryTable("__EFMigrationsHistory_business")
+            .MapEnum<ContactType>(nameTranslator: nameTranslator)
+            .MapEnum<SubscriptionStatus>("subscription_status", nameTranslator: keepLabelsTranslator)
+            .MapEnum<SubscriptionPaymentStatus>("subscription_payment_status", nameTranslator: keepLabelsTranslator)
+            // Maps business_locations.location (geography(Point,4326)) to NetTopologySuite's
+            // Point (#58). Registered here and on the data source above: EF Core needs it for the
+            // model, Npgsql for reading/writing the values on the connection.
+            .UseNetTopologySuite()));
+
+builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
+builder.Services.AddScoped<ICategoryService, CategoryService>();
+builder.Services.AddScoped<IBusinessRepository, BusinessRepository>();
+builder.Services.AddScoped<IBusinessService, BusinessService>();
+builder.Services.AddScoped<IServiceOfferingRepository, ServiceOfferingRepository>();
+builder.Services.AddScoped<IServiceOfferingService, ServiceOfferingService>();
+builder.Services.AddScoped<IBusinessContactRepository, BusinessContactRepository>();
+builder.Services.AddScoped<IBusinessContactService, BusinessContactService>();
+builder.Services.AddScoped<IBusinessScheduleExceptionRepository, BusinessScheduleExceptionRepository>();
+builder.Services.AddScoped<IBusinessScheduleExceptionService, BusinessScheduleExceptionService>();
+builder.Services.AddScoped<IReviewRepository, ReviewRepository>();
+builder.Services.AddScoped<IReviewService, ReviewService>();
+
+// Business and service photo files (#65): a local directory (a named volume in Docker), behind
+// IPhotoStorage so it can move to an object store later. Options are validated at startup.
+builder.Services.AddScoped<IPhotoRepository, PhotoRepository>();
+builder.Services.AddLocalPhotoStorage(builder.Configuration);
+// Uploads are validated and re-encoded (metadata stripped) before they reach storage.
+builder.Services.AddPhotoImageProcessing(builder.Configuration);
+builder.Services.AddOptions<PhotoLimitsOptions>()
+    .Bind(builder.Configuration.GetSection(PhotoLimitsOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<PhotoLimitsOptions>, PhotoLimitsOptionsValidator>();
+builder.Services.AddScoped<IPhotoService, PhotoService>();
+
+// Business plans paid through Stripe Checkout, test mode only (#138). The Stripe settings are
+// validated on first use, not at startup; see BillingServiceCollectionExtensions.
+builder.Services.AddStripeBilling(builder.Configuration);
+
+// Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the "Jwt"
+// section — the same setup every microservice uses. See Spot.Shared.Auth. Needed here even
+// though GET /business/categories is public, because creating/updating/deleting a category
+// requires the SUPERADMIN role (#55).
+builder.Services.AddSpotJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
-}
+
+app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    await context.Response.WriteAsJsonAsync(
+        new ApiError("INTERNAL_ERROR", "Ocurrió un error inesperado. Por favor intenta de nuevo más tarde."));
+}));
 
 app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();
 
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}
+public partial class Program;

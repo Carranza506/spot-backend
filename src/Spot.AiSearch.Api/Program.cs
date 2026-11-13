@@ -1,41 +1,119 @@
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using Npgsql.NameTranslation;
+using Spot.AiSearch.Api.Data;
+using Spot.AiSearch.Api.Models;
+using Spot.AiSearch.Api.Options;
+using Spot.AiSearch.Api.Repositories;
+using Spot.AiSearch.Api.Services;
+using Spot.AiSearch.Api.Services.Business;
+using Spot.AiSearch.Api.Services.Gemini;
+using Spot.Shared.Auth;
+using Spot.Shared.Errors;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+builder.Services.AddControllers()
+    .AddJsonOptions(o =>
+    {
+        o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    })
+    .ConfigureApiBehaviorOptions(options =>
+    {
+        // A malformed query value (userId=not-a-guid, status=BOGUS, page=abc) fails model
+        // binding before the action runs. Without this, [ApiController] would answer with
+        // ASP.NET Core's default ValidationProblemDetails instead of the { code, message,
+        // timestamp } Error shape defined in contracts/spot-api.yaml.
+        options.InvalidModelStateResponseFactory = context =>
+        {
+            var invalidField = context.ModelState
+                .FirstOrDefault(entry => entry.Value?.Errors.Count > 0).Key;
+
+            var error = new ApiError(
+                "BAD_REQUEST",
+                "Uno o más parámetros de la petición no son válidos.",
+                string.IsNullOrEmpty(invalidField) ? null : new { field = invalidField });
+
+            return new BadRequestObjectResult(error);
+        };
+    });
+
 builder.Services.AddOpenApi();
+builder.Services.AddHealthChecks();
+
+// ai_requests.status / request_type are native Postgres enums (db/Spot.sql:8-9). Without MapEnum,
+// EF sends AiRequestStatus/AiRequestType as integers, which Postgres rejects for an enum column.
+// NpgsqlNullNameTranslator keeps the C# names as-is: they already match the UPPERCASE labels.
+// The translator is a single shared instance, same as Spot.Notifications.Api's Program.cs: the
+// AddDbContext lambda below runs per request, and a new translator there each time makes EF Core
+// build a new internal service provider per request — past twenty it throws
+// ManyServiceProvidersCreatedWarning and every request is a 500.
+var keepLabelsTranslator = new NpgsqlNullNameTranslator();
+builder.Services.AddDbContext<AiSearchDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"),
+        npgsql => npgsql
+            .MigrationsHistoryTable("__EFMigrationsHistory_aisearch")
+            .MapEnum<AiRequestStatus>("ai_request_status", nameTranslator: keepLabelsTranslator)
+            .MapEnum<AiRequestType>("ai_request_type", nameTranslator: keepLabelsTranslator)));
+
+builder.Services.AddScoped<IAiRequestRepository, AiRequestRepository>();
+builder.Services.AddScoped<IAiRequestService, AiRequestService>();
+
+var geminiSection = builder.Configuration.GetSection(GeminiOptions.SectionName);
+builder.Services.Configure<GeminiOptions>(geminiSection);
+builder.Services.AddHttpClient<IGeminiClient, GeminiClient>();
+
+// Fails fast at boot, same as AddSpotJwtAuthentication, instead of letting every Gemini call
+// fail at first use with a 403 that looks like an API problem rather than a config one.
+if (string.IsNullOrWhiteSpace(geminiSection.Get<GeminiOptions>()?.ApiKey))
+{
+    throw new InvalidOperationException(
+        $"{GeminiOptions.SectionName}:{nameof(GeminiOptions.ApiKey)} is missing. Set it via user-secrets " +
+        "in development or the Gemini__ApiKey environment variable in production (see README.md).");
+}
+
+// POST /ai-search/query (#73) delegates the business search to Spot.Business.Api over HTTP instead
+// of duplicating its text/category/PostGIS query. Fails fast at boot, same as Gemini:ApiKey above.
+var businessApiSection = builder.Configuration.GetSection(BusinessApiOptions.SectionName);
+builder.Services.Configure<BusinessApiOptions>(businessApiSection);
+builder.Services.AddHttpClient<IBusinessSearchClient, BusinessSearchClient>();
+builder.Services.AddScoped<IAiSearchQueryService, AiSearchQueryService>();
+
+if (!Uri.TryCreate(businessApiSection.Get<BusinessApiOptions>()?.BaseUrl, UriKind.Absolute, out _))
+{
+    throw new InvalidOperationException(
+        $"{BusinessApiOptions.SectionName}:{nameof(BusinessApiOptions.BaseUrl)} must be an absolute URL " +
+        "(e.g. http://localhost:5151 for `dotnet run`, http://business-api:8080 in Docker).");
+}
+
+// Shared RS256 JWT validation (signature, issuer, audience, lifetime) configured from the
+// "Jwt" section — the same setup every microservice uses. See Spot.Shared.Auth.
+builder.Services.AddSpotJwtAuthentication(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
-}
+
+// Same handler as the other services: an unhandled exception (e.g. Postgres down) answers with
+// the contract's InternalServerError body instead of an empty 500, and never with its details.
+// Serialized with the MVC JSON options (WhenWritingNull): WriteAsJsonAsync's default HTTP options
+// would write "details": null, and the contract's Error.details isn't nullable.
+app.UseExceptionHandler(exceptionApp => exceptionApp.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+    var jsonOptions = context.RequestServices.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
+    await context.Response.WriteAsJsonAsync(
+        new ApiError("INTERNAL_ERROR", "Ocurrió un error inesperado. Por favor intenta de nuevo más tarde."),
+        jsonOptions);
+}));
 
 app.UseHttpsRedirection();
-
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
-
-app.MapGet("/weatherforecast", () =>
-{
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapControllers();
+app.MapHealthChecks("/health");
 
 app.Run();
-
-record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
-{
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
-}

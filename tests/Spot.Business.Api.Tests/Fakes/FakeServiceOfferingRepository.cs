@@ -1,0 +1,88 @@
+using Spot.Business.Api.Repositories;
+using ServiceEntity = Spot.Business.Api.Models.Service;
+
+namespace Spot.Business.Api.Tests.Fakes;
+
+/// <summary>
+/// In-memory stand-in for IServiceOfferingRepository — no database involved. Shared between
+/// ServiceOfferingServiceTests (direct construction) and BusinessesApiFactory (DI-swapped), same
+/// as FakeBusinessRepository.
+/// </summary>
+public sealed class FakeServiceOfferingRepository : IServiceOfferingRepository
+{
+    private readonly Dictionary<Guid, ServiceEntity> _services = [];
+
+    public IReadOnlyCollection<ServiceEntity> All => _services.Values;
+
+    public void Reset() => _services.Clear();
+
+    public Task CreateAsync(ServiceEntity service, int? maxActiveServices, CancellationToken ct = default)
+    {
+        if (maxActiveServices is { } max)
+            EnsureBelowLimit(service, max);
+
+        service.Id = Guid.NewGuid();
+        service.CreatedAt = DateTimeOffset.UtcNow;
+        service.UpdatedAt = service.CreatedAt;
+        _services[service.Id] = service;
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Seeds a service directly, bypassing CreateAsync — for list/get/update test setup.</summary>
+    public ServiceEntity Seed(ServiceEntity service)
+    {
+        if (service.Id == Guid.Empty)
+            service.Id = Guid.NewGuid();
+
+        service.CreatedAt = DateTimeOffset.UtcNow;
+        service.UpdatedAt = service.CreatedAt;
+        _services[service.Id] = service;
+        return service;
+    }
+
+    public Task<ServiceEntity?> GetTrackedByIdAsync(Guid serviceId, CancellationToken ct = default) =>
+        Task.FromResult(_services.GetValueOrDefault(serviceId));
+
+    public Task SaveReactivationAsync(ServiceEntity service, int maxActiveServices, CancellationToken ct = default)
+    {
+        EnsureBelowLimit(service, maxActiveServices);
+        return SaveChangesAsync(service, ct);
+    }
+
+    /// <summary>
+    /// Mirrors ServiceOfferingRepository's limit check. The tracked entity here is the stored object
+    /// itself (already flipped to active), so it's left out of the count, as the stored row would be.
+    /// </summary>
+    private void EnsureBelowLimit(ServiceEntity service, int maxActiveServices)
+    {
+        var active = _services.Values.Count(s => s.BusinessId == service.BusinessId && s.IsActive && s.Id != service.Id);
+        if (active >= maxActiveServices)
+            throw new ServiceLimitReachedException(maxActiveServices);
+    }
+
+    public Task SaveChangesAsync(ServiceEntity service, CancellationToken ct = default)
+    {
+        service.UpdatedAt = DateTimeOffset.UtcNow;
+        _services[service.Id] = service;
+        return Task.CompletedTask;
+    }
+
+    public Task<(IReadOnlyList<ServiceEntity> Items, int Total)> ListAsync(
+        Guid businessId, int page, int pageSize, bool? active, CancellationToken ct = default)
+    {
+        // Mirrors ServiceOfferingRepository.ListAsync: business filter + optional active filter
+        // (null = both), ordered by name then id, with the same overflow-safe offset.
+        var all = _services.Values
+            .Where(s => s.BusinessId == businessId && (active is not bool a || s.IsActive == a))
+            .OrderBy(s => s.Name).ThenBy(s => s.Id)
+            .ToList();
+        var offset = (long)(page - 1) * pageSize;
+        var paged = offset >= all.Count ? [] : all.Skip((int)offset).Take(pageSize).ToList();
+
+        return Task.FromResult(((IReadOnlyList<ServiceEntity>)paged, all.Count));
+    }
+
+    public Task<ServiceEntity?> GetByIdAsync(Guid serviceId, CancellationToken ct = default) =>
+        Task.FromResult(_services.GetValueOrDefault(serviceId));
+}
