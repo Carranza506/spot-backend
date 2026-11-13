@@ -1,9 +1,8 @@
-namespace Spot.Notifications.Api.Tests.TestSupport;
+namespace Spot.TestSupport;
 
 /// <summary>
-/// Stands in for the network so <see cref="Services.Push.FcmPushSender"/> can be tested against
-/// canned FCM responses (and simulated failures/timeouts) without talking to Google. Same as
-/// Spot.AiSearch.Api.Tests' FakeHttpMessageHandler.
+/// Stands in for the network, so an HTTP client (Gemini, FCM, ...) can be tested against canned
+/// responses and simulated failures or timeouts without leaving the process.
 /// </summary>
 public sealed class FakeHttpMessageHandler(
     Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> handler) : HttpMessageHandler

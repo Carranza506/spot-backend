@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Spot.Booking.Api.DTOs;
 using Spot.Booking.Api.Services;
 using Spot.Shared.Errors;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Booking.Api.Controllers;

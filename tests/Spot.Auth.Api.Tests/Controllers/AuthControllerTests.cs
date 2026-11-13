@@ -165,6 +165,26 @@ public class AuthControllerTests(AuthApiFactory factory) : IClassFixture<AuthApi
         Assert.Null(factory.UserRepository.CreatedUser);
     }
 
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("8888-1234")] // no country code
+    [InlineData("+506 8888-123")] // too short for Costa Rica
+    public async Task Register_WithInvalidPhone_Returns400PointingAtPhone(string phone)
+    {
+        factory.UserRepository.Reset();
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/register", new
+        {
+            email = "valid@example.com", password = "SuperClave#2026", firstName = "María", lastName = "Rodríguez", phone,
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("phone", body.GetProperty("details").GetProperty("field").GetString(), ignoreCase: true);
+        Assert.Null(factory.UserRepository.CreatedUser);
+    }
+
     [Fact]
     public async Task Login_CorrectCredentials_Returns200WithAuthResponse()
     {

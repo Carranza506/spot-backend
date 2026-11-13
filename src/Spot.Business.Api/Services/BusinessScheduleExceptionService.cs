@@ -1,6 +1,7 @@
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Services;
@@ -43,6 +44,30 @@ public sealed class BusinessScheduleExceptionService(
         };
 
         await exceptionRepository.CreateAsync(exception, ct);
+
+        return BusinessScheduleExceptionDto.FromEntity(exception);
+    }
+
+    public async Task<BusinessScheduleExceptionDto?> UpdateAsync(
+        Guid businessId, Guid exceptionId, Guid callerId, BusinessScheduleExceptionCreateRequest request,
+        CancellationToken ct = default)
+    {
+        await RequireOwnedAsync(businessId, callerId, ct);
+
+        var exception = await exceptionRepository.GetByIdAsync(businessId, exceptionId, ct);
+        if (exception is null)
+            return null;
+
+        var isClosed = request.IsClosed!.Value;
+        var (openTime, closeTime) = OpeningHours.Parse(isClosed, request.OpenTime, request.CloseTime);
+
+        exception.ExceptionDate = request.ExceptionDate!.Value;
+        exception.IsClosed = isClosed;
+        exception.OpenTime = openTime;
+        exception.CloseTime = closeTime;
+        exception.Reason = string.IsNullOrWhiteSpace(request.Reason) ? null : request.Reason.Trim();
+
+        await exceptionRepository.UpdateAsync(exception, ct);
 
         return BusinessScheduleExceptionDto.FromEntity(exception);
     }

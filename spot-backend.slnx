@@ -15,5 +15,6 @@
     <Project Path="tests/Spot.Business.Api.Tests/Spot.Business.Api.Tests.csproj" />
     <Project Path="tests/Spot.Notifications.Api.Tests/Spot.Notifications.Api.Tests.csproj" />
     <Project Path="tests/Spot.Shared.Tests/Spot.Shared.Tests.csproj" />
+    <Project Path="tests/Spot.TestSupport/Spot.TestSupport.csproj" />
   </Folder>
 </Solution>

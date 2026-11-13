@@ -2,7 +2,10 @@ using BookingEntity = Spot.Booking.Api.Models.Booking;
 
 namespace Spot.Booking.Api.Services;
 
-/// <summary>Tells Spot.Notifications.Api that a booking's status changed (#79).</summary>
+/// <summary>
+/// Tells Spot.Notifications.Api that a booking's status changed (#79), or that a booking was
+/// created (PENDING), which goes to the business account.
+/// </summary>
 public interface IBookingStatusNotifier
 {
     /// <summary>

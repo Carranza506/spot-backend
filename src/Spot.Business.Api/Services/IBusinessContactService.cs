@@ -1,4 +1,5 @@
 using Spot.Business.Api.DTOs;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Services;
@@ -13,6 +14,13 @@ public interface IBusinessContactService
     /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
     Task<BusinessContactDto> CreateAsync(
         Guid businessId, Guid callerId, BusinessContactCreateRequest request, CancellationToken ct = default);
+
+    /// <summary>Replaces the contact's type, value and primary flag, keeping its id.</summary>
+    /// <returns>Null if the contact doesn't exist or belongs to a different business.</returns>
+    /// <exception cref="BusinessNotFoundException">The business doesn't exist.</exception>
+    /// <exception cref="BusinessAccessDeniedException"><paramref name="callerId"/> doesn't own the business.</exception>
+    Task<BusinessContactDto?> UpdateAsync(
+        Guid businessId, Guid contactId, Guid callerId, BusinessContactCreateRequest request, CancellationToken ct = default);
 
     /// <summary>Hard delete.</summary>
     /// <returns>False if the contact doesn't exist or belongs to a different business.</returns>

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Spot.Shared.Validation;
 
 namespace Spot.Business.Api.DTOs;
 
@@ -43,8 +44,8 @@ internal static class BusinessFieldRules
         if (normalizedEmail is not null && (normalizedEmail.Length > EmailMaxLength || !EmailAttribute.IsValid(normalizedEmail)))
             yield return new ValidationResult("email no es un correo electrónico válido.", ["Email"]);
 
-        if (TooLong(phone, PhoneMaxLength))
-            yield return new ValidationResult($"phone no puede superar {PhoneMaxLength} caracteres.", ["Phone"]);
+        if (TooLong(phone, PhoneMaxLength) || !PhoneNumberRules.IsBlankOrValid(phone))
+            yield return new ValidationResult(PhoneNumberRules.InvalidMessage("phone"), ["Phone"]);
 
         if (!IsValidUriOrBlank(website))
             yield return new ValidationResult("website debe ser una URL absoluta http(s).", ["Website"]);

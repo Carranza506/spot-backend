@@ -2,6 +2,7 @@ using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Repositories;
 using Spot.Business.Api.Services;
 using Spot.Business.Api.Tests.Fakes;
+using Spot.Shared.Exceptions;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
 namespace Spot.Business.Api.Tests.Services;
@@ -55,7 +56,7 @@ public sealed class ReviewServiceTests
     {
         var booking = _reviews.SeedBooking(Guid.NewGuid(), Guid.NewGuid());
 
-        await Assert.ThrowsAsync<BookingAccessDeniedException>(
+        await Assert.ThrowsAsync<NotBookingClientException>(
             () => _service.CreateAsync(booking.Id, Guid.NewGuid(), new ReviewCreateRequest { Rating = 5 }));
         Assert.Empty(_reviews.All);
     }

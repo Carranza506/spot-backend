@@ -1,4 +1,5 @@
 using Spot.Booking.Api.DTOs;
+using Spot.Shared.Exceptions;
 
 namespace Spot.Booking.Api.Services;
 

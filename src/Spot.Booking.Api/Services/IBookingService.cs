@@ -1,5 +1,6 @@
 using Spot.Booking.Api.DTOs;
 using Spot.Booking.Api.Models;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Booking.Api.Services;

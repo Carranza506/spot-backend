@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Services;
 using Spot.Shared.Errors;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Controllers;
@@ -54,6 +55,40 @@ public class BusinessContactsController(IBusinessContactService contactService) 
         {
             var result = await contactService.CreateAsync(businessId, callerId, request, ct);
             return StatusCode(StatusCodes.Status201Created, result);
+        }
+        catch (BusinessNotFoundException)
+        {
+            return BusinessNotFound();
+        }
+        catch (BusinessAccessDeniedException)
+        {
+            return NotOwner();
+        }
+    }
+
+    /// <summary>
+    /// PUT /business/businesses/{businessId}/contacts/{contactId} (FALT-10): same body and owner
+    /// check as create; replaces the contact. A contact of a different business is reported as 404.
+    /// </summary>
+    [HttpPut("{contactId:guid}")]
+    [Authorize(Roles = "BUSINESS")]
+    [ProducesResponseType(typeof(BusinessContactDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateBusinessContact(
+        Guid businessId, Guid contactId, [FromBody] BusinessContactCreateRequest request, CancellationToken ct)
+    {
+        if (!TryGetUserId(out var callerId))
+            return InvalidToken();
+
+        try
+        {
+            var result = await contactService.UpdateAsync(businessId, contactId, callerId, request, ct);
+            return result is null
+                ? NotFound(new ApiError("NOT_FOUND", "El contacto indicado no existe."))
+                : Ok(result);
         }
         catch (BusinessNotFoundException)
         {

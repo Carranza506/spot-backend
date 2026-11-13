@@ -108,7 +108,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("WHATSAPP", body.GetProperty("type").GetString());
-        Assert.Equal("+506 8888-3344", body.GetProperty("value").GetString());
+        Assert.Equal("+50688883344", body.GetProperty("value").GetString());
         Assert.False(body.GetProperty("isPrimary").GetBoolean());
         Assert.Equal(business.Id, body.GetProperty("businessId").GetGuid());
     }
@@ -139,7 +139,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(ownerId, "BUSINESS");
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
@@ -151,7 +151,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(Guid.NewGuid(), "BUSINESS");
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -168,7 +168,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(Guid.NewGuid(), role);
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Empty(factory.ContactRepository.All);
@@ -181,7 +181,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = factory.CreateClient();
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{business.Id}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -193,7 +193,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(Guid.NewGuid(), "BUSINESS");
 
         var response = await client.PostAsJsonAsync($"/business/businesses/{Guid.NewGuid()}/contacts",
-            new { type = "PHONE", value = "2222" });
+            new { type = "PHONE", value = "+506 2222-3344" });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -204,6 +204,8 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
     [InlineData("{\"type\":\"PHONE\",\"value\":\"   \"}")]
     [InlineData("{\"type\":\"FAX\",\"value\":\"2222\"}")]
     [InlineData("{\"type\":1,\"value\":\"2222\"}")]
+    [InlineData("{\"type\":\"PHONE\",\"value\":\"abc\"}")]
+    [InlineData("{\"type\":\"WHATSAPP\",\"value\":\"8888-1234\"}")] // no country code
     public async Task CreateContact_InvalidBody_Returns400(string json)
     {
         var (business, ownerId) = Reset();
@@ -215,6 +217,151 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("BAD_REQUEST", body.GetProperty("code").GetString());
+    }
+
+    // ---------- DELETE /business/businesses/{businessId}/contacts/{contactId} ----------
+
+    // ---------- PUT /business/businesses/{businessId}/contacts/{contactId} ----------
+
+    [Fact]
+    public async Task UpdateContact_Owner_Returns200AndKeepsTheId()
+    {
+        var (business, ownerId) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
+            new { type = "EMAIL", value = "  hola@bella.cr  " });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(contact.Id, body.GetProperty("id").GetGuid());
+        Assert.Equal("EMAIL", body.GetProperty("type").GetString());
+        Assert.Equal("hola@bella.cr", body.GetProperty("value").GetString());
+        var stored = Assert.Single(factory.ContactRepository.All);
+        Assert.Equal(ContactType.EMAIL, stored.Type);
+        Assert.Equal("hola@bella.cr", stored.Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_MadePrimary_IsTheBusinessesOnlyPrimary()
+    {
+        var (business, ownerId) = Reset();
+        var other = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Otro" });
+        var oldPrimary = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222", IsPrimary = true });
+        var otherPrimary = factory.ContactRepository.Seed(new BusinessContact { BusinessId = other.Id, Type = ContactType.PHONE, Value = "3333", IsPrimary = true });
+        var target = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.EMAIL, Value = "a@b.cr" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{target.Id}",
+            new { type = "EMAIL", value = "a@b.cr", isPrimary = true });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(target.IsPrimary);
+        Assert.False(oldPrimary.IsPrimary);
+        Assert.True(otherPrimary.IsPrimary);
+    }
+
+    [Fact]
+    public async Task UpdateContact_PrimaryStaysPrimary()
+    {
+        var (business, ownerId) = Reset();
+        var primary = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222", IsPrimary = true });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{primary.Id}",
+            new { type = "PHONE", value = "+50622223344", isPrimary = true });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.True(primary.IsPrimary);
+    }
+
+    [Theory]
+    [InlineData("PHONE", "  +506 2222-3344  ", "+50622223344")]
+    [InlineData("WHATSAPP", "+506 8777-6655", "+50687776655")]
+    public async Task UpdateContact_Phone_IsStoredAsE164(string type, string value, string expected)
+    {
+        var (business, ownerId) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.EMAIL, Value = "a@b.cr" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}", new { type, value });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expected, body.GetProperty("value").GetString());
+        Assert.Equal(expected, Assert.Single(factory.ContactRepository.All).Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_InvalidPhone_Returns400AndKeepsTheContact()
+    {
+        var (business, ownerId) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "+50622223344" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
+            new { type = "WHATSAPP", value = "8888-1234" }); // no country code
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("+50622223344", Assert.Single(factory.ContactRepository.All).Value);
+    }
+
+    [Theory]
+    [InlineData("""{ "value": "2222" }""")]
+    [InlineData("""{ "type": "PHONE", "value": "   " }""")]
+    [InlineData("""{ "type": "FAX", "value": "2222" }""")]
+    public async Task UpdateContact_InvalidBody_Returns400AndKeepsTheContact(string json)
+    {
+        var (business, ownerId) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
+            new StringContent(json, Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("2222", Assert.Single(factory.ContactRepository.All).Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_NonOwnerBusinessAccount_Returns403()
+    {
+        var (business, _) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "2222" });
+        var client = CreateClient(Guid.NewGuid(), "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
+            new { type = "PHONE", value = "+50688889999" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal("2222", contact.Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_ContactOfAnotherBusiness_Returns404AndKeepsIt()
+    {
+        var (business, ownerId) = Reset();
+        var other = factory.BusinessRepository.Seed(new BusinessEntity { AccountId = Guid.NewGuid(), Name = "Otro" });
+        var foreign = factory.ContactRepository.Seed(new BusinessContact { BusinessId = other.Id, Type = ContactType.PHONE, Value = "3333" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{foreign.Id}",
+            new { type = "PHONE", value = "+50688889999" });
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal("3333", foreign.Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_NoToken_Returns401()
+    {
+        var (business, _) = Reset();
+
+        var response = await factory.CreateClient().PutAsJsonAsync(
+            $"/business/businesses/{business.Id}/contacts/{Guid.NewGuid()}", new { type = "PHONE", value = "+50688889999" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     // ---------- DELETE /business/businesses/{businessId}/contacts/{contactId} ----------

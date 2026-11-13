@@ -89,6 +89,8 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
     [InlineData("{\"name\":\"Ok\",\"email\":\"not-an-email\"}")]
     [InlineData("{\"name\":\"Ok\",\"website\":\"not a url\"}")]
     [InlineData("{\"name\":\"Ok\",\"phone\":\"1234567890123456789012345678901\"}")]
+    [InlineData("{\"name\":\"Ok\",\"phone\":\"abc\"}")]
+    [InlineData("{\"name\":\"Ok\",\"phone\":\"2222-3344\"}")] // no country code
     public async Task CreateBusiness_InvalidBody_Returns400(string json)
     {
         factory.BusinessRepository.Reset();
@@ -371,7 +373,7 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("+506 8888-0000", body.GetProperty("phone").GetString());
+        Assert.Equal("+50688880000", body.GetProperty("phone").GetString());
         Assert.Equal("https://mio.cr", body.GetProperty("website").GetString());
     }
 
@@ -397,6 +399,21 @@ public class BusinessesControllerTests(BusinessesApiFactory factory) : IClassFix
         var response = await client.PatchAsJsonAsync("/business/businesses/me", new { email = "nope" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateOwnBusiness_InvalidPhone_Returns400PointingAtPhone()
+    {
+        factory.BusinessRepository.Reset();
+        var accountId = Guid.NewGuid();
+        factory.BusinessRepository.Seed(new BusinessEntity { AccountId = accountId, Name = "Mío" });
+        var client = CreateClient(accountId, "BUSINESS");
+
+        var response = await client.PatchAsJsonAsync("/business/businesses/me", new { phone = "+506 1234-5678" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("phone", body.GetProperty("details").GetProperty("field").GetString(), ignoreCase: true);
     }
 
     // ---------- GET /business/businesses/{businessId}/categories ----------

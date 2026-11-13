@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Spot.Notifications.Api.Auth;
 using Spot.Notifications.Api.DTOs;
-using Spot.Notifications.Api.Models;
 using Spot.Notifications.Api.Services;
 using Spot.Shared.Errors;
 
@@ -20,7 +19,7 @@ public class InternalNotificationsController(INotificationService notificationSe
     /// <summary>
     /// POST /notifications/internal/booking-status-changed (operationId
     /// triggerBookingStatusNotification, #79): stores and pushes the notification for a booking's
-    /// new status. A failed push doesn't change the 202.
+    /// new status, PENDING meaning a new booking. A failed push doesn't change the 202.
     /// </summary>
     [HttpPost("booking-status-changed")]
     [ProducesResponseType(StatusCodes.Status202Accepted)]
@@ -30,9 +29,6 @@ public class InternalNotificationsController(INotificationService notificationSe
     public async Task<IActionResult> TriggerBookingStatusNotification(
         [FromBody] InternalBookingStatusNotificationRequest request, CancellationToken ct)
     {
-        if (request.Status == BookingStatus.PENDING)
-            return BadRequest(new ApiError("BAD_REQUEST", "status no puede ser PENDING: no es un cambio de estado.", new { field = "status" }));
-
         var result = await notificationService.NotifyBookingStatusChangedAsync(request, ct);
 
         return result switch

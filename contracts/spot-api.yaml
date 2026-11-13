@@ -768,6 +768,38 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    put:
+      tags: [Business]
+      operationId: updateBusinessContact
+      summary: Edit a business's contact
+      description: |-
+        Replaces the contact's `type`, `value` and `isPrimary` with the same
+        body and rules as `createBusinessContact`, keeping its id. Making it
+        primary clears the business's other primary contact. A contact of a
+        different business responds `404`.
+        Required role: `BUSINESS` who owns the business.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessContactCreateRequest'
+            example:
+              type: PHONE
+              value: "+506 2222-3344"
+              isPrimary: false
+      responses:
+        '200':
+          description: Contact updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessContact'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Business]
       operationId: deleteBusinessContact
@@ -937,6 +969,43 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    put:
+      tags: [Business]
+      operationId: updateBusinessScheduleException
+      summary: Edit a schedule exception
+      description: |-
+        Replaces the exception with the same body and rules as
+        `createBusinessScheduleException`, keeping its id. Moving it to a date
+        that already has another exception of the business responds `409`; if
+        `isClosed=false`, requires `openTime < closeTime` (`422`). An exception
+        of a different business responds `404`.
+        Required role: `BUSINESS` who owns the business.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BusinessScheduleExceptionCreateRequest'
+            example:
+              exceptionDate: "2026-12-24"
+              isClosed: false
+              openTime: "09:00:00"
+              closeTime: "13:00:00"
+              reason: Nochebuena, medio día
+      responses:
+        '200':
+          description: Exception updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BusinessScheduleException'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Business]
       operationId: deleteBusinessScheduleException
@@ -1771,9 +1840,16 @@ paths:
         `CONFIRMED`) for the same business cannot coexist with overlapping time
         ranges — attempting to book an already-taken slot responds `409`.
         Booking outside the business's hours (per `business_hours` /
-        `business_schedule_exceptions`) responds `422`. The booking is created
-        `PENDING`; the business owner moves it to `CONFIRMED` with
-        `confirmBooking`.
+        `business_schedule_exceptions`) responds `422`
+        (`BOOKING_OUTSIDE_BUSINESS_HOURS`). `startAt` must also be one of the
+        slots `getBusinessAvailability` offers for the service: the day's
+        opening time plus a whole number of the service's duration; any other
+        start responds `422` (`BOOKING_NOT_ON_SLOT`). A start in the past
+        responds `422` (`BOOKING_START_IN_PAST`), and one more than 60 days
+        after today (America/Costa_Rica) responds `422`
+        (`BOOKING_TOO_FAR_AHEAD`). The booking is created `PENDING`, and the
+        business account gets a notification; the business owner moves it to
+        `CONFIRMED` with `confirmBooking`.
 
         Required role: `CLIENT`.
       requestBody:
@@ -2418,10 +2494,13 @@ paths:
       security:
         - internalApiKey: []
       description: |-
-        Internal service-to-service endpoint, invoked by Spot.Booking.Api every
-        time `bookings.status` changes (confirmation, cancellation, completion,
+        Internal service-to-service endpoint, invoked by Spot.Booking.Api when
+        a booking is created (`status: PENDING`) and every time
+        `bookings.status` changes (confirmation, cancellation, completion,
         no-show), so that Spot.Notifications.Api generates and sends the
-        corresponding push notification to the client and/or the business owner.
+        corresponding push notification. `PENDING` goes only to the business
+        account, `CANCELLED` to both the client and the business account, and
+        every other status only to the client.
 
         Not exposed to end clients: the Gateway only routes this call when it
         comes from the internal service network, authenticated with a service
@@ -2683,7 +2762,10 @@ components:
           type: [string, 'null']
           maxLength: 100
           description: Null for a BUSINESS account — its name is `businesses.name` instead.
-        phone: { type: [string, 'null'], maxLength: 30 }
+        phone:
+          type: [string, 'null']
+          maxLength: 30
+          description: E.164 ("+50688881234"). Phones saved before BUG-09 may keep the format they were typed in.
         profilePhotoUrl: { type: [string, 'null'], format: uri }
         role: { $ref: '#/components/schemas/UserRole' }
         isActive: { type: boolean }
@@ -2710,7 +2792,10 @@ components:
           type: string
           maxLength: 100
           description: Required when role is CLIENT (the default). Ignored for BUSINESS — a business account has no person name.
-        phone: { type: string, maxLength: 30 }
+        phone:
+          type: string
+          maxLength: 30
+          description: International format with the country code ("+506 8888 1234"), valid for that country (libphonenumber). Stored and returned as E.164 ("+50688881234"); blank means no phone. 400 otherwise.
         role:
           type: string
           enum: [CLIENT, BUSINESS]
@@ -2763,7 +2848,10 @@ components:
           description: >-
             CLIENT only: cannot be cleared to null or empty (400). Rejected outright (400) for a
             BUSINESS account — its name is edited via PATCH /business/businesses/me instead.
-        phone: { type: [string, 'null'], maxLength: 30 }
+        phone:
+          type: [string, 'null']
+          maxLength: 30
+          description: International format with the country code ("+506 8888 1234"), valid for that country (libphonenumber). Stored and returned as E.164 ("+50688881234"); blank means no phone. 400 otherwise.
         profilePhotoUrl: { type: [string, 'null'], format: uri }
 
     AuthTokens:
@@ -2834,7 +2922,10 @@ components:
         description: { type: [string, 'null'] }
         legalName: { type: [string, 'null'], maxLength: 200 }
         email: { type: [string, 'null'], format: email }
-        phone: { type: [string, 'null'], maxLength: 30 }
+        phone:
+          type: [string, 'null']
+          maxLength: 30
+          description: E.164 ("+50688881234"). Phones saved before BUG-09 may keep the format they were typed in.
         website: { type: [string, 'null'], format: uri }
         logoUrl: { type: [string, 'null'], format: uri }
         isActive: { type: boolean }
@@ -2849,7 +2940,10 @@ components:
         description: { type: string }
         legalName: { type: string, maxLength: 200 }
         email: { type: string, format: email }
-        phone: { type: string, maxLength: 30 }
+        phone:
+          type: string
+          maxLength: 30
+          description: International format with the country code ("+506 8888 1234"), valid for that country (libphonenumber). Stored and returned as E.164 ("+50688881234"); blank means no phone. 400 otherwise.
         website: { type: string, format: uri }
         logoUrl: { type: string, format: uri }
 
@@ -2860,7 +2954,10 @@ components:
         description: { type: [string, 'null'] }
         legalName: { type: [string, 'null'], maxLength: 200 }
         email: { type: [string, 'null'], format: email }
-        phone: { type: [string, 'null'], maxLength: 30 }
+        phone:
+          type: [string, 'null']
+          maxLength: 30
+          description: International format with the country code ("+506 8888 1234"), valid for that country (libphonenumber). Stored and returned as E.164 ("+50688881234"); blank means no phone. 400 otherwise.
         website: { type: [string, 'null'], format: uri }
         logoUrl: { type: [string, 'null'], format: uri }
         isActive: { type: boolean }
@@ -2907,7 +3004,9 @@ components:
         id: { type: string, format: uuid }
         businessId: { type: string, format: uuid }
         type: { $ref: '#/components/schemas/ContactType' }
-        value: { type: string }
+        value:
+          type: string
+          description: For PHONE and WHATSAPP, E.164 ("+50688881234").
         isPrimary: { type: boolean }
         createdAt: { type: string, format: date-time }
 
@@ -2916,7 +3015,9 @@ components:
       required: [type, value]
       properties:
         type: { $ref: '#/components/schemas/ContactType' }
-        value: { type: string }
+        value:
+          type: string
+          description: For PHONE and WHATSAPP, a phone in international format valid for its country ("+506 8888 1234"), stored as E.164; 400 otherwise. Free text for the other types.
         isPrimary: { type: boolean, default: false }
 
     PaginatedBusinessContacts:

@@ -1,7 +1,9 @@
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
+using Spot.Shared.Validation;
 
 namespace Spot.Business.Api.Services;
 
@@ -33,7 +35,7 @@ public sealed class BusinessContactService(
         {
             BusinessId = businessId,
             Type = request.Type!.Value,
-            Value = request.Value.Trim(),
+            Value = NormalizeValue(request),
             IsPrimary = request.IsPrimary,
         };
 
@@ -41,6 +43,31 @@ public sealed class BusinessContactService(
 
         return BusinessContactDto.FromEntity(contact);
     }
+
+    public async Task<BusinessContactDto?> UpdateAsync(
+        Guid businessId, Guid contactId, Guid callerId, BusinessContactCreateRequest request, CancellationToken ct = default)
+    {
+        await RequireOwnedAsync(businessId, callerId, ct);
+
+        var contact = await contactRepository.GetByIdAsync(businessId, contactId, ct);
+        if (contact is null)
+            return null;
+
+        contact.Type = request.Type!.Value;
+        contact.Value = NormalizeValue(request);
+        contact.IsPrimary = request.IsPrimary;
+
+        await contactRepository.UpdateAsync(contact, ct);
+
+        return BusinessContactDto.FromEntity(contact);
+    }
+
+    /// <summary>
+    /// The value to store, the same on create and update: PHONE and WHATSAPP as E.164 (BUG-09, #165),
+    /// any other type trimmed. Request validation has already rejected an invalid phone.
+    /// </summary>
+    private static string NormalizeValue(BusinessContactCreateRequest request) =>
+        BusinessContactCreateRequest.IsPhone(request.Type) ? PhoneNumberRules.ToE164(request.Value)! : request.Value.Trim();
 
     public async Task<bool> DeleteAsync(Guid businessId, Guid contactId, Guid callerId, CancellationToken ct = default)
     {

@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Spot.Shared.Validation;
 
 namespace Spot.Auth.Api.DTOs;
 
@@ -38,8 +39,8 @@ public sealed class UpdateProfileRequest : IValidatableObject
                 yield return new ValidationResult("lastName no puede superar los 100 caracteres.", [nameof(LastName)]);
         }
 
-        if (Phone.IsSet && Phone.Value?.Length > 30)
-            yield return new ValidationResult("phone no puede superar los 30 caracteres.", [nameof(Phone)]);
+        if (Phone.IsSet && !PhoneNumberRules.IsBlankOrValid(Phone.Value))
+            yield return new ValidationResult(PhoneNumberRules.InvalidMessage("phone"), [nameof(Phone)]);
 
         if (ProfilePhotoUrl.IsSet && ProfilePhotoUrl.Value is not null
             && !Uri.TryCreate(ProfilePhotoUrl.Value, UriKind.Absolute, out _))

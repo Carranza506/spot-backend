@@ -3,6 +3,7 @@ using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
 using Spot.Shared.Pagination;
+using Spot.Shared.Validation;
 using BusinessEntity = Spot.Business.Api.Models.Business;
 
 namespace Spot.Business.Api.Services;
@@ -29,7 +30,7 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
             Description = BusinessFieldRules.Normalize(request.Description),
             LegalName = BusinessFieldRules.Normalize(request.LegalName),
             Email = BusinessFieldRules.Normalize(request.Email),
-            Phone = BusinessFieldRules.Normalize(request.Phone),
+            Phone = PhoneNumberRules.ToE164(request.Phone),
             Website = BusinessFieldRules.Normalize(request.Website),
             LogoUrl = BusinessFieldRules.Normalize(request.LogoUrl),
             IsActive = true,
@@ -296,7 +297,7 @@ public sealed class BusinessService(IBusinessRepository repository, ICategoryRep
             business.Email = BusinessFieldRules.Normalize(request.Email.Value);
 
         if (request.Phone.IsSet)
-            business.Phone = BusinessFieldRules.Normalize(request.Phone.Value);
+            business.Phone = PhoneNumberRules.ToE164(request.Phone.Value);
 
         if (request.Website.IsSet)
             business.Website = BusinessFieldRules.Normalize(request.Website.Value);

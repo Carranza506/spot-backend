@@ -2,6 +2,7 @@ using Spot.Booking.Api.DTOs;
 using Spot.Booking.Api.Models;
 using Spot.Booking.Api.Services;
 using Spot.Booking.Api.Tests.Fakes;
+using Spot.Shared.Exceptions;
 using BookingEntity = Spot.Booking.Api.Models.Booking;
 
 namespace Spot.Booking.Api.Tests.Services;

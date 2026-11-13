@@ -60,6 +60,17 @@ public sealed class FakeBusinessContactRepository : IBusinessContactRepository
         return Task.CompletedTask;
     }
 
+    public Task UpdateAsync(BusinessContact contact, CancellationToken ct = default)
+    {
+        if (contact.IsPrimary)
+        {
+            foreach (var other in _contacts.Values.Where(c => c.BusinessId == contact.BusinessId && c.Id != contact.Id))
+                other.IsPrimary = false;
+        }
+
+        return Task.CompletedTask;
+    }
+
     public Task DeleteAsync(BusinessContact contact, CancellationToken ct = default)
     {
         _contacts.Remove(contact.Id);

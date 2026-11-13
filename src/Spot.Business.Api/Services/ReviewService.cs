@@ -1,6 +1,7 @@
 using Spot.Business.Api.DTOs;
 using Spot.Business.Api.Models;
 using Spot.Business.Api.Repositories;
+using Spot.Shared.Exceptions;
 using Spot.Shared.Pagination;
 
 namespace Spot.Business.Api.Services;
@@ -19,7 +20,7 @@ public sealed class ReviewService(
         var booking = await reviewRepository.GetBookingAsync(bookingId, ct)
                       ?? throw new BookingNotFoundException(bookingId);
         if (booking.UserId != callerId)
-            throw new BookingAccessDeniedException(bookingId, callerId);
+            throw new NotBookingClientException(bookingId, callerId);
 
         var review = new Review
         {

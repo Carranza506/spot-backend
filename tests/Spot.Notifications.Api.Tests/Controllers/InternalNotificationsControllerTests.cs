@@ -68,15 +68,6 @@ public class InternalNotificationsControllerTests : IClassFixture<NotificationsA
 
     // ---------- 400 ----------
 
-    [Fact]
-    public async Task Pending_Returns400_BecauseItIsNotAStatusChange()
-    {
-        var response = await PostAsync(Body("PENDING"));
-
-        await AssertErrorAsync(response, HttpStatusCode.BadRequest, "BAD_REQUEST");
-        Assert.Empty(_factory.NotificationRepository.All);
-    }
-
     [Theory]
     [InlineData("not json")]
     [InlineData("{}")]
@@ -163,6 +154,18 @@ public class InternalNotificationsControllerTests : IClassFixture<NotificationsA
         Assert.Equal(row.Body, push.Body);
         Assert.Equal(_bookingId.ToString(), push.Data!["bookingId"]);
         Assert.Equal(status, push.Data["status"]);
+    }
+
+    [Fact]
+    public async Task Pending_Returns202_AndNotifiesOnlyTheBusinessAccount()
+    {
+        var response = await PostAsync(Body("PENDING"));
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        AssertStored(Assert.Single(_factory.NotificationRepository.All), _businessAccountId);
+        var push = Assert.Single(_factory.PushNotifications.Sent);
+        Assert.Equal(_businessAccountId, push.UserId);
+        Assert.Equal("PENDING", push.Data!["status"]);
     }
 
     [Fact]
