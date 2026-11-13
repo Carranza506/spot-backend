@@ -38,6 +38,7 @@ public class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbCo
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.AccountId).HasColumnName("account_id");
             e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.Name).HasColumnName("name");
         });
 
         modelBuilder.Entity<BusinessHoursReference>(e =>

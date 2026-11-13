@@ -146,7 +146,9 @@ public sealed class BookingService(
                       ?? throw new BookingNotFoundException(bookingId);
 
         var isClient = clientAllowed && booking.UserId == callerId;
-        if (!isClient && (await scheduleRepository.GetBusinessAsync(booking.BusinessId, ct))?.AccountId != callerId)
+        // Read for the client too: its name goes into the status notification (#173).
+        var business = await scheduleRepository.GetBusinessAsync(booking.BusinessId, ct);
+        if (!isClient && business?.AccountId != callerId)
             throw new BookingAccessDeniedException();
 
         if (!validFrom.Contains(booking.Status))
@@ -162,7 +164,7 @@ public sealed class BookingService(
                 ? new BookingNotFoundException(bookingId)
                 : new BookingRuleViolationException(BookingRuleViolationException.InvalidStatusTransition, invalidMessage);
 
-        await statusNotifier.NotifyAsync(booking);
+        await statusNotifier.NotifyAsync(booking, business?.Name);
 
         return await ToDtoAsync(booking, ct);
     }

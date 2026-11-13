@@ -19,7 +19,7 @@ public sealed class BookingStatusNotifier(
     private const string EndpointPath = "api/v1/notifications/internal/booking-status-changed";
     private const string ApiKeyHeader = "X-Internal-Api-Key";
 
-    public async Task NotifyAsync(BookingEntity booking)
+    public async Task NotifyAsync(BookingEntity booking, string? businessName)
     {
         var settings = options.Value;
 
@@ -29,7 +29,8 @@ public sealed class BookingStatusNotifier(
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{settings.GatewayBaseUrl.TrimEnd('/')}/{EndpointPath}")
             {
                 Content = JsonContent.Create(new InternalBookingStatusNotificationRequest(
-                    booking.Id, booking.BusinessId, booking.UserId, booking.Status, MessageFor(booking))),
+                    booking.Id, booking.BusinessId, booking.UserId, booking.Status,
+                    BookingNotificationText.For(booking, businessName))),
             };
             request.Headers.Add(ApiKeyHeader, settings.Key);
 
@@ -49,13 +50,4 @@ public sealed class BookingStatusNotifier(
                 booking.Id, booking.Status, ex.GetType().Name);
         }
     }
-
-    /// <summary>
-    /// A cancel with a reason (#163) tells both parties why: Notifications' own default text for
-    /// CANCELLED, plus the reason. Null otherwise, so Notifications keeps its default.
-    /// </summary>
-    private static string? MessageFor(BookingEntity booking) =>
-        booking is { Status: BookingStatus.CANCELLED, CancelReason: { } reason }
-            ? $"La reservación fue cancelada. Motivo: {reason}"
-            : null;
 }
