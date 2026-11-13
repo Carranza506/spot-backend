@@ -58,7 +58,12 @@ public sealed class NotificationService(
         var message = SanitizeMessage(request.Message);
         var body = message.Length == 0 ? defaultBody : message;
 
-        Guid[] recipients = status == BookingStatus.CANCELLED ? [userId, businessAccountId] : [userId];
+        Guid[] recipients = status switch
+        {
+            BookingStatus.PENDING => [businessAccountId],
+            BookingStatus.CANCELLED => [userId, businessAccountId],
+            _ => [userId],
+        };
 
         // Not the request's token, here or on the pushes below: the booking already changed, so
         // Booking giving up on its short timeout must not cost the notification its row or delivery.
@@ -113,6 +118,8 @@ public sealed class NotificationService(
 
     private static (string Title, string Body) DefaultTextFor(BookingStatus status) => status switch
     {
+        // Only the business account gets this one.
+        BookingStatus.PENDING => ("Nueva reservación", "Recibiste una nueva reservación pendiente de confirmar."),
         BookingStatus.CONFIRMED => ("Tu reservación fue confirmada", "El negocio confirmó tu reservación."),
         BookingStatus.COMPLETED => ("Reservación completada", "Tu reservación fue marcada como completada. ¡Gracias por usar Spot!"),
         // Neutral on purpose: this one goes to both the client and the business account.

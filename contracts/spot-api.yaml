@@ -1771,9 +1771,16 @@ paths:
         `CONFIRMED`) for the same business cannot coexist with overlapping time
         ranges — attempting to book an already-taken slot responds `409`.
         Booking outside the business's hours (per `business_hours` /
-        `business_schedule_exceptions`) responds `422`. The booking is created
-        `PENDING`; the business owner moves it to `CONFIRMED` with
-        `confirmBooking`.
+        `business_schedule_exceptions`) responds `422`
+        (`BOOKING_OUTSIDE_BUSINESS_HOURS`). `startAt` must also be one of the
+        slots `getBusinessAvailability` offers for the service: the day's
+        opening time plus a whole number of the service's duration; any other
+        start responds `422` (`BOOKING_NOT_ON_SLOT`). A start in the past
+        responds `422` (`BOOKING_START_IN_PAST`), and one more than 60 days
+        after today (America/Costa_Rica) responds `422`
+        (`BOOKING_TOO_FAR_AHEAD`). The booking is created `PENDING`, and the
+        business account gets a notification; the business owner moves it to
+        `CONFIRMED` with `confirmBooking`.
 
         Required role: `CLIENT`.
       requestBody:
@@ -2408,10 +2415,13 @@ paths:
       security:
         - internalApiKey: []
       description: |-
-        Internal service-to-service endpoint, invoked by Spot.Booking.Api every
-        time `bookings.status` changes (confirmation, cancellation, completion,
+        Internal service-to-service endpoint, invoked by Spot.Booking.Api when
+        a booking is created (`status: PENDING`) and every time
+        `bookings.status` changes (confirmation, cancellation, completion,
         no-show), so that Spot.Notifications.Api generates and sends the
-        corresponding push notification to the client and/or the business owner.
+        corresponding push notification. `PENDING` goes only to the business
+        account, `CANCELLED` to both the client and the business account, and
+        every other status only to the client.
 
         Not exposed to end clients: the Gateway only routes this call when it
         comes from the internal service network, authenticated with a service
