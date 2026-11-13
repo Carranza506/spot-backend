@@ -137,9 +137,9 @@ public class BookingStatusNotifierTests
         var booking = NewBooking(status);
         booking.CancelReason = "Me surgió un imprevisto";
 
-        await notifier.NotifyAsync(booking);
+        await notifier.NotifyAsync(booking, "Barbería La U");
 
-        Assert.False(JsonDocument.Parse(body!).RootElement.TryGetProperty("message", out _));
+        Assert.DoesNotContain("Motivo:", JsonDocument.Parse(body!).RootElement.GetProperty("message").GetString());
     }
 
     [Theory]

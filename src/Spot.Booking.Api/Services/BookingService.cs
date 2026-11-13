@@ -67,7 +67,7 @@ public sealed class BookingService(
         await bookingRepository.CreateAsync(booking, ct);
 
         // A new PENDING booking goes to the business account, so it knows there's one to confirm.
-        await statusNotifier.NotifyAsync(booking);
+        await statusNotifier.NotifyAsync(booking, business.Name);
 
         return await ToDtoAsync(booking, ct);
     }
