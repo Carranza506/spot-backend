@@ -103,6 +103,44 @@ public class BookingStatusNotifierTests
         Assert.Equal(1, Warnings(logger));
     }
 
+    [Fact]
+    public async Task ACancelWithAReason_SendsItInTheMessage()
+    {
+        string? body = null;
+        var notifier = CreateNotifier(async (request, ct) =>
+        {
+            body = await request.Content!.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
+        }, new CapturingLogger<BookingStatusNotifier>());
+        var booking = NewBooking(BookingStatus.CANCELLED);
+        booking.CancelReason = "Me surgió un imprevisto";
+
+        await notifier.NotifyAsync(booking);
+
+        var json = JsonDocument.Parse(body!).RootElement;
+        Assert.Equal("La reservación fue cancelada. Motivo: Me surgió un imprevisto", json.GetProperty("message").GetString());
+    }
+
+    [Theory]
+    [InlineData(BookingStatus.CONFIRMED)]
+    [InlineData(BookingStatus.COMPLETED)]
+    [InlineData(BookingStatus.NO_SHOW)]
+    public async Task OnlyACancel_SendsTheReason(BookingStatus status)
+    {
+        string? body = null;
+        var notifier = CreateNotifier(async (request, ct) =>
+        {
+            body = await request.Content!.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
+        }, new CapturingLogger<BookingStatusNotifier>());
+        var booking = NewBooking(status);
+        booking.CancelReason = "Me surgió un imprevisto";
+
+        await notifier.NotifyAsync(booking);
+
+        Assert.False(JsonDocument.Parse(body!).RootElement.TryGetProperty("message", out _));
+    }
+
     [Theory]
     [MemberData(nameof(FailureCases))]
     public async Task TheTransitionStillSucceeds_AndIsCommitted_WhenTheNotificationFails(int failure)

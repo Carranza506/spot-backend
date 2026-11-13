@@ -47,11 +47,14 @@ public sealed class BookingRepository(BookingDbContext db) : IBookingRepository
             .ToDictionary(u => u.Id, u => u.Name);
     }
 
-    public async Task<bool> UpdateStatusAsync(BookingEntity booking, BookingStatus status, CancellationToken ct = default)
+    public async Task<bool> UpdateStatusAsync(
+        BookingEntity booking, BookingStatus status, string? cancelReason = null, CancellationToken ct = default)
     {
         var from = booking.Status;
+        var fromReason = booking.CancelReason;
         db.Bookings.Attach(booking);
         booking.Status = status;
+        booking.CancelReason = cancelReason;
         try
         {
             await db.SaveChangesAsync(ct);
@@ -61,6 +64,7 @@ public sealed class BookingRepository(BookingDbContext db) : IBookingRepository
             // 0 rows: another request changed the status, or deleted the booking, after it was read.
             db.Entry(booking).State = EntityState.Detached;
             booking.Status = from;
+            booking.CancelReason = fromReason;
             return false;
         }
 

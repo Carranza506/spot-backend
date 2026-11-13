@@ -1914,6 +1914,13 @@ paths:
 
         Required role: `CLIENT` who owns the booking or `BUSINESS` who owns
         the booking's business.
+
+        The body is optional. `reason` is trimmed (any NUL character becomes a
+        space first) and stored with the status change, then returned as the
+        booking's `cancelReason`; a missing or blank one stores `null`. Over
+        255 characters (after trimming) responds `400` and the booking is not
+        cancelled. When given, the reason is also
+        included in the status-changed notification both parties receive.
       requestBody:
         required: false
         content:
@@ -1922,6 +1929,8 @@ paths:
               type: object
               properties:
                 reason: { type: string, maxLength: 255 }
+            example:
+              reason: Me surgió un imprevisto.
       responses:
         '200':
           description: Booking cancelled.
@@ -1929,6 +1938,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Booking'
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -3332,6 +3342,11 @@ components:
           minimum: 1
           description: Copy of the service's duration (in minutes) at the time of booking.
         notes: { type: [string, 'null'] }
+        cancelReason:
+          type: [string, 'null']
+          readOnly: true
+          maxLength: 255
+          description: Why the booking was cancelled (`bookings.cancel_reason`), as given to `cancelBooking`, trimmed; `null` unless it was cancelled with a reason.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

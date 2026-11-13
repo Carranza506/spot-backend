@@ -40,7 +40,7 @@ public class BookingReadsControllerTests(BookingsApiFactory factory) : IClassFix
         var first = body.GetProperty("data")[0];
         Assert.Equal(
             ["id", "userId", "clientName", "businessId", "serviceId", "startAt", "endAt", "status", "serviceName",
-             "servicePrice", "serviceDurationMinutes", "notes", "createdAt", "updatedAt"],
+             "servicePrice", "serviceDurationMinutes", "notes", "cancelReason", "createdAt", "updatedAt"],
             first.EnumerateObject().Select(p => p.Name));
         Assert.Equal("2026-09-03T14:00:00Z", first.GetProperty("startAt").GetString());
     }

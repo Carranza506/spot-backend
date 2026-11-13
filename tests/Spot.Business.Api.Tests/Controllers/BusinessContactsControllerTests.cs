@@ -270,10 +270,41 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(ownerId, "BUSINESS");
 
         var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{primary.Id}",
-            new { type = "PHONE", value = "2223", isPrimary = true });
+            new { type = "PHONE", value = "+50622223344", isPrimary = true });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(primary.IsPrimary);
+    }
+
+    [Theory]
+    [InlineData("PHONE", "  +506 2222-3344  ", "+50622223344")]
+    [InlineData("WHATSAPP", "+506 8777-6655", "+50687776655")]
+    public async Task UpdateContact_Phone_IsStoredAsE164(string type, string value, string expected)
+    {
+        var (business, ownerId) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.EMAIL, Value = "a@b.cr" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}", new { type, value });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(expected, body.GetProperty("value").GetString());
+        Assert.Equal(expected, Assert.Single(factory.ContactRepository.All).Value);
+    }
+
+    [Fact]
+    public async Task UpdateContact_InvalidPhone_Returns400AndKeepsTheContact()
+    {
+        var (business, ownerId) = Reset();
+        var contact = factory.ContactRepository.Seed(new BusinessContact { BusinessId = business.Id, Type = ContactType.PHONE, Value = "+50622223344" });
+        var client = CreateClient(ownerId, "BUSINESS");
+
+        var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
+            new { type = "WHATSAPP", value = "8888-1234" }); // no country code
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("+50622223344", Assert.Single(factory.ContactRepository.All).Value);
     }
 
     [Theory]
@@ -301,7 +332,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(Guid.NewGuid(), "BUSINESS");
 
         var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{contact.Id}",
-            new { type = "PHONE", value = "9999" });
+            new { type = "PHONE", value = "+50688889999" });
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal("2222", contact.Value);
@@ -316,7 +347,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var client = CreateClient(ownerId, "BUSINESS");
 
         var response = await client.PutAsJsonAsync($"/business/businesses/{business.Id}/contacts/{foreign.Id}",
-            new { type = "PHONE", value = "9999" });
+            new { type = "PHONE", value = "+50688889999" });
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Equal("3333", foreign.Value);
@@ -328,7 +359,7 @@ public class BusinessContactsControllerTests(BusinessesApiFactory factory) : ICl
         var (business, _) = Reset();
 
         var response = await factory.CreateClient().PutAsJsonAsync(
-            $"/business/businesses/{business.Id}/contacts/{Guid.NewGuid()}", new { type = "PHONE", value = "9999" });
+            $"/business/businesses/{business.Id}/contacts/{Guid.NewGuid()}", new { type = "PHONE", value = "+50688889999" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

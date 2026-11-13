@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Spot.Booking.Api.DTOs;
 using Spot.Booking.Api.Services;
 using Spot.Shared.Errors;
@@ -116,18 +117,23 @@ public class BookingsController(IBookingService bookingService) : ControllerBase
 
     /// <summary>
     /// POST /booking/bookings/{bookingId}/cancel (operationId cancelBooking): the booking's CLIENT
-    /// or the BUSINESS that owns it; only from PENDING or CONFIRMED, else 422. The optional reason
-    /// isn't read: bookings has no column for it and the Booking schema doesn't return it.
+    /// or the BUSINESS that owns it; only from PENDING or CONFIRMED, else 422. The body is optional:
+    /// its reason is stored with the status and returned as cancelReason (#163), and one over 255
+    /// characters is a 400 before anything changes.
     /// </summary>
     [HttpPost("{bookingId:guid}/cancel")]
     [Authorize(Roles = "CLIENT,BUSINESS")]
     [ProducesResponseType(typeof(BookingDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiError), StatusCodes.Status422UnprocessableEntity)]
-    public Task<IActionResult> CancelBooking(Guid bookingId, CancellationToken ct) =>
-        ChangeStatus(callerId => bookingService.CancelAsync(bookingId, callerId, ct));
+    public Task<IActionResult> CancelBooking(
+        Guid bookingId,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] BookingCancelRequest? request,
+        CancellationToken ct) =>
+        ChangeStatus(callerId => bookingService.CancelAsync(bookingId, callerId, request?.NormalizedReason(), ct));
 
     /// <summary>
     /// POST /booking/bookings/{bookingId}/confirm (operationId confirmBooking): the BUSINESS that

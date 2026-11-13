@@ -82,6 +82,49 @@ public sealed class BookingRepositoryTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_PersistsTheCancelReasonWithTheStatus()
+    {
+        var options = NewOptions();
+        var booking = NewBooking();
+        await using (var seed = new BookingDbContext(options))
+            await new BookingRepository(seed).CreateAsync(booking);
+
+        await using (var db = new BookingDbContext(options))
+        {
+            var repository = new BookingRepository(db);
+            var loaded = (await repository.GetByIdAsync(booking.Id))!;
+            Assert.True(await repository.UpdateStatusAsync(loaded, BookingStatus.CANCELLED, "No puedo asistir"));
+            Assert.Equal("No puedo asistir", loaded.CancelReason);
+        }
+
+        await using var check = new BookingDbContext(options);
+        var stored = Assert.Single(check.Bookings);
+        Assert.Equal(BookingStatus.CANCELLED, stored.Status);
+        Assert.Equal("No puedo asistir", stored.CancelReason);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_WhenTheStatusChangedSinceTheRead_DoesNotKeepTheCancelReason()
+    {
+        var options = NewOptions();
+        var booking = NewBooking();
+        await using (var seed = new BookingDbContext(options))
+            await new BookingRepository(seed).CreateAsync(booking);
+
+        await using var first = new BookingDbContext(options);
+        await using var second = new BookingDbContext(options);
+        var readByFirst = (await new BookingRepository(first).GetByIdAsync(booking.Id))!;
+        var readBySecond = (await new BookingRepository(second).GetByIdAsync(booking.Id))!;
+
+        Assert.True(await new BookingRepository(second).UpdateStatusAsync(readBySecond, BookingStatus.COMPLETED));
+        Assert.False(await new BookingRepository(first).UpdateStatusAsync(readByFirst, BookingStatus.CANCELLED, "No puedo asistir"));
+
+        Assert.Null(readByFirst.CancelReason);
+        await using var check = new BookingDbContext(options);
+        Assert.Null(Assert.Single(check.Bookings).CancelReason);
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_WhenTheStatusChangedSinceTheRead_ReturnsFalseAndKeepsTheOtherWrite()
     {
         var options = NewOptions();

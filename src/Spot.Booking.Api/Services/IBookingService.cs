@@ -18,11 +18,14 @@ public interface IBookingService
     /// <exception cref="BookingSlotOverlapException">The time range overlaps another active booking of the business.</exception>
     Task<BookingDto> CreateAsync(Guid userId, BookingCreateRequest request, CancellationToken ct = default);
 
-    /// <summary>PENDING or CONFIRMED → CANCELLED, by the booking's client or the owner of its business.</summary>
+    /// <summary>
+    /// PENDING or CONFIRMED → CANCELLED, by the booking's client or the owner of its business.
+    /// <paramref name="reason"/> is stored with the status as given (null for none): see BookingCancelRequest.
+    /// </summary>
     /// <exception cref="BookingNotFoundException">The booking doesn't exist.</exception>
     /// <exception cref="BookingAccessDeniedException"><paramref name="callerId"/> is neither the client nor the owner.</exception>
     /// <exception cref="BookingRuleViolationException">The booking isn't PENDING or CONFIRMED.</exception>
-    Task<BookingDto> CancelAsync(Guid bookingId, Guid callerId, CancellationToken ct = default);
+    Task<BookingDto> CancelAsync(Guid bookingId, Guid callerId, string? reason = null, CancellationToken ct = default);
 
     /// <summary>PENDING → CONFIRMED, by the owner of the booking's business.</summary>
     /// <exception cref="BookingNotFoundException">The booking doesn't exist.</exception>
