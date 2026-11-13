@@ -13,8 +13,11 @@ public sealed class BookingCancelRequest : IValidatableObject
 
     public string? Reason { get; set; }
 
-    /// <summary>The reason to store: trimmed, or null when it's missing or blank.</summary>
-    public string? NormalizedReason() => string.IsNullOrWhiteSpace(Reason) ? null : Reason.Trim();
+    /// <summary>
+    /// The reason to store: trimmed, or null when it's missing or blank. NUL becomes a space first,
+    /// since Postgres text can't hold it (22021, a 500), as ReviewService and AiSearch do.
+    /// </summary>
+    public string? NormalizedReason() => Reason?.Replace('\0', ' ').Trim() is { Length: > 0 } reason ? reason : null;
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

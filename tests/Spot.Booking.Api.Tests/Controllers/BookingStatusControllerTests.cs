@@ -88,6 +88,7 @@ public class BookingStatusControllerTests(BookingsApiFactory factory) : IClassFi
     [InlineData("{\"reason\":null}")]
     [InlineData("{\"reason\":\"\"}")]
     [InlineData("{\"reason\":\"   \"}")]
+    [InlineData("{\"reason\":\"\\u0000 \\u0000\"}")] // only NUL and spaces: blank once NUL is replaced
     public async Task Cancel_WithAMissingOrBlankReason_StoresNull(string json)
     {
         var booking = await SeedAsync(BookingStatus.PENDING);
@@ -100,6 +101,21 @@ public class BookingStatusControllerTests(BookingsApiFactory factory) : IClassFi
         Assert.Equal(JsonValueKind.Null, body.GetProperty("cancelReason").ValueKind);
         Assert.Equal(BookingStatus.CANCELLED, booking.Status);
         Assert.Null(booking.CancelReason);
+    }
+
+    [Fact]
+    public async Task Cancel_WithANulInTheReason_StoresItAsASpace()
+    {
+        var booking = await SeedAsync(BookingStatus.PENDING);
+
+        var response = await Client(ClientId, "CLIENT").PostAsync(
+            $"/booking/bookings/{booking.Id}/cancel",
+            new StringContent("{\"reason\":\"\\u0000Me surgió\\u0000un imprevisto\\u0000\"}", System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("Me surgió un imprevisto", body.GetProperty("cancelReason").GetString());
+        Assert.Equal("Me surgió un imprevisto", booking.CancelReason);
     }
 
     [Fact]

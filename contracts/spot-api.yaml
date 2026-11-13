@@ -1839,10 +1839,11 @@ paths:
         Required role: `CLIENT` who owns the booking or `BUSINESS` who owns
         the booking's business.
 
-        The body is optional. `reason` is trimmed and stored with the status
-        change, then returned as the booking's `cancelReason`; a missing or
-        blank one stores `null`. Over 255 characters (after trimming) responds
-        `400` and the booking is not cancelled. When given, the reason is also
+        The body is optional. `reason` is trimmed (any NUL character becomes a
+        space first) and stored with the status change, then returned as the
+        booking's `cancelReason`; a missing or blank one stores `null`. Over
+        255 characters (after trimming) responds `400` and the booking is not
+        cancelled. When given, the reason is also
         included in the status-changed notification both parties receive.
       requestBody:
         required: false

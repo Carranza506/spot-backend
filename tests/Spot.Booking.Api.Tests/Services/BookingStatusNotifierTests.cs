@@ -122,6 +122,26 @@ public class BookingStatusNotifierTests
     }
 
     [Theory]
+    [InlineData(BookingStatus.CONFIRMED)]
+    [InlineData(BookingStatus.COMPLETED)]
+    [InlineData(BookingStatus.NO_SHOW)]
+    public async Task OnlyACancel_SendsTheReason(BookingStatus status)
+    {
+        string? body = null;
+        var notifier = CreateNotifier(async (request, ct) =>
+        {
+            body = await request.Content!.ReadAsStringAsync(ct);
+            return new HttpResponseMessage(HttpStatusCode.Accepted);
+        }, new CapturingLogger());
+        var booking = NewBooking(status);
+        booking.CancelReason = "Me surgió un imprevisto";
+
+        await notifier.NotifyAsync(booking);
+
+        Assert.False(JsonDocument.Parse(body!).RootElement.TryGetProperty("message", out _));
+    }
+
+    [Theory]
     [MemberData(nameof(FailureCases))]
     public async Task TheTransitionStillSucceeds_AndIsCommitted_WhenTheNotificationFails(int failure)
     {
